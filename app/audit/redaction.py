@@ -13,7 +13,7 @@ _SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
 )
 
 _SENSITIVE_KEY_PATTERN = re.compile(
-    r"(?i)^(password|passwd|pwd|api[_-]?key|access[_-]?token|refresh[_-]?token|secret[_-]?token|token|authorization)$"
+    r"(?i)^(password|passwd|pwd|api[_-]?key|access[_-]?token|refresh[_-]?token|secret[_-]?token|token|authorization|secret|client[_-]?secret|private[_-]?key)$"
 )
 
 

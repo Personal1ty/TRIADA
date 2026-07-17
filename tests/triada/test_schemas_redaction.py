@@ -83,6 +83,26 @@ def test_redact_payload_does_not_mask_tokenization_key():
     assert redact_payload(payload) == payload
 
 
+def test_redact_payload_masks_additional_sensitive_keys():
+    payload = {"secret": "s1", "client_secret": "s2", "private_key": "s3"}
+
+    redacted = redact_payload(payload)
+
+    assert "s1" not in redacted.values()
+    assert "s2" not in redacted.values()
+    assert "s3" not in redacted.values()
+    assert set(redacted.values()) == {"[REDACTED]"}
+
+
+def test_redact_payload_masks_nested_additional_sensitive_keys():
+    payload = {"nested": {"client_secret": "s2"}}
+
+    redacted = redact_payload(payload)
+
+    assert redacted["nested"]["client_secret"] == "[REDACTED]"
+    assert "s2" not in redacted["nested"].values()
+
+
 def test_tool_execution_record_exposes_tool_field():
     record = ToolExecutionRecord(
         tool="shell",
