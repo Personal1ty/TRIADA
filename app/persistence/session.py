@@ -11,6 +11,7 @@ def create_session_factory(database_url: str) -> async_sessionmaker[AsyncSession
 async def get_session() -> AsyncIterator[AsyncSession]:
     from app.config import get_settings
 
+    # App-scoped engine lifecycle is handled by the FastAPI app layer in a later task.
     factory = create_session_factory(get_settings().database_url)
     async with factory() as session:
         yield session

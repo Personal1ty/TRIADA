@@ -6,6 +6,7 @@ import hashlib
 import json
 from typing import Any
 from uuid import UUID, uuid4
+from weakref import WeakValueDictionary
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -16,7 +17,7 @@ from app.persistence.models import AuditEvent, Base
 
 _sqlite_table_locks: dict[str, asyncio.Lock] = {}
 _sqlite_tables_ready: set[str] = set()
-_trace_locks: dict[str, asyncio.Lock] = {}
+_trace_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 _lock_registry_guard = asyncio.Lock()
 
 
@@ -222,7 +223,7 @@ class AuditEventRepository:
         return await session.scalar(statement)
 
 
-async def _get_lock(registry: dict[str, asyncio.Lock], key: str) -> asyncio.Lock:
+async def _get_lock(registry: dict[str, asyncio.Lock] | WeakValueDictionary[str, asyncio.Lock], key: str) -> asyncio.Lock:
     async with _lock_registry_guard:
         lock = registry.get(key)
         if lock is None:
