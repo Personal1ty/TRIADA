@@ -46,13 +46,28 @@ class InMemoryEventBus:
             self._published.append(event)
             listeners = tuple(self._listeners.get(trace_id, ()))
 
+        overflowed = []
         for queue in listeners:
-            await queue.put(event)
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                overflowed.append(queue)
 
-    def subscribe(self, trace_id: UUID | str) -> AsyncIterator[Any]:
+        if overflowed:
+            async with self._lock:
+                current_listeners = self._listeners.get(trace_id)
+                if current_listeners is None:
+                    return
+                for queue in overflowed:
+                    current_listeners.discard(queue)
+                if not current_listeners:
+                    self._listeners.pop(trace_id, None)
+
+    async def subscribe(self, trace_id: UUID | str) -> AsyncIterator[Any]:
         trace_id_str = str(trace_id)
         queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=self._listener_queue_size)
-        self._listeners[trace_id_str].add(queue)
+        async with self._lock:
+            self._listeners[trace_id_str].add(queue)
         return _TraceSubscription(self, trace_id_str, queue)
 
     async def drain(self) -> list[Any]:
@@ -61,13 +76,15 @@ class InMemoryEventBus:
             self._published.clear()
         return events
 
-    def listener_count(self, trace_id: UUID | str) -> int:
-        return len(self._listeners.get(str(trace_id), ()))
+    async def listener_count(self, trace_id: UUID | str) -> int:
+        async with self._lock:
+            return len(self._listeners.get(str(trace_id), ()))
 
     async def _remove_listener(self, trace_id: str, queue: asyncio.Queue[Any]) -> None:
-        listeners = self._listeners.get(trace_id)
-        if listeners is None:
-            return
-        listeners.discard(queue)
-        if not listeners:
-            self._listeners.pop(trace_id, None)
+        async with self._lock:
+            listeners = self._listeners.get(trace_id)
+            if listeners is None:
+                return
+            listeners.discard(queue)
+            if not listeners:
+                self._listeners.pop(trace_id, None)

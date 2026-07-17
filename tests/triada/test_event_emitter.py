@@ -1,4 +1,7 @@
+import asyncio
 import json
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -93,7 +96,7 @@ async def test_bus_subscription_receives_only_matching_trace(tmp_path):
     trace_id = uuid4()
 
     try:
-        subscription = bus.subscribe(trace_id)
+        subscription = await bus.subscribe(trace_id)
         await emitter.emit(
             event_type="task_created",
             trace_id=uuid4(),
@@ -113,10 +116,74 @@ async def test_bus_subscription_receives_only_matching_trace(tmp_path):
         await subscription.aclose()
 
         assert received.id == expected.id
-        assert bus.listener_count(trace_id) == 0
+        assert await bus.listener_count(trace_id) == 0
     finally:
         await _dispose_session_factory(session_factory)
 
+
+@pytest.mark.asyncio
+async def test_bus_publish_returns_promptly_and_removes_full_slow_listener():
+    bus = InMemoryEventBus(listener_queue_size=1)
+    trace_id = uuid4()
+    slow_subscription = await bus.subscribe(trace_id)
+    first_event = SimpleNamespace(id=str(uuid4()), trace_id=str(trace_id))
+    second_event = SimpleNamespace(id=str(uuid4()), trace_id=str(trace_id))
+
+    await bus.publish(first_event)
+
+    await asyncio.wait_for(bus.publish(second_event), timeout=0.1)
+
+    assert await bus.listener_count(trace_id) == 0
+    await slow_subscription.aclose()
+
+
+@pytest.mark.asyncio
+async def test_bus_publish_continues_to_healthy_listener_when_slow_listener_overflows():
+    bus = InMemoryEventBus(listener_queue_size=1)
+    trace_id = uuid4()
+    slow_subscription = await bus.subscribe(trace_id)
+    first_event = SimpleNamespace(id=str(uuid4()), trace_id=str(trace_id))
+    second_event = SimpleNamespace(id=str(uuid4()), trace_id=str(trace_id))
+
+    await bus.publish(first_event)
+    healthy_subscription = await bus.subscribe(trace_id)
+
+    await asyncio.wait_for(bus.publish(second_event), timeout=0.1)
+
+    received = await asyncio.wait_for(healthy_subscription.__anext__(), timeout=0.1)
+    assert received.id == second_event.id
+    assert await bus.listener_count(trace_id) == 1
+    await slow_subscription.aclose()
+    await healthy_subscription.aclose()
+
+
+def test_projection_serializes_nested_uuid_datetime_payload_and_span_fields():
+    event = SimpleNamespace(
+        id=uuid4(),
+        event_type="tool_execution_completed",
+        trace_id=uuid4(),
+        task_id=uuid4(),
+        agent_id="worker-1",
+        span_id=uuid4(),
+        parent_span_id=uuid4(),
+        sequence=1,
+        payload={
+            "artifact_id": uuid4(),
+            "timestamps": [datetime(2026, 7, 17, 12, 0, tzinfo=UTC)],
+            "nested": {"when": datetime(2026, 7, 17, 13, 0, tzinfo=UTC)},
+        },
+        created_at=datetime(2026, 7, 17, 14, 0, tzinfo=UTC),
+    )
+
+    sse = event_to_sse(event)
+    public_response = events_to_public_response([event])
+
+    json.dumps(public_response)
+    sse_data = json.loads(sse["data"])
+    assert sse_data["span_id"] == str(event.span_id)
+    assert sse_data["parent_span_id"] == str(event.parent_span_id)
+    assert sse_data["payload"]["artifact_id"] == str(event.payload["artifact_id"])
+    assert sse_data["payload"]["timestamps"][0] == "2026-07-17T12:00:00+00:00"
 
 @pytest.mark.asyncio
 async def test_projection_exposes_public_event_and_thinking_delta(tmp_path):
