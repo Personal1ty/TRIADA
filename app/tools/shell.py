@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
+import signal
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterable
 
-from app.audit.redaction import redact_text
-from app.tools.base import ToolAdapter, ToolRequest, ToolResult, ensure_risk_allowed
+from app.tools.base import ToolAdapter, ToolRequest, ToolResult, clean_tool_output, ensure_risk_allowed
+
+
+_DEFAULT_TRUSTED_PATHS = (
+    "/bin",
+    "/usr/bin",
+    "/usr/local/bin",
+    "/opt/homebrew/bin",
+)
 
 
 class ShellTool(ToolAdapter):
@@ -20,18 +30,22 @@ class ShellTool(ToolAdapter):
         timeout_seconds: float = 30,
         max_output_bytes: int = 64_000,
         secrets: Iterable[str] | None = None,
+        trusted_paths: Iterable[str | Path] | None = None,
     ) -> None:
         self.allowlist = allowlist
         self.workspace = Path(workspace).resolve()
         self.timeout_seconds = timeout_seconds
         self.max_output_bytes = max_output_bytes
         self.secrets = tuple(secret for secret in (secrets or ()) if secret)
+        self.trusted_paths = tuple(
+            str(Path(path).resolve()) for path in (trusted_paths or _DEFAULT_TRUSTED_PATHS)
+        )
+        self._trusted_env = self._build_trusted_env()
 
     def validate_input(self, request: ToolRequest) -> None:
         if not request.command:
             raise ValueError("command is required")
-        if request.command[0] not in self.allowlist:
-            raise PermissionError(f"command '{request.command[0]}' is not allowlisted")
+        self._resolve_executable(request.command[0])
         self._resolve_working_dir(request.working_dir)
         ensure_risk_allowed(request)
 
@@ -50,10 +64,14 @@ class ShellTool(ToolAdapter):
     async def execute(self, request: ToolRequest) -> ToolResult:
         self.validate_input(request)
         cwd = self._resolve_working_dir(request.working_dir)
+        executable = self._resolve_executable(request.command[0])
+        exec_command = [str(executable), *request.command[1:]]
         started_at = datetime.now(UTC)
         process = await asyncio.create_subprocess_exec(
-            *request.command,
+            *exec_command,
             cwd=cwd,
+            env=self._trusted_env,
+            start_new_session=os.name == "posix",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -64,19 +82,27 @@ class ShellTool(ToolAdapter):
             )
         except TimeoutError:
             timed_out = True
-            process.kill()
+            self._kill_process_tree(process)
             stdout_bytes, stderr_bytes = await process.communicate()
         finished_at = datetime.now(UTC)
         return ToolResult(
             tool=self.tool_name,
             command=request.command,
             exit_code=process.returncode if process.returncode is not None else -1,
-            stdout=self._clean_output(stdout_bytes),
-            stderr=self._clean_output(stderr_bytes),
+            stdout=clean_tool_output(
+                stdout_bytes,
+                max_output_bytes=self.max_output_bytes,
+                secrets=self.secrets,
+            ),
+            stderr=clean_tool_output(
+                stderr_bytes,
+                max_output_bytes=self.max_output_bytes,
+                secrets=self.secrets,
+            ),
             timed_out=timed_out,
             started_at=started_at,
             finished_at=finished_at,
-            metadata={"cwd": str(cwd)},
+            metadata={"cwd": str(cwd), "executable": str(executable)},
         )
 
     def validate_result(self, result: ToolResult) -> None:
@@ -97,12 +123,30 @@ class ShellTool(ToolAdapter):
             raise PermissionError("working_dir is outside workspace")
         return resolved
 
-    def _clean_output(self, value: bytes) -> str:
-        truncated = value[: self.max_output_bytes]
-        text = truncated.decode("utf-8", errors="replace")
-        text = redact_text(text)
-        for secret in self.secrets:
-            text = text.replace(secret, "[REDACTED]")
-        if len(value) > self.max_output_bytes:
-            text += "\n[TRUNCATED]"
-        return text
+    def _resolve_executable(self, command_name: str) -> Path:
+        if Path(command_name).name != command_name or command_name in {".", ".."}:
+            raise PermissionError("command executable must be an allowlisted basename")
+        if command_name not in self.allowlist:
+            raise PermissionError(f"command '{command_name}' is not allowlisted")
+        resolved = shutil.which(command_name, path=os.pathsep.join(self.trusted_paths))
+        if resolved is None:
+            raise FileNotFoundError(f"allowlisted command '{command_name}' was not found in trusted paths")
+        return Path(resolved).resolve()
+
+    def _build_trusted_env(self) -> dict[str, str]:
+        env = {"PATH": os.pathsep.join(self.trusted_paths)}
+        for key in ("HOME", "LANG", "LC_ALL", "SYSTEMROOT", "WINDIR"):
+            if key in os.environ:
+                env[key] = os.environ[key]
+        return env
+
+    def _kill_process_tree(self, process: asyncio.subprocess.Process) -> None:
+        if os.name == "posix" and process.pid is not None:
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                return
+            except ProcessLookupError:
+                return
+            except OSError:
+                pass
+        process.kill()

@@ -4,14 +4,22 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.schemas.enums import RiskPolicy
-from app.tools.base import ToolAdapter, ToolRequest, ToolResult, ensure_risk_allowed
+from app.tools.base import ToolAdapter, ToolRequest, ToolResult, clean_tool_output, ensure_risk_allowed
 
 
 class FileSystemTool(ToolAdapter):
     tool_name = "filesystem"
 
-    def __init__(self, *, workspace: str | Path) -> None:
+    def __init__(
+        self,
+        *,
+        workspace: str | Path,
+        max_output_bytes: int = 64_000,
+        secrets: tuple[str, ...] = (),
+    ) -> None:
         self.workspace = Path(workspace).resolve()
+        self.max_output_bytes = max_output_bytes
+        self.secrets = secrets
 
     def validate_input(self, request: ToolRequest) -> None:
         if not request.command:
@@ -43,9 +51,17 @@ class FileSystemTool(ToolAdapter):
         action = request.command[0]
         target = self._resolve_path(request.command[1])
         if action == "read":
-            stdout = target.read_text()
+            stdout = clean_tool_output(
+                target.read_bytes(),
+                max_output_bytes=self.max_output_bytes,
+                secrets=self.secrets,
+            )
         elif action == "list":
-            stdout = "\n".join(sorted(path.name for path in target.iterdir()))
+            stdout = clean_tool_output(
+                "\n".join(sorted(path.name for path in target.iterdir())),
+                max_output_bytes=self.max_output_bytes,
+                secrets=self.secrets,
+            )
         else:
             if len(request.command) < 3:
                 raise ValueError("write command requires content")

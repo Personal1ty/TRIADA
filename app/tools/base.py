@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.audit.redaction import redact_text
 from app.schemas.enums import RiskPolicy
 
 
@@ -46,6 +47,17 @@ def ensure_risk_allowed(request: ToolRequest) -> None:
             raise PermissionError(f"{request.risk_policy} requires approval reference")
         return
     raise PermissionError(f"unsupported risk policy: {request.risk_policy}")
+
+
+def clean_tool_output(value: bytes | str, *, max_output_bytes: int, secrets: tuple[str, ...] = ()) -> str:
+    text = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
+    text = redact_text(text)
+    for secret in secrets:
+        text = text.replace(secret, "[REDACTED]")
+    raw = text.encode("utf-8", errors="replace")
+    if len(raw) <= max_output_bytes:
+        return text
+    return raw[:max_output_bytes].decode("utf-8", errors="replace") + "\n[TRUNCATED]"
 
 
 class ToolAdapter(ABC):

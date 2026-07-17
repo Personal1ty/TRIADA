@@ -1,3 +1,9 @@
+import asyncio
+import os
+import stat
+import sys
+import textwrap
+
 import pytest
 
 from app.schemas.enums import RiskPolicy
@@ -26,6 +32,64 @@ async def test_shell_tool_executes_allowlisted_command(tmp_path):
     )
     assert result.exit_code == 0
     assert result.stdout.strip() == "hello"
+
+
+@pytest.mark.asyncio
+async def test_shell_tool_uses_trusted_executable_not_workspace_path_hijack(tmp_path, monkeypatch):
+    hijack_dir = tmp_path / "bin"
+    hijack_dir.mkdir()
+    fake_echo = hijack_dir / "echo"
+    fake_echo.write_text("#!/bin/sh\necho hijacked\n")
+    fake_echo.chmod(fake_echo.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setenv("PATH", f"{hijack_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+
+    tool = ShellTool(allowlist={"echo"}, workspace=tmp_path)
+    result = await tool.execute(
+        ToolRequest(command=["echo", "hello"], risk_policy=RiskPolicy.READ_ONLY)
+    )
+
+    assert result.stdout.strip() == "hello"
+    assert "hijacked" not in result.stdout
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process group cancellation is POSIX-specific")
+@pytest.mark.asyncio
+async def test_shell_tool_timeout_kills_process_group_children(tmp_path):
+    python_name = os.path.basename(sys.executable)
+    marker = tmp_path / "child-marker"
+    child_code = (
+        "import pathlib, time; "
+        "time.sleep(0.5); "
+        f"pathlib.Path({str(marker)!r}).write_text('child survived')"
+    )
+    parent_code = textwrap.dedent(
+        f"""
+        import subprocess
+        import sys
+        import time
+
+        subprocess.Popen(
+            [sys.executable, "-c", {child_code!r}],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        time.sleep(60)
+        """
+    )
+    tool = ShellTool(
+        allowlist={python_name},
+        workspace=tmp_path,
+        timeout_seconds=0.2,
+        trusted_paths=[os.path.dirname(sys.executable)],
+    )
+
+    result = await tool.execute(
+        ToolRequest(command=[python_name, "-c", parent_code], risk_policy=RiskPolicy.READ_ONLY)
+    )
+    assert result.timed_out is True
+    await asyncio.sleep(0.8)
+    assert not marker.exists()
 
 
 @pytest.mark.asyncio
@@ -100,6 +164,21 @@ async def test_filesystem_tool_rejects_write_with_read_only_policy(tmp_path):
         await tool.execute(request)
 
 
+@pytest.mark.asyncio
+async def test_filesystem_tool_redacts_and_caps_read_output(tmp_path):
+    secret_file = tmp_path / "secret.txt"
+    secret_file.write_text("Authorization: Bearer abc123\n" + ("x" * 128))
+    tool = FileSystemTool(workspace=tmp_path, max_output_bytes=32)
+
+    result = await tool.execute(
+        ToolRequest(command=["read", "secret.txt"], risk_policy=RiskPolicy.READ_ONLY)
+    )
+
+    assert "abc123" not in result.stdout
+    assert "[REDACTED]" in result.stdout
+    assert "[TRUNCATED]" in result.stdout
+
+
 def test_safe_adapters_block_mutating_commands(tmp_path):
     assert GitTool(workspace=tmp_path).is_command_allowed(["git", "status"]) is True
     assert GitTool(workspace=tmp_path).is_command_allowed(["git", "commit"]) is False
@@ -107,3 +186,11 @@ def test_safe_adapters_block_mutating_commands(tmp_path):
     assert KubernetesReadOnlyTool(workspace=tmp_path).is_command_allowed(["kubectl", "delete", "pod", "x"]) is False
     assert DockerTool(workspace=tmp_path).is_command_allowed(["docker", "ps"]) is True
     assert DockerTool(workspace=tmp_path).is_command_allowed(["docker", "run", "alpine"]) is False
+
+
+def test_git_tool_blocks_execution_overrides(tmp_path):
+    tool = GitTool(workspace=tmp_path)
+    assert tool.is_command_allowed(["git", "diff", "--no-index", "/tmp/a", "/tmp/b"]) is False
+    assert tool.is_command_allowed(["git", "diff", "--ext-diff"]) is False
+    assert tool.is_command_allowed(["git", "diff", "--external-diff"]) is False
+    assert tool.is_command_allowed(["git", "-c", "core.pager=cat", "status"]) is False
