@@ -12,6 +12,10 @@ _SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
 )
 
+_SENSITIVE_KEY_PATTERN = re.compile(
+    r"(?i)^(password|passwd|pwd|api[_-]?key|access[_-]?token|refresh[_-]?token|secret[_-]?token|token|authorization)$"
+)
+
 
 def _mask_match(match: re.Match[str]) -> str:
     if match.lastindex and match.lastindex >= 2:
@@ -30,14 +34,19 @@ def contains_secret(value: str) -> bool:
     return any(pattern.search(value) is not None for pattern in _SECRET_PATTERNS)
 
 
+def _is_sensitive_key(value: str) -> bool:
+    return _SENSITIVE_KEY_PATTERN.fullmatch(value) is not None
+
+
 def redact_payload(payload: object) -> object:
     if isinstance(payload, str):
         return redact_text(payload)
     if isinstance(payload, Mapping):
-        return {
-            redact_payload(key) if isinstance(key, str) else key: redact_payload(value)
-            for key, value in payload.items()
-        }
+        redacted = {}
+        for key, value in payload.items():
+            redacted_key = redact_payload(key) if isinstance(key, str) else key
+            redacted[redacted_key] = _REDACTION if isinstance(key, str) and _is_sensitive_key(key) else redact_payload(value)
+        return redacted
     if isinstance(payload, list):
         return [redact_payload(item) for item in payload]
     if isinstance(payload, tuple):

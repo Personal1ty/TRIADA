@@ -4,8 +4,8 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from app.audit.redaction import contains_secret, redact_text
-from app.events.models import ThinkingSummaryDelta
+from app.audit.redaction import contains_secret, redact_payload, redact_text
+from app.events.models import AuditVerdict, AuditViolation, ThinkingSummaryDelta, ToolExecutionRecord
 
 
 def make_delta(**overrides):
@@ -61,3 +61,72 @@ def test_redact_text_masks_common_secret_patterns():
 
 def test_contains_secret_detects_private_key_marker():
     assert contains_secret("-----BEGIN PRIVATE KEY-----\nabc")
+
+
+def test_redact_payload_masks_values_for_sensitive_keys():
+    payload = {
+        "password": "plain-secret",
+        "Authorization": "Bearer abcdef123456",
+        "nested": {"refresh_token": "rt-123456"},
+    }
+
+    redacted = redact_payload(payload)
+
+    assert redacted["password"] == "[REDACTED]"
+    assert redacted["Authorization"] == "[REDACTED]"
+    assert redacted["nested"]["refresh_token"] == "[REDACTED]"
+
+
+def test_redact_payload_does_not_mask_tokenization_key():
+    payload = {"tokenization": "ordinary text"}
+
+    assert redact_payload(payload) == payload
+
+
+def test_tool_execution_record_exposes_tool_field():
+    record = ToolExecutionRecord(
+        tool="shell",
+        command=["false"],
+        started_at=None,
+        finished_at=None,
+        exit_code=1,
+        stdout_ref=None,
+        stderr_ref=None,
+        timed_out=False,
+    )
+
+    assert record.tool == "shell"
+
+
+def test_tool_execution_record_accepts_tool_name_alias():
+    record = ToolExecutionRecord(tool_name="shell")
+
+    assert record.tool == "shell"
+
+
+def test_audit_violation_exposes_rule_id_and_evidence_event_ids():
+    violation = AuditViolation(
+        rule_id="TOOL_FAILURE_NOT_REPORTED",
+        message="Tool failure was not reported.",
+        evidence_event_ids=["event-1"],
+    )
+
+    assert violation.rule_id == "TOOL_FAILURE_NOT_REPORTED"
+    assert violation.evidence_event_ids == ["event-1"]
+
+
+def test_audit_violation_accepts_legacy_aliases():
+    violation = AuditViolation(
+        code="TOOL_FAILURE_NOT_REPORTED",
+        message="Tool failure was not reported.",
+        evidence_refs=["event-1"],
+    )
+
+    assert violation.rule_id == "TOOL_FAILURE_NOT_REPORTED"
+    assert violation.evidence_event_ids == ["event-1"]
+
+
+def test_audit_verdict_exposes_evidence_event_ids():
+    verdict = AuditVerdict(verdict="fail", evidence_event_ids=["event-1"])
+
+    assert verdict.evidence_event_ids == ["event-1"]

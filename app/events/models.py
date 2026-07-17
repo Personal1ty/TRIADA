@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from app.audit.redaction import contains_secret
 from app.schemas.enums import AgentRole, AuditVerdictValue, DeltaSource
@@ -97,7 +97,7 @@ class AuditEventCreate(BaseModel):
 
 
 class ToolExecutionRecord(BaseModel):
-    tool_name: str
+    tool: str = Field(validation_alias=AliasChoices("tool", "tool_name"))
     command: list[str] | None = None
     risk_policy: str | None = None
     exit_code: int | None = None
@@ -128,10 +128,13 @@ class ValidationResultRecord(BaseModel):
 
 
 class AuditViolation(BaseModel):
-    code: str
+    rule_id: str = Field(validation_alias=AliasChoices("rule_id", "code"))
     message: str
     severity: str = "error"
-    evidence_refs: list[str] = Field(default_factory=list)
+    evidence_event_ids: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("evidence_event_ids", "evidence_refs"),
+    )
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -140,5 +143,8 @@ class AuditVerdict(BaseModel):
     summary: str | None = None
     violations: list[AuditViolation] = Field(default_factory=list)
     required_corrections: list[str] = Field(default_factory=list)
-    evidence_refs: list[str] = Field(default_factory=list)
+    evidence_event_ids: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("evidence_event_ids", "evidence_refs"),
+    )
     metadata: dict[str, Any] = Field(default_factory=dict)
