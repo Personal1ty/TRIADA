@@ -10,6 +10,13 @@ class GitTool:
     tool_name = "git"
     _ALLOWED = {"status", "diff", "log"}
     _BLOCKED_FLAGS = {"--no-index", "--ext-diff", "--external-diff", "-c"}
+    _BLOCKED_VALUE_OPTIONS = {
+        "--output",
+        "--pathspec-from-file",
+        "--git-dir",
+        "--work-tree",
+        "--namespace",
+    }
 
     def __init__(self, *, workspace: str | Path, timeout_seconds: float = 30) -> None:
         self.workspace = Path(workspace).resolve()
@@ -22,11 +29,11 @@ class GitTool:
     def is_command_allowed(self, command: list[str]) -> bool:
         if len(command) < 2 or command[0] != "git":
             return False
-        if command[1] in self._BLOCKED_FLAGS:
+        if self._is_blocked_arg(command[1]):
             return False
         if command[1] not in self._ALLOWED:
             return False
-        if any(arg in self._BLOCKED_FLAGS for arg in command[2:]):
+        if any(self._is_blocked_arg(arg) for arg in command[2:]):
             return False
         return self._path_operands_stay_in_workspace(command)
 
@@ -49,6 +56,12 @@ class GitTool:
 
     async def rollback(self, request: ToolRequest, result: ToolResult) -> ToolResult | None:
         return None
+
+    def _is_blocked_arg(self, arg: str) -> bool:
+        if arg in self._BLOCKED_FLAGS or arg in self._BLOCKED_VALUE_OPTIONS:
+            return True
+        option, separator, _value = arg.partition("=")
+        return bool(separator) and option in self._BLOCKED_VALUE_OPTIONS
 
     def _path_operands_stay_in_workspace(self, command: list[str]) -> bool:
         for arg in command[2:]:

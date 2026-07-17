@@ -194,3 +194,5 @@ def test_git_tool_blocks_execution_overrides(tmp_path):
     assert tool.is_command_allowed(["git", "diff", "--ext-diff"]) is False
     assert tool.is_command_allowed(["git", "diff", "--external-diff"]) is False
     assert tool.is_command_allowed(["git", "-c", "core.pager=cat", "status"]) is False
+    assert tool.is_command_allowed(["git", "log", "--output=/tmp/outside-file"]) is False
+    assert tool.is_command_allowed(["git", "log", "--pathspec-from-file=/tmp/outside-file"]) is False
