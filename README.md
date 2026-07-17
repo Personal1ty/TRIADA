@@ -1,69 +1,92 @@
-# FixMost Delegate Toolkit
+# TRIADA
 
-External toolkit for delegating low-risk analytical tasks to `FixMost / corp-coder`.
+TRIADA is an auditable DevOps task runner MVP built around three roles:
+Orchestrator, Worker, and Auditor. The current codebase exposes a FastAPI API,
+a small CLI, append-only audit events, redaction, safe tool adapter contracts,
+and deterministic fake LLM behavior for local development.
 
-This toolkit is intentionally independent from any specific repository. It lives at:
-
-- `/Users/hidanhidanov/fixmost_delegate/`
-
-## What It Does
-
-- delegates arbitrary prompts through `fixmost handoff`
-- summarizes large source files
-- summarizes diffs
-- extracts endpoint maps
-- analyzes sanitized logs
-
-## What It Does Not Do
-
-- does not edit your repository
-- does not read project config automatically
-- does not depend on `authomation`
-- does not manage secrets
-
-## Requirements
-
-- `python3`
-- `FIXMOST_API_KEY` in the environment
-
-## Supported Commands
-
-- `handoff`
-- `summarize-file`
-- `summarize-diff`
-- `extract-endpoints`
-- `analyze-logs`
-
-## Example Usage
-
-Run from any directory by absolute path:
+## Quickstart
 
 ```bash
-/Users/hidanhidanov/fixmost_delegate/fixmost handoff --prompt "Summarize the responsibilities of this module"
-cat /absolute/path/to/prompt.txt | /Users/hidanhidanov/fixmost_delegate/fixmost handoff
-/Users/hidanhidanov/fixmost_delegate/fixmost handoff --prompt "Return JSON with keys summary and risks" --json
-/Users/hidanhidanov/fixmost_delegate/fixmost handoff --prompt "Review this code like a strict API auditor" --system "You are a strict API auditor."
-/Users/hidanhidanov/fixmost_delegate/fixmost summarize-file --input-file /absolute/path/to/file.py
-git diff | /Users/hidanhidanov/fixmost_delegate/fixmost summarize-diff
-/Users/hidanhidanov/fixmost_delegate/fixmost extract-endpoints --input-file /absolute/path/to/app.py
-cat /absolute/path/to/sanitized.log | /Users/hidanhidanov/fixmost_delegate/fixmost analyze-logs
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -e '.[test]'
+python3 -m pytest -q
 ```
 
-## Safety Rules
+Start the API locally with the default SQLite database:
 
-Never send:
+```bash
+uvicorn app.main:create_app --factory --reload
+```
 
-- passwords
-- tokens
-- cookies
-- Vault secrets
-- service account JSON
+Run with PostgreSQL through Docker Compose:
 
-Allowed examples:
+```bash
+docker compose up --build
+```
 
-- large safe source files
-- diffs
-- endpoint maps
-- sanitized logs
-- structural summaries
-- arbitrary non-secret prompts for Codex handoff
+The Docker service uses `DATABASE_URL=postgresql+asyncpg://triada:triada@postgres:5432/triada`.
+The default non-Docker setting is `sqlite+aiosqlite:///./triada.db`.
+
+## Install
+
+Runtime dependencies are declared in `pyproject.toml`. Test dependencies are in
+the `test` extra.
+
+```bash
+python3 -m pip install -e .
+python3 -m pip install -e '.[test]'
+```
+
+Copy `.env.example` to `.env` to override settings. The fake provider is the
+default and does not require an API key.
+
+## API
+
+The FastAPI application factory is `app.main:create_app`.
+
+Core endpoints under `/v1`:
+
+- `POST /v1/tasks` creates a task.
+- `GET /v1/tasks/{task_id}` returns task status.
+- `GET /v1/tasks/{task_id}/events` returns redacted audit events.
+- `GET /v1/tasks/{task_id}/stream` streams Server-Sent Events.
+- `GET /v1/tasks/{task_id}/thinking-summary` returns public thinking summaries.
+- `GET /v1/tasks/{task_id}/audit` verifies and returns the audit trace.
+- `GET /v1/tasks/{task_id}/artifacts` returns artifact records.
+- `POST /v1/tasks/{task_id}/approve`, `/cancel`, `/resume`, and `/run_once`
+  control task execution.
+
+Example:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8000/v1/tasks \
+  -H 'content-type: application/json' \
+  -d '{"goal":"inspect repository status","allowed_tools":["git"],"acceptance_criteria":["return status"]}'
+```
+
+## CLI
+
+Run CLI commands through the module entrypoint:
+
+```bash
+python3 -m app.cli demo
+python3 -m app.cli test-provider
+python3 -m app.cli simulate-long-task
+python3 -m app.cli run-task task.json
+python3 -m app.cli list-events TRACE_UUID
+python3 -m app.cli verify-trace TRACE_UUID
+```
+
+`run-task` accepts JSON with `goal` or `task` or `description`, plus optional
+`allowed_tools` and `acceptance_criteria` lists.
+
+## Validation Commands
+
+```bash
+python3 -m pytest tests/triada/test_docs.py -q
+python3 -m pytest -q
+python3 -m app.cli demo
+python3 -m app.cli simulate-long-task
+```

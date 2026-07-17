@@ -1,0 +1,42 @@
+services:
+  api:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      LLM_PROVIDER: fake
+      LLM_MODEL: fake-devops-model
+      DATABASE_URL: postgresql+asyncpg://triada:triada@postgres:5432/triada
+      EVENT_OUTPUT_DIR: /app/.triada/artifacts
+      SHELL_TIMEOUT_SECONDS: "60"
+      MAX_TOOL_OUTPUT_BYTES: "65536"
+    command: >
+      sh -c "python3 -m pip install -e . &&
+             python3 -m pip install 'psycopg[binary]>=3.2' &&
+             alembic upgrade head &&
+             uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: triada
+      POSTGRES_USER: triada
+      POSTGRES_PASSWORD: triada
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U triada -d triada"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - triada-postgres:/var/lib/postgresql/data
+
+volumes:
+  triada-postgres:
