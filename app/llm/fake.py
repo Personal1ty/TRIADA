@@ -12,7 +12,7 @@ class FakeLLMProvider(LLMProvider):
                 "stage": "planning",
                 "action": "draft_plan",
                 "summary": f"Prepared deterministic fake plan {digest}.",
-                "observations": ["No private chain-of-thought is exposed."],
+                "observations": ["No private reasoning is exposed."],
                 "next_step": "dispatch_worker",
                 "confidence": 1.0,
             },

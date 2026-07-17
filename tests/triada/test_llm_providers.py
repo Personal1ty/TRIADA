@@ -1,10 +1,14 @@
 import json
+from datetime import UTC, datetime
+from uuid import UUID
 
 import httpx
 import pytest
 
+from app.events.models import ThinkingSummaryDelta
 from app.llm.fake import FakeLLMProvider
 from app.llm.openai_compatible import OpenAICompatibleProvider
+from app.schemas.enums import AgentRole, DeltaSource
 
 
 def assert_structured_thinking_summary(value):
@@ -27,6 +31,28 @@ async def test_fake_llm_is_deterministic():
     assert first == second
     assert_structured_thinking_summary(first["thinking_summary_delta"])
     assert "answer" in first
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("schema_name", ["plan", "worker_result", "audit_verdict", "default"])
+async def test_fake_llm_thinking_summary_deltas_are_public_safe(schema_name):
+    provider = FakeLLMProvider()
+
+    result = await provider.complete_json("plan a task", schema_name=schema_name)
+
+    ThinkingSummaryDelta(
+        schema_version="1.0",
+        event_id=UUID("00000000-0000-0000-0000-000000000001"),
+        trace_id=UUID("00000000-0000-0000-0000-000000000002"),
+        task_id=UUID("00000000-0000-0000-0000-000000000003"),
+        span_id=UUID("00000000-0000-0000-0000-000000000004"),
+        agent_id="fake-llm",
+        agent_role=AgentRole.ORCHESTRATOR,
+        source=DeltaSource.MODEL,
+        sequence=1,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        **result["thinking_summary_delta"],
+    )
 
 
 @pytest.mark.asyncio
