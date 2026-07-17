@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -84,6 +84,7 @@ class AgentRun(Base):
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     __table_args__ = (
+        UniqueConstraint("trace_id", "sequence", name="uq_audit_events_trace_id_sequence"),
         Index("ix_audit_events_trace_id_created_at", "trace_id", "created_at"),
         Index("ix_audit_events_task_id_created_at", "task_id", "created_at"),
         Index("ix_audit_events_agent_id_sequence", "agent_id", "sequence"),

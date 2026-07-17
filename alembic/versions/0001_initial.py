@@ -95,6 +95,7 @@ def upgrade() -> None:
         sa.Column("event_hash", sa.String(length=64), nullable=False),
         *_base_columns(),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("trace_id", "sequence", name="uq_audit_events_trace_id_sequence"),
     )
     op.create_index("ix_audit_events_agent_id_sequence", "audit_events", ["agent_id", "sequence"])
     op.create_index("ix_audit_events_event_type", "audit_events", ["event_type"])

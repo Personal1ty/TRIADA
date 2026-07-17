@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 import hashlib
 import json
@@ -11,6 +12,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.persistence.models import AuditEvent, Base
+
+
+_sqlite_table_locks: dict[str, asyncio.Lock] = {}
+_sqlite_tables_ready: set[str] = set()
+_trace_locks: dict[str, asyncio.Lock] = {}
+_lock_registry_guard = asyncio.Lock()
 
 
 def _json_default(value: object) -> str:
@@ -39,17 +46,21 @@ def compute_event_hash(event_dict: dict[str, object], previous_hash: str) -> str
 class AuditEventRepository:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
-        self._tables_ready = False
 
     async def _ensure_sqlite_tables(self) -> None:
         bind = self._session_factory.kw.get("bind")
         if bind is None or not bind.url.drivername.startswith("sqlite"):
             return
-        if self._tables_ready:
+        engine_key = str(bind.url)
+        if engine_key in _sqlite_tables_ready:
             return
-        async with bind.begin() as connection:
-            await connection.run_sync(Base.metadata.create_all)
-        self._tables_ready = True
+        table_lock = await _get_lock(_sqlite_table_locks, engine_key)
+        async with table_lock:
+            if engine_key in _sqlite_tables_ready:
+                return
+            async with bind.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            _sqlite_tables_ready.add(engine_key)
 
     async def append_event(
         self,
@@ -71,15 +82,44 @@ class AuditEventRepository:
         trace_id_str = str(trace_id)
         task_id_str = str(task_id)
         created_at = created_at or datetime.now(UTC)
+        trace_lock = await _get_lock(_trace_locks, trace_id_str)
 
+        async with trace_lock:
+            return await self._append_event_locked(
+                event_id=event_id,
+                event_type=event_type,
+                trace_id=trace_id_str,
+                task_id=task_id_str,
+                agent_id=agent_id,
+                payload=payload,
+                span_id=str(span_id) if span_id is not None else None,
+                parent_span_id=str(parent_span_id) if parent_span_id is not None else None,
+                sequence=sequence,
+                created_at=created_at,
+            )
+
+    async def _append_event_locked(
+        self,
+        *,
+        event_id: str,
+        event_type: str,
+        trace_id: str,
+        task_id: str,
+        agent_id: str | None,
+        payload: dict[str, Any],
+        span_id: str | None,
+        parent_span_id: str | None,
+        sequence: int | None,
+        created_at: datetime,
+    ) -> AuditEvent:
         async with self._session_factory() as session:
             if await session.get(AuditEvent, event_id) is not None:
                 raise ValueError(f"duplicate event id {event_id}")
 
-            last_event = await self._last_event(session, trace_id_str)
+            last_event = await self._last_event(session, trace_id)
             if sequence is None:
                 max_sequence = await session.scalar(
-                    select(func.max(AuditEvent.sequence)).where(AuditEvent.trace_id == trace_id_str)
+                    select(func.max(AuditEvent.sequence)).where(AuditEvent.trace_id == trace_id)
                 )
                 sequence = int(max_sequence or 0) + 1
 
@@ -87,11 +127,11 @@ class AuditEventRepository:
             event_dict: dict[str, object] = {
                 "id": event_id,
                 "event_type": event_type,
-                "trace_id": trace_id_str,
-                "task_id": task_id_str,
+                "trace_id": trace_id,
+                "task_id": task_id,
                 "agent_id": agent_id,
-                "span_id": str(span_id) if span_id is not None else None,
-                "parent_span_id": str(parent_span_id) if parent_span_id is not None else None,
+                "span_id": span_id,
+                "parent_span_id": parent_span_id,
                 "sequence": sequence,
                 "payload": payload,
                 "created_at": _canonical_datetime(created_at),
@@ -101,11 +141,11 @@ class AuditEventRepository:
             event = AuditEvent(
                 id=event_id,
                 event_type=event_type,
-                trace_id=trace_id_str,
-                task_id=task_id_str,
+                trace_id=trace_id,
+                task_id=task_id,
                 agent_id=agent_id,
-                span_id=str(span_id) if span_id is not None else None,
-                parent_span_id=str(parent_span_id) if parent_span_id is not None else None,
+                span_id=span_id,
+                parent_span_id=parent_span_id,
                 sequence=sequence,
                 payload=payload,
                 previous_hash=previous_hash,
@@ -117,7 +157,7 @@ class AuditEventRepository:
                 await session.commit()
             except IntegrityError as exc:
                 await session.rollback()
-                raise ValueError(f"duplicate event id {event_id}") from exc
+                raise _integrity_error_for_event(exc, event_id, trace_id, sequence) from exc
             await session.refresh(event)
             return event
 
@@ -180,3 +220,19 @@ class AuditEventRepository:
             .limit(1)
         )
         return await session.scalar(statement)
+
+
+async def _get_lock(registry: dict[str, asyncio.Lock], key: str) -> asyncio.Lock:
+    async with _lock_registry_guard:
+        lock = registry.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            registry[key] = lock
+        return lock
+
+
+def _integrity_error_for_event(exc: IntegrityError, event_id: str, trace_id: str, sequence: int) -> ValueError:
+    message = str(exc.orig).lower()
+    if "audit_events.trace_id" in message and "audit_events.sequence" in message:
+        return ValueError(f"duplicate event sequence {sequence} for trace {trace_id}")
+    return ValueError(f"duplicate event id {event_id}")
