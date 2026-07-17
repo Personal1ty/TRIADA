@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.schemas.enums import AgentRole, DeltaSource
 from app.services.heartbeat import HeartbeatService
 
 
@@ -59,6 +60,7 @@ class LongTaskSimulator:
         self._checkpoint_seconds = checkpoint_seconds
         self._trace_id = trace_id or uuid4()
         self._task_id = task_id or uuid4()
+        self._span_id = uuid4()
         self._agent_id = agent_id
         self._heartbeat = HeartbeatService(clock=clock)
 
@@ -116,13 +118,20 @@ class LongTaskSimulator:
     def _thinking_delta_event(self) -> dict[str, Any]:
         elapsed = self._clock.elapsed_seconds
         payload = {
-            "trace": str(self._trace_id),
-            "agent": self._agent_id,
+            "schema_version": "1.0",
+            "agent_id": self._agent_id,
+            "agent_role": AgentRole.WORKER.value,
+            "source": DeltaSource.RUNTIME.value,
+            "span_id": str(self._span_id),
             "elapsed_seconds": elapsed,
             "stage": "running",
             "action": "checkpoint",
             "summary": f"Task is still running after {elapsed} seconds.",
-            "created_at": self._clock.now(),
+            "observations": [],
+            "input_refs": [],
+            "output_refs": [],
+            "created_at": self._clock.now().isoformat(),
+            "metadata": {"elapsed_seconds": elapsed},
         }
         return self._event("thinking_summary_delta", payload)
 
@@ -133,7 +142,7 @@ class LongTaskSimulator:
             "task_id": str(self._task_id),
             "agent_id": self._agent_id,
             "payload": payload,
-            "created_at": self._clock.now(),
+            "created_at": self._clock.now().isoformat(),
         }
 
     @staticmethod

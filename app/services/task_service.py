@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from copy import deepcopy
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -47,12 +48,12 @@ class TaskService:
             trace_id=trace_id or uuid4(),
             goal=goal,
             risk=risk,
-            constraints=constraints or {},
-            allowed_tools=allowed_tools or [],
-            acceptance_criteria=acceptance_criteria or [],
+            constraints=deepcopy(constraints) if constraints is not None else {},
+            allowed_tools=list(allowed_tools) if allowed_tools is not None else [],
+            acceptance_criteria=list(acceptance_criteria) if acceptance_criteria is not None else [],
             timeout_seconds=timeout_seconds,
             retry_limit=retry_limit,
-            metadata=metadata or {},
+            metadata=deepcopy(metadata) if metadata is not None else {},
         )
         await self._save(task)
         await self._emit(task, "task_created", {"goal": goal, "status": task.status})
@@ -62,39 +63,54 @@ class TaskService:
         normalized_id = self._normalize_task_id(task_id)
         if self._repository is not None and hasattr(self._repository, "get_task"):
             return await self._repository.get_task(normalized_id)
-        return self._tasks.get(normalized_id)
+        task = self._tasks.get(normalized_id)
+        return deepcopy(task) if task is not None else None
 
     async def cancel_task(self, task_id: UUID | str, *, reason: str | None = None) -> TaskRecord:
-        task = await self._require_task(task_id)
-        task.status = "cancelled"
-        task.updated_at = datetime.now(UTC)
-        await self._save(task)
-        await self._emit(task, "task_cancelled", {"reason": reason, "status": task.status})
-        return task
+        return await self._transition_task(
+            task_id,
+            status="cancelled",
+            event_type="task_cancelled",
+            payload={"reason": reason, "status": "cancelled"},
+        )
 
     async def approve_task(self, task_id: UUID | str, *, approved_by: str | None = None) -> TaskRecord:
-        task = await self._require_task(task_id)
-        task.status = "approved"
-        task.updated_at = datetime.now(UTC)
-        await self._save(task)
-        await self._emit(task, "task_approved", {"approved_by": approved_by, "status": task.status})
-        return task
+        return await self._transition_task(
+            task_id,
+            status="approved",
+            event_type="task_approved",
+            payload={"approved_by": approved_by, "status": "approved"},
+        )
 
     async def resume_task(self, task_id: UUID | str) -> TaskRecord:
-        task = await self._require_task(task_id)
-        task.status = "running"
-        task.updated_at = datetime.now(UTC)
-        await self._save(task)
-        await self._emit(task, "task_resumed", {"status": task.status})
-        return task
+        return await self._transition_task(
+            task_id,
+            status="running",
+            event_type="task_resumed",
+            payload={"status": "running"},
+        )
 
     async def run_task_once(self, task_id: UUID | str) -> TaskRecord:
+        return await self._transition_task(
+            task_id,
+            status="completed",
+            event_type="task_completed",
+            payload={"status": "completed"},
+        )
+
+    async def _transition_task(
+        self,
+        task_id: UUID | str,
+        *,
+        status: str,
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> TaskRecord:
         task = await self._require_task(task_id)
-        task.status = "completed"
-        task.updated_at = datetime.now(UTC)
-        await self._save(task)
-        await self._emit(task, "task_completed", {"status": task.status})
-        return task
+        updated = replace(task, status=status, updated_at=datetime.now(UTC))
+        await self._emit(updated, event_type, payload)
+        await self._save(updated)
+        return updated
 
     async def _require_task(self, task_id: UUID | str) -> TaskRecord:
         task = await self.get_task(task_id)
@@ -104,9 +120,9 @@ class TaskService:
 
     async def _save(self, task: TaskRecord) -> None:
         if self._repository is not None and hasattr(self._repository, "save_task"):
-            await self._repository.save_task(task)
+            await self._repository.save_task(deepcopy(task))
             return
-        self._tasks[task.id] = task
+        self._tasks[task.id] = deepcopy(task)
 
     async def _emit(self, task: TaskRecord, event_type: str, payload: dict[str, Any]) -> None:
         if self._emitter is None:

@@ -1,7 +1,15 @@
+import json
+from datetime import datetime
+from types import SimpleNamespace
+from uuid import uuid4
+
 import pytest
 
+from app.audit.projection import thinking_deltas_from_events
+from app.events.models import ThinkingSummaryDelta
 from app.services.heartbeat import HeartbeatService
 from app.services.execution_supervisor import FakeClock, LongTaskSimulator
+from app.services.task_service import TaskService
 
 
 @pytest.mark.asyncio
@@ -113,3 +121,77 @@ async def test_heartbeat_payload_includes_supervision_fields():
         "elapsed_seconds": 60,
         "created_at": "1970-01-01T00:01:00+00:00",
     }
+
+
+@pytest.mark.asyncio
+async def test_long_task_events_are_json_safe_and_projectable():
+    clock = FakeClock(start=0)
+    simulator = LongTaskSimulator(clock=clock, heartbeat_seconds=60, checkpoint_seconds=300)
+
+    result = await simulator.run_virtual(duration_seconds=6 * 60, timeout_seconds=3 * 60 * 60)
+
+    json.dumps(result.events)
+    projected = thinking_deltas_from_events(
+        [
+            SimpleNamespace(
+                id=uuid4(),
+                event_type=event["event_type"],
+                trace_id=event["trace_id"],
+                task_id=event["task_id"],
+                agent_id=event["agent_id"],
+                span_id=None,
+                parent_span_id=None,
+                sequence=index + 1,
+                payload=event["payload"],
+                created_at=datetime.fromisoformat(event["created_at"]),
+            )
+            for index, event in enumerate(result.events)
+        ]
+    )
+
+    assert projected
+    ThinkingSummaryDelta(**projected[0])
+
+
+@pytest.mark.asyncio
+async def test_task_service_copies_mutable_task_inputs():
+    service = TaskService()
+    constraints = {"paths": ["app"]}
+    allowed_tools = ["git"]
+    acceptance_criteria = ["tests pass"]
+    metadata = {"labels": ["mvp"]}
+
+    task = await service.create_task(
+        goal="ship",
+        constraints=constraints,
+        allowed_tools=allowed_tools,
+        acceptance_criteria=acceptance_criteria,
+        metadata=metadata,
+    )
+    constraints["paths"].append("mutated")
+    allowed_tools.append("shell")
+    acceptance_criteria.append("mutated")
+    metadata["labels"].append("mutated")
+
+    assert task.constraints == {"paths": ["app"]}
+    assert task.allowed_tools == ["git"]
+    assert task.acceptance_criteria == ["tests pass"]
+    assert task.metadata == {"labels": ["mvp"]}
+
+
+@pytest.mark.asyncio
+async def test_task_service_does_not_mutate_in_memory_state_when_emit_fails():
+    class FailingEmitter:
+        async def emit(self, **kwargs):
+            raise RuntimeError("emit failed")
+
+    service = TaskService()
+    task = await service.create_task(goal="ship")
+    service._emitter = FailingEmitter()
+
+    with pytest.raises(RuntimeError, match="emit failed"):
+        await service.cancel_task(task.id)
+
+    stored = await service.get_task(task.id)
+    assert stored is not None
+    assert stored.status == "created"
