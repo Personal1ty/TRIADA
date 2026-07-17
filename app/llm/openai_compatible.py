@@ -40,7 +40,9 @@ class OpenAICompatibleProvider(LLMProvider):
                 response.raise_for_status()
                 data = response.json()
         except Exception as exc:
-            raise RuntimeError(f"OpenAI-compatible LLM request failed: {self._redact(exc)}") from exc
+            raise RuntimeError(
+                f"OpenAI-compatible LLM request failed: {self._redact(exc)}"
+            ) from None
 
         content = self._extract_content(data)
         try:
@@ -48,7 +50,7 @@ class OpenAICompatibleProvider(LLMProvider):
         except json.JSONDecodeError as exc:
             raise RuntimeError(
                 f"OpenAI-compatible LLM returned non-JSON content: {self._redact(exc)}"
-            ) from exc
+            ) from None
 
         if not isinstance(parsed, dict):
             raise RuntimeError("OpenAI-compatible LLM returned JSON that is not an object")
@@ -57,8 +59,8 @@ class OpenAICompatibleProvider(LLMProvider):
     def _extract_content(self, data: Any) -> str:
         try:
             content = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError("OpenAI-compatible LLM response missing assistant content") from exc
+        except (KeyError, IndexError, TypeError):
+            raise RuntimeError("OpenAI-compatible LLM response missing assistant content") from None
 
         if isinstance(content, str):
             return content
