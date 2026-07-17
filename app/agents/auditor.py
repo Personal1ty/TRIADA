@@ -3,14 +3,14 @@ from __future__ import annotations
 from typing import Any
 
 from app.audit.validator import audit_claims, audit_tool_results
-from app.events.models import ArtifactRecord, AuditVerdict
+from app.events.models import ArtifactRecord, AuditVerdict, ToolExecutionRecord
 from app.tools.base import ToolResult
 
 
 class Auditor:
     def audit_tool_results(
         self,
-        tool_results: list[ToolResult | dict[str, Any]],
+        tool_results: list[ToolResult | ToolExecutionRecord | dict[str, Any]],
         worker_summary: str,
     ) -> AuditVerdict:
         return audit_tool_results(tool_results, worker_summary)

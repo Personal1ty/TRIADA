@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.events.models import ArtifactRecord, AuditVerdict, AuditViolation
+from app.events.models import ArtifactRecord, AuditVerdict, AuditViolation, ToolExecutionRecord
 from app.schemas.enums import AuditVerdictValue
 from app.tools.base import ToolResult
 
 
 def audit_tool_results(
-    tool_results: list[ToolResult | dict[str, Any]],
+    tool_results: list[ToolResult | ToolExecutionRecord | dict[str, Any]],
     worker_summary: str,
 ) -> AuditVerdict:
     violations: list[AuditViolation] = []
@@ -16,7 +16,16 @@ def audit_tool_results(
     parsed_results = [_as_tool_result(result) for result in tool_results]
 
     for result in parsed_results:
-        if result.exit_code != 0 and not _summary_reports_failure(normalized_summary, result.exit_code):
+        reports_failure = _summary_reports_failure(normalized_summary, result.exit_code)
+        if result.exit_code != 0 and reports_failure and _summary_claims_success(normalized_summary):
+            violations.append(
+                AuditViolation(
+                    rule_id="SUMMARY_CONTRADICTS_TOOL_RESULT",
+                    message=f"Worker summary claims success despite {result.tool} exit code {result.exit_code}.",
+                    metadata={"tool": result.tool, "command": result.command},
+                )
+            )
+        if result.exit_code != 0 and not reports_failure:
             violations.append(
                 AuditViolation(
                     rule_id="TOOL_FAILURE_NOT_REPORTED",
@@ -58,8 +67,10 @@ def audit_claims(
     return _verdict(violations)
 
 
-def _as_tool_result(result: ToolResult | dict[str, Any]) -> ToolResult:
+def _as_tool_result(result: ToolResult | ToolExecutionRecord | dict[str, Any]) -> ToolResult | ToolExecutionRecord:
     if isinstance(result, ToolResult):
+        return result
+    if isinstance(result, ToolExecutionRecord):
         return result
     return ToolResult.model_validate(result)
 

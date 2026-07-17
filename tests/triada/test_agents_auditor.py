@@ -6,7 +6,7 @@ from app.agents.auditor import Auditor
 from app.agents.orchestrator import Orchestrator
 from app.agents.worker import Worker
 from app.audit.validator import audit_claims, audit_tool_results
-from app.events.models import ArtifactRecord
+from app.events.models import ArtifactRecord, ToolExecutionRecord
 from app.llm.fake import FakeLLMProvider
 from app.schemas.enums import AuditVerdictValue
 from app.tools.base import ToolResult
@@ -25,6 +25,22 @@ def tool_result(command, exit_code=0, stdout="", stderr="", tool="shell"):
     )
 
 
+class ProviderWithShellStep:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        return {
+            "answer": {
+                "steps": [
+                    {
+                        "id": "step-1",
+                        "title": "Unsafe widened step",
+                        "description": "Provider asks for shell",
+                        "allowed_tools": ["shell"],
+                    }
+                ]
+            }
+        }
+
+
 @pytest.mark.asyncio
 async def test_orchestrator_builds_plan_with_steps_and_required_checks():
     plan = await Orchestrator(FakeLLMProvider()).plan_task(
@@ -36,6 +52,18 @@ async def test_orchestrator_builds_plan_with_steps_and_required_checks():
     assert plan.steps
     assert plan.output_contract.required_checks == ["git status was inspected"]
     assert plan.steps[0].allowed_tools == ["git"]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_does_not_widen_provider_tools_beyond_allowlist():
+    plan = await Orchestrator(ProviderWithShellStep()).plan_task(
+        goal="Check repository status",
+        allowed_tools=["git"],
+        acceptance_criteria=["git status was inspected"],
+    )
+
+    assert plan.steps[0].allowed_tools == ["git"]
+    assert "shell" not in plan.steps[0].allowed_tools
 
 
 @pytest.mark.asyncio
@@ -97,6 +125,21 @@ async def test_worker_rejects_disallowed_tool(tmp_path):
     assert result.errors == ["tool 'shell' is not allowed"]
 
 
+@pytest.mark.asyncio
+async def test_worker_blocks_empty_command(tmp_path):
+    result = await Worker(worker_id="worker-1", workspace=tmp_path).run_step(
+        task_id="task-1",
+        step_id="step-1",
+        title="Run empty command",
+        allowed_tools=["shell"],
+        command=[],
+    )
+
+    assert result.status == "blocked"
+    assert result.errors == ["command is required"]
+    assert result.validation_results[0].check_name == "command_required"
+
+
 def test_auditor_reports_unmentioned_tool_failure():
     verdict = audit_tool_results(
         [tool_result(["echo", "boom"], exit_code=1, stderr="boom")],
@@ -109,6 +152,27 @@ def test_auditor_reports_unmentioned_tool_failure():
     ]
 
 
+def test_auditor_accepts_tool_execution_record_failure():
+    verdict = Auditor().audit_tool_results(
+        [
+            ToolExecutionRecord(
+                tool="shell",
+                command=["false"],
+                exit_code=1,
+                stdout_ref=None,
+                stderr_ref=None,
+                started_at=None,
+                finished_at=None,
+                timed_out=False,
+            )
+        ],
+        worker_summary="Completed the step successfully.",
+    )
+
+    assert verdict.verdict == AuditVerdictValue.CORRECTIONS_REQUIRED
+    assert verdict.violations[0].rule_id == "TOOL_FAILURE_NOT_REPORTED"
+
+
 def test_auditor_allows_reported_tool_failure():
     verdict = Auditor().audit_tool_results(
         [tool_result(["echo", "boom"], exit_code=1, stderr="boom")],
@@ -117,6 +181,16 @@ def test_auditor_allows_reported_tool_failure():
 
     assert verdict.verdict == AuditVerdictValue.PASS
     assert verdict.violations == []
+
+
+def test_auditor_flags_contradictory_failure_and_success_summary():
+    verdict = audit_tool_results(
+        [tool_result(["false"], exit_code=1, stderr="failed")],
+        worker_summary="Command failed with exit code 1, but the task succeeded.",
+    )
+
+    assert verdict.verdict == AuditVerdictValue.CORRECTIONS_REQUIRED
+    assert verdict.violations[0].rule_id == "SUMMARY_CONTRADICTS_TOOL_RESULT"
 
 
 def test_auditor_reports_required_artifact_missing():

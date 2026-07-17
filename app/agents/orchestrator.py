@@ -51,7 +51,7 @@ class Orchestrator:
                 id=step.get("id") or f"step-{index}",
                 title=step.get("title") or step.get("description") or f"Step {index}",
                 description=step.get("description") or step.get("title") or goal,
-                allowed_tools=list(step.get("allowed_tools") or allowed_tools),
+                allowed_tools=self._safe_allowed_tools(step.get("allowed_tools"), allowed_tools),
                 risk_policy=risk_policy,
                 requires_approval=requires_approval,
                 output_contract=StepContract(required_checks=acceptance_criteria),
@@ -91,6 +91,13 @@ class Orchestrator:
         answer = response.get("answer", response) if isinstance(response, dict) else {}
         steps = answer.get("steps", []) if isinstance(answer, dict) else []
         return steps if isinstance(steps, list) else []
+
+    def _safe_allowed_tools(self, provider_tools: Any, allowed_tools: list[str]) -> list[str]:
+        if not isinstance(provider_tools, list):
+            return list(allowed_tools)
+        allowed = set(allowed_tools)
+        intersection = [tool for tool in provider_tools if isinstance(tool, str) and tool in allowed]
+        return intersection or list(allowed_tools)
 
     def _classify_risk(self, goal: str) -> RiskPolicy:
         normalized = goal.lower()

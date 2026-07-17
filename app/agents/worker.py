@@ -38,6 +38,15 @@ class Worker:
         allowed_tools: list[str],
         command: list[str],
     ) -> WorkerResult:
+        if not command:
+            return self._blocked(
+                task_id,
+                step_id,
+                title,
+                command,
+                "command is required",
+                check_name="command_required",
+            )
         tool_name = self._tool_name(command)
         if tool_name not in allowed_tools:
             return self._blocked(task_id, step_id, title, command, f"tool '{tool_name}' is not allowed")
@@ -110,6 +119,7 @@ class Worker:
         title: str,
         command: list[str],
         error: str,
+        check_name: str = "tool_allowed",
     ) -> WorkerResult:
         return WorkerResult(
             task_id=task_id,
@@ -120,7 +130,7 @@ class Worker:
             commands=[command],
             validation_results=[
                 ValidationResultRecord(
-                    check_name="tool_allowed",
+                    check_name=check_name,
                     passed=False,
                     message=error,
                 )
