@@ -10,4 +10,6 @@ venv/
 triada*.db
 triada*.db-*
 .superpowers/
+.worktrees/
+worktrees/
 probe_results/
