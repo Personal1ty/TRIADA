@@ -5,6 +5,27 @@ Orchestrator, Worker, and Auditor. The current codebase exposes a FastAPI API,
 a small CLI, append-only audit events, redaction, safe tool adapter contracts,
 and deterministic fake LLM behavior for local development.
 
+## Project Structure
+
+```text
+TRIADA
+├── app/
+│   ├── agents/          # Orchestrator, Worker, Auditor role logic
+│   ├── api/             # FastAPI routes and SSE endpoints
+│   ├── audit/           # Redaction, append-only repository, projections, validators
+│   ├── events/          # Event schemas and in-process event bus
+│   ├── llm/             # Fake and OpenAI-compatible provider contracts
+│   ├── persistence/     # SQLAlchemy models and async session factory
+│   ├── schemas/         # API/task/enumeration schemas
+│   ├── services/        # Task service, heartbeat, long-running supervision
+│   └── tools/           # Safe DevOps tool adapters
+├── alembic/             # Database migrations
+├── tests/triada/        # TRIADA unit and integration tests
+├── docs/superpowers/    # Design specs and implementation plans
+├── docker-compose.yml   # API + PostgreSQL local runtime
+└── pyproject.toml       # Package metadata and dependencies
+```
+
 ## Quickstart
 
 ```bash
