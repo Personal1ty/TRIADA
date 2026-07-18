@@ -13,6 +13,7 @@ from app.audit.repository import AuditEventRepository
 from app.config import get_settings
 from app.events.bus import InMemoryEventBus
 from app.persistence.session import create_session_factory
+from app.services.execution_engine import ExecutionEngine
 from app.services.task_service import TaskService
 
 
@@ -22,7 +23,8 @@ def create_app(testing: bool = False) -> FastAPI:
     event_repository = AuditEventRepository(session_factory)
     event_bus = InMemoryEventBus()
     audit_emitter = AuditEmitter(event_repository, event_bus)
-    task_service = TaskService(emitter=audit_emitter)
+    execution_engine = ExecutionEngine(emitter=audit_emitter, workspace=Path.cwd())
+    task_service = TaskService(emitter=audit_emitter, execution_engine=execution_engine)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -42,6 +44,7 @@ def create_app(testing: bool = False) -> FastAPI:
     app.state.event_repository = event_repository
     app.state.event_bus = event_bus
     app.state.audit_emitter = audit_emitter
+    app.state.execution_engine = execution_engine
     app.state.task_service = task_service
     app.state.sse_idle_timeout_seconds = 0.1 if testing else 30.0
     app.state.testing_database_path = str(testing_database_path) if testing_database_path is not None else None

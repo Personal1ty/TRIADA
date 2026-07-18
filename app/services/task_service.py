@@ -25,9 +25,16 @@ class TaskRecord:
 
 
 class TaskService:
-    def __init__(self, *, repository: Any | None = None, emitter: Any | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        repository: Any | None = None,
+        emitter: Any | None = None,
+        execution_engine: Any | None = None,
+    ) -> None:
         self._repository = repository
         self._emitter = emitter
+        self._execution_engine = execution_engine
         self._tasks: dict[UUID, TaskRecord] = {}
 
     async def create_task(
@@ -91,6 +98,32 @@ class TaskService:
         )
 
     async def run_task_once(self, task_id: UUID | str) -> TaskRecord:
+        if self._execution_engine is None:
+            return await self._transition_task(
+                task_id,
+                status="completed",
+                event_type="task_completed",
+                payload={"status": "completed"},
+            )
+
+        task = await self._require_task(task_id)
+        running = replace(task, status="running", updated_at=datetime.now(UTC))
+        await self._emit(running, "task_started", {"status": "running"})
+        await self._save(running)
+        final_status = await self._execution_engine.run_once(running)
+        final_event_type = {
+            "blocked": "task_blocked",
+            "corrections_required": "task_corrections_required",
+            "failed": "task_failed",
+        }.get(final_status, "task_completed")
+        return await self._transition_task(
+            running.id,
+            status=final_status,
+            event_type=final_event_type,
+            payload={"status": final_status},
+        )
+
+    async def mark_task_completed_without_execution(self, task_id: UUID | str) -> TaskRecord:
         return await self._transition_task(
             task_id,
             status="completed",

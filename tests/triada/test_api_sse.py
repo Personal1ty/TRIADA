@@ -123,6 +123,57 @@ async def test_mvp_read_endpoints_are_available():
 
 
 @pytest.mark.asyncio
+async def test_run_once_executes_orchestrator_worker_and_auditor_pipeline():
+    async with _client() as client:
+        created = await client.post(
+            "/v1/tasks",
+            json={
+                "goal": "Inspect repository status",
+                "allowed_tools": ["git"],
+                "acceptance_criteria": ["git status was inspected"],
+            },
+        )
+        task_id = created.json()["task_id"]
+
+        run = await client.post(f"/v1/tasks/{task_id}/run_once")
+        events = (await client.get(f"/v1/tasks/{task_id}/events")).json()["events"]
+        thinking = (await client.get(f"/v1/tasks/{task_id}/thinking-summary")).json()
+
+    assert run.status_code == 200
+    assert run.json()["status"] == "completed"
+    event_types = [event["event_type"] for event in events]
+    assert "planning_started" in event_types
+    assert "worker_step_completed" in event_types
+    assert "tool_execution_completed" in event_types
+    assert "audit_verdict" in event_types
+    assert event_types[-1] == "task_completed"
+    assert thinking["deltas"]
+
+
+@pytest.mark.asyncio
+async def test_run_once_blocks_tasks_without_supported_worker_command():
+    async with _client() as client:
+        created = await client.post(
+            "/v1/tasks",
+            json={
+                "goal": "Run unsupported tool",
+                "allowed_tools": ["terraform"],
+                "acceptance_criteria": ["terraform output inspected"],
+            },
+        )
+        task_id = created.json()["task_id"]
+
+        run = await client.post(f"/v1/tasks/{task_id}/run_once")
+        events = (await client.get(f"/v1/tasks/{task_id}/events")).json()["events"]
+
+    assert run.status_code == 200
+    assert run.json()["status"] == "blocked"
+    event_types = [event["event_type"] for event in events]
+    assert "worker_step_blocked" in event_types
+    assert event_types[-1] == "task_blocked"
+
+
+@pytest.mark.asyncio
 async def test_testing_app_removes_temp_database_on_lifespan_shutdown():
     app = create_app(testing=True)
     db_path = Path(app.state.testing_database_path)

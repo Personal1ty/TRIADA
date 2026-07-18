@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from app.events.models import ArtifactRecord, ValidationResultRecord
+from app.events.models import ArtifactRecord, ToolExecutionRecord, ValidationResultRecord
 from app.schemas.enums import RiskPolicy
 from app.tools.base import ToolRequest
 from app.tools.git import GitTool
@@ -20,6 +20,7 @@ class WorkerResult(BaseModel):
     artifacts: list[ArtifactRecord] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
     commands: list[list[str]] = Field(default_factory=list)
+    tool_results: list[ToolExecutionRecord] = Field(default_factory=list)
     validation_results: list[ValidationResultRecord] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     recommended_next_action: str | None = None
@@ -88,6 +89,16 @@ class Worker:
             )
 
         passed = result.exit_code == 0 and not result.timed_out
+        tool_record = ToolExecutionRecord(
+            tool=result.tool,
+            command=result.command,
+            risk_policy=RiskPolicy.READ_ONLY.value,
+            exit_code=result.exit_code,
+            started_at=result.started_at,
+            finished_at=result.finished_at,
+            timed_out=result.timed_out,
+            metadata=result.metadata,
+        )
         return WorkerResult(
             task_id=task_id,
             step_id=step_id,
@@ -96,6 +107,7 @@ class Worker:
             summary=f"{title} {'succeeded' if passed else 'failed'} with exit code {result.exit_code}.",
             evidence=[result.stdout] if result.stdout else [],
             commands=[command],
+            tool_results=[tool_record],
             validation_results=[
                 ValidationResultRecord(
                     check_name="tool_execution",
