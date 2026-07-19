@@ -16,6 +16,7 @@ class TaskState(StrEnum):
     CREATED = "created"
     PLANNING = "planning"
     AWAITING_APPROVAL = "awaiting_approval"
+    WAITING_APPROVAL = "waiting_approval"
     RUNNING = "running"
     VALIDATING = "validating"
     CORRECTIONS_REQUIRED = "corrections_required"

@@ -6,10 +6,12 @@ from typing import Any
 from uuid import uuid4
 
 from app.agents.auditor import Auditor
-from app.agents.orchestrator import Orchestrator, PlanStep, TaskPlan
+from app.agents.orchestrator import LLMUnavailableError, Orchestrator, PlanStep, TaskPlan
 from app.agents.worker import Worker, WorkerResult
+from app.config import get_settings
 from app.events.models import ToolExecutionRecord
 from app.llm.fake import FakeLLMProvider
+from app.llm.openai_compatible import OpenAICompatibleProvider
 from app.schemas.enums import AgentRole, AuditVerdictValue, DeltaSource
 
 
@@ -25,7 +27,7 @@ class ExecutionEngine:
     ) -> None:
         self._emitter = emitter
         self._workspace = Path(workspace).resolve()
-        self._orchestrator = orchestrator or Orchestrator(FakeLLMProvider())
+        self._orchestrator = orchestrator or Orchestrator(self._build_llm_provider())
         self._auditor = auditor or Auditor()
         self._worker_id = worker_id
 
@@ -40,12 +42,36 @@ class ExecutionEngine:
             summary="Orchestrator started building a bounded task plan.",
             progress_percent=10,
         )
-        plan = await self._orchestrator.plan_task(
-            task.goal,
-            task.allowed_tools,
-            task.acceptance_criteria,
-        )
+        try:
+            plan = await self._orchestrator.plan_task(
+                task.goal,
+                task.allowed_tools,
+                task.acceptance_criteria,
+            )
+        except LLMUnavailableError as exc:
+            await self._emit(
+                task,
+                "llm_unavailable",
+                {
+                    "status": "blocked",
+                    "provider": type(self._orchestrator.llm).__name__,
+                    "reason": str(exc),
+                },
+            )
+            return "blocked"
         await self._emit_plan_created(task, plan)
+
+        if plan.requires_approval and not self._is_approved(task):
+            await self._emit(
+                task,
+                "approval_required",
+                {
+                    "status": "waiting_approval",
+                    "risk_policy": plan.risk_policy.value,
+                    "steps": [step.model_dump(mode="json") for step in plan.steps],
+                },
+            )
+            return "waiting_approval"
 
         worker = Worker(worker_id=self._worker_id, workspace=self._workspace)
         worker_results: list[WorkerResult] = []
@@ -71,6 +97,8 @@ class ExecutionEngine:
                 title=step.title,
                 allowed_tools=step.allowed_tools,
                 command=command,
+                risk_policy=step.risk_policy,
+                approval_ref=self._approval_ref(task),
             )
             worker_results.append(result)
             tool_records.extend(result.tool_results)
@@ -161,3 +189,27 @@ class ExecutionEngine:
         if "shell" in step.allowed_tools:
             return ["echo", step.description]
         return []
+
+    def _build_llm_provider(self):
+        settings = get_settings()
+        if settings.llm_provider == "openai-compatible":
+            return OpenAICompatibleProvider(
+                base_url=settings.llm_base_url,
+                api_key=(
+                    settings.llm_api_key.get_secret_value()
+                    if settings.llm_api_key is not None
+                    else None
+                ),
+                model=settings.llm_model,
+            )
+        return FakeLLMProvider()
+
+    def _is_approved(self, task: Any) -> bool:
+        approval = getattr(task, "metadata", {}).get("approval", {})
+        return bool(approval.get("approved"))
+
+    def _approval_ref(self, task: Any) -> str | None:
+        approval = getattr(task, "metadata", {}).get("approval", {})
+        if not approval.get("approved"):
+            return None
+        return str(approval.get("approved_by") or "approved")

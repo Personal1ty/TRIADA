@@ -38,6 +38,8 @@ class Worker:
         title: str,
         allowed_tools: list[str],
         command: list[str],
+        risk_policy: RiskPolicy = RiskPolicy.READ_ONLY,
+        approval_ref: str | None = None,
     ) -> WorkerResult:
         if not command:
             return self._blocked(
@@ -60,7 +62,8 @@ class Worker:
         request = ToolRequest(
             command=command,
             working_dir=self.workspace,
-            risk_policy=RiskPolicy.READ_ONLY,
+            risk_policy=risk_policy,
+            approval_ref=approval_ref,
         )
         adapter = (
             GitTool(workspace=self.workspace)
@@ -92,7 +95,7 @@ class Worker:
         tool_record = ToolExecutionRecord(
             tool=result.tool,
             command=result.command,
-            risk_policy=RiskPolicy.READ_ONLY.value,
+            risk_policy=risk_policy.value,
             exit_code=result.exit_code,
             started_at=result.started_at,
             finished_at=result.finished_at,

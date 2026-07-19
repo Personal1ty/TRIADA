@@ -30,6 +30,10 @@ class TaskPlan(BaseModel):
     requires_approval: bool = False
 
 
+class LLMUnavailableError(RuntimeError):
+    pass
+
+
 class Orchestrator:
     def __init__(self, llm: Any) -> None:
         self.llm = llm
@@ -86,8 +90,8 @@ class Orchestrator:
         prompt = f"Goal: {goal}\nAllowed tools: {', '.join(allowed_tools)}"
         try:
             response = await self.llm.complete_json(prompt, schema_name="plan")
-        except Exception:
-            return []
+        except Exception as exc:
+            raise LLMUnavailableError(str(exc)) from None
         answer = response.get("answer", response) if isinstance(response, dict) else {}
         steps = answer.get("steps", []) if isinstance(answer, dict) else []
         return steps if isinstance(steps, list) else []
