@@ -5,6 +5,68 @@ Orchestrator, Worker, and Auditor. The current codebase exposes a FastAPI API,
 a small CLI, append-only audit events, redaction, safe tool adapter contracts,
 and deterministic fake LLM behavior for local development.
 
+## How It Works
+
+```text
+User / API / CLI
+      |
+      v
+POST /v1/tasks
+      |
+      v
+TaskService
+- creates task
+- persists task_created audit event
+- starts run_once when requested
+      |
+      v
+ExecutionEngine
+- emits planning_started
+- selects LLM provider from env:
+  LLM_PROVIDER=fake                -> deterministic FakeLLMProvider
+  LLM_PROVIDER=openai-compatible   -> local LLM / corp-coder endpoint
+      |
+      v
+Orchestrator
+- plans bounded steps
+- classifies risk_policy
+- keeps tools inside allowed_tools
+      |
+      +-------------------------------+
+      | LLM unavailable?              |
+      | -> emit llm_unavailable       |
+      | -> task status = blocked      |
+      +-------------------------------+
+      |
+      +-------------------------------+
+      | high-risk / destructive?      |
+      | -> emit approval_required     |
+      | -> task status = waiting_approval
+      | -> /v1/tasks/{id}/approve     |
+      +-------------------------------+
+      |
+      v
+Worker
+- executes only the approved step
+- currently minimal tools:
+  git status
+  echo
+- records tool_execution_completed
+      |
+      v
+Auditor
+- verifies worker evidence
+- emits audit_verdict
+      |
+      v
+Final task status
+completed | corrections_required | blocked | failed
+
+All important runtime facts are written as append-only audit events before they
+are exposed through the API or SSE stream. TRIADA stores public
+thinking_summary_delta records only, never raw chain-of-thought.
+```
+
 ## Project Structure
 
 ```text
