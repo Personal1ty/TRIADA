@@ -82,12 +82,17 @@ class TaskService:
         )
 
     async def approve_task(self, task_id: UUID | str, *, approved_by: str | None = None) -> TaskRecord:
-        return await self._transition_task(
-            task_id,
-            status="approved",
-            event_type="task_approved",
-            payload={"approved_by": approved_by, "status": "approved"},
-        )
+        task = await self._require_task(task_id)
+        metadata = deepcopy(task.metadata)
+        metadata["approval"] = {
+            "approved": True,
+            "approved_by": approved_by,
+            "approved_at": datetime.now(UTC).isoformat(),
+        }
+        updated = replace(task, status="approved", metadata=metadata, updated_at=datetime.now(UTC))
+        await self._emit(updated, "task_approved", {"approved_by": approved_by, "status": "approved"})
+        await self._save(updated)
+        return updated
 
     async def resume_task(self, task_id: UUID | str) -> TaskRecord:
         return await self._transition_task(
@@ -115,6 +120,7 @@ class TaskService:
             "blocked": "task_blocked",
             "corrections_required": "task_corrections_required",
             "failed": "task_failed",
+            "waiting_approval": "task_waiting_approval",
         }.get(final_status, "task_completed")
         return await self._transition_task(
             running.id,
