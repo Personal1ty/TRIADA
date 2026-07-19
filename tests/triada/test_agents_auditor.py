@@ -41,6 +41,26 @@ class ProviderWithShellStep:
         }
 
 
+class RecordingProvider:
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        self.calls.append({"prompt": prompt, "schema_name": schema_name})
+        return {
+            "thinking_summary_delta": {
+                "stage": "execution",
+                "action": "prepare_worker_step",
+                "summary": "Worker model prepared the step.",
+                "observations": ["tool evidence will decide outcome"],
+                "next_step": "run_tool",
+                "confidence": 0.7,
+            },
+            "answer": {"status": "ready"},
+            "model_message": {"has_reasoning_content": True},
+        }
+
+
 @pytest.mark.asyncio
 async def test_orchestrator_builds_plan_with_steps_and_required_checks():
     plan = await Orchestrator(FakeLLMProvider()).plan_task(
@@ -138,6 +158,25 @@ async def test_worker_blocks_empty_command(tmp_path):
     assert result.status == "blocked"
     assert result.errors == ["command is required"]
     assert result.validation_results[0].check_name == "command_required"
+
+
+@pytest.mark.asyncio
+async def test_worker_calls_model_and_returns_public_model_summary(tmp_path):
+    provider = RecordingProvider()
+
+    result = await Worker(worker_id="worker-1", workspace=tmp_path, llm=provider).run_step(
+        task_id="task-1",
+        step_id="step-1",
+        title="Echo current step",
+        allowed_tools=["shell"],
+        command=["echo", "hello"],
+    )
+
+    assert result.status == "succeeded"
+    assert provider.calls
+    assert provider.calls[0]["schema_name"] == "worker_result"
+    assert result.model_thinking_summary_delta["summary"] == "Worker model prepared the step."
+    assert result.model_message["has_reasoning_content"] is True
 
 
 def test_auditor_reports_unmentioned_tool_failure():

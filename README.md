@@ -25,6 +25,7 @@ ExecutionEngine
 - selects LLM provider from env:
   LLM_PROVIDER=fake                -> deterministic FakeLLMProvider
   LLM_PROVIDER=openai-compatible   -> local LLM / corp-coder endpoint
+- uses streaming model responses and stores public model summaries only
       |
       v
 Orchestrator

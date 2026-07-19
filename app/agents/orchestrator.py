@@ -28,6 +28,8 @@ class TaskPlan(BaseModel):
     output_contract: StepContract = Field(default_factory=StepContract)
     risk_policy: RiskPolicy = RiskPolicy.READ_ONLY
     requires_approval: bool = False
+    model_thinking_summary_delta: dict[str, Any] | None = None
+    model_message: dict[str, Any] = Field(default_factory=dict)
 
 
 class LLMUnavailableError(RuntimeError):
@@ -49,7 +51,11 @@ class Orchestrator:
             RiskPolicy.HIGH_RISK_WRITE,
             RiskPolicy.DESTRUCTIVE,
         }
-        provider_steps = await self._provider_steps(goal, allowed_tools)
+        provider_response = await self._provider_response(goal, allowed_tools)
+        answer = provider_response.get("answer", provider_response) if isinstance(provider_response, dict) else {}
+        provider_steps = answer.get("steps", []) if isinstance(answer, dict) else []
+        if not isinstance(provider_steps, list):
+            provider_steps = []
         steps = [
             PlanStep(
                 id=step.get("id") or f"step-{index}",
@@ -82,19 +88,23 @@ class Orchestrator:
             output_contract=StepContract(required_checks=acceptance_criteria),
             risk_policy=risk_policy,
             requires_approval=requires_approval,
+            model_thinking_summary_delta=provider_response.get("thinking_summary_delta")
+            if isinstance(provider_response, dict)
+            else None,
+            model_message=provider_response.get("model_message", {})
+            if isinstance(provider_response, dict)
+            else {},
         )
 
-    async def _provider_steps(self, goal: str, allowed_tools: list[str]) -> list[dict[str, Any]]:
+    async def _provider_response(self, goal: str, allowed_tools: list[str]) -> dict[str, Any]:
         if self.llm is None or not hasattr(self.llm, "complete_json"):
-            return []
+            return {}
         prompt = f"Goal: {goal}\nAllowed tools: {', '.join(allowed_tools)}"
         try:
             response = await self.llm.complete_json(prompt, schema_name="plan")
         except Exception as exc:
             raise LLMUnavailableError(str(exc)) from None
-        answer = response.get("answer", response) if isinstance(response, dict) else {}
-        steps = answer.get("steps", []) if isinstance(answer, dict) else []
-        return steps if isinstance(steps, list) else []
+        return response if isinstance(response, dict) else {}
 
     def _safe_allowed_tools(self, provider_tools: Any, allowed_tools: list[str]) -> list[str]:
         if not isinstance(provider_tools, list):

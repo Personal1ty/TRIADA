@@ -126,6 +126,7 @@ async def test_openai_provider_success_path_parses_json_and_sends_request():
     body = json.loads(seen_request.content)
     assert body["model"] == "corp-coder"
     assert body["messages"] == [{"role": "user", "content": "hello"}]
+    assert body["stream"] is True
 
 
 @pytest.mark.asyncio
@@ -192,3 +193,88 @@ async def test_openai_provider_omits_authorization_without_api_key():
     assert await provider.complete_json("hello", schema_name="plan") == {"answer": True}
     assert seen_request is not None
     assert "authorization" not in seen_request.headers
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_parses_streaming_lines_and_marks_reasoning_summary():
+    seen_request = None
+    content_payload = {
+        "thinking_summary_delta": {
+            "stage": "planning",
+            "action": "draft_plan",
+            "summary": "Prepared a public plan summary.",
+            "observations": ["streamed"],
+            "next_step": "dispatch_worker",
+            "confidence": 0.8,
+        },
+        "answer": {"steps": [{"id": "step-1", "description": "Inspect repository"}]},
+    }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_request
+        seen_request = request
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            text="\n".join(
+                [
+                    'data: {"choices":[{"delta":{"reasoning_content":"private chain text must not persist"}}]}',
+                    f'data: {json.dumps({"choices": [{"delta": {"content": json.dumps(content_payload)}}]})}',
+                    "data: [DONE]",
+                    "",
+                ]
+            ),
+        )
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://llm.example.test",
+        api_key=None,
+        model="corp-coder",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await provider.complete_json("hello", schema_name="plan")
+
+    assert result["answer"] == content_payload["answer"]
+    assert result["thinking_summary_delta"]["summary"] == "Prepared a public plan summary."
+    assert result["model_message"]["has_reasoning_content"] is True
+    assert "private chain text" not in json.dumps(result)
+    assert seen_request is not None
+    assert json.loads(seen_request.content)["stream"] is True
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_parses_jsonl_stream_without_sse_prefix():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/x-ndjson"},
+            text="\n".join(
+                [
+                    json.dumps(
+                        {
+                            "choices": [
+                                {
+                                    "delta": {
+                                        "content": json.dumps(
+                                            {"answer": {"ok": True}}
+                                        )
+                                    }
+                                }
+                            ]
+                        }
+                    ),
+                    "[DONE]",
+                    "",
+                ]
+            ),
+        )
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://llm.example.test",
+        api_key=None,
+        model="corp-coder",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await provider.complete_json("hello", schema_name="plan") == {"answer": {"ok": True}}

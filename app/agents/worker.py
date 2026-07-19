@@ -24,12 +24,15 @@ class WorkerResult(BaseModel):
     validation_results: list[ValidationResultRecord] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     recommended_next_action: str | None = None
+    model_thinking_summary_delta: dict | None = None
+    model_message: dict = Field(default_factory=dict)
 
 
 class Worker:
-    def __init__(self, worker_id: str, workspace: str | Path) -> None:
+    def __init__(self, worker_id: str, workspace: str | Path, llm=None) -> None:
         self.worker_id = worker_id
         self.workspace = Path(workspace).resolve()
+        self.llm = llm
 
     async def run_step(
         self,
@@ -59,6 +62,14 @@ class Worker:
         if tool_name == "git" and command != ["git", "status"]:
             return self._blocked(task_id, step_id, title, command, "only git status is supported")
 
+        model_response = await self._prepare_with_model(
+            task_id=task_id,
+            step_id=step_id,
+            title=title,
+            allowed_tools=allowed_tools,
+            command=command,
+            risk_policy=risk_policy,
+        )
         request = ToolRequest(
             command=command,
             working_dir=self.workspace,
@@ -89,6 +100,8 @@ class Worker:
                 ],
                 errors=[str(exc)],
                 recommended_next_action="correct_and_retry",
+                model_thinking_summary_delta=model_response.get("thinking_summary_delta"),
+                model_message=model_response.get("model_message", {}),
             )
 
         passed = result.exit_code == 0 and not result.timed_out
@@ -120,12 +133,40 @@ class Worker:
             ],
             errors=[] if passed else [result.stderr or f"exit code {result.exit_code}"],
             recommended_next_action="audit_result" if passed else "correct_and_retry",
+            model_thinking_summary_delta=model_response.get("thinking_summary_delta"),
+            model_message=model_response.get("model_message", {}),
         )
 
     def _tool_name(self, command: list[str]) -> str:
         if command and command[0] == "git":
             return "git"
         return "shell"
+
+    async def _prepare_with_model(
+        self,
+        *,
+        task_id: str,
+        step_id: str,
+        title: str,
+        allowed_tools: list[str],
+        command: list[str],
+        risk_policy: RiskPolicy,
+    ) -> dict:
+        if self.llm is None or not hasattr(self.llm, "complete_json"):
+            return {}
+        prompt = "\n".join(
+            [
+                f"Task id: {task_id}",
+                f"Step id: {step_id}",
+                f"Title: {title}",
+                f"Allowed tools: {', '.join(allowed_tools)}",
+                f"Command: {' '.join(command)}",
+                f"Risk policy: {risk_policy.value}",
+                "Return JSON with a public thinking_summary_delta and answer.",
+            ]
+        )
+        response = await self.llm.complete_json(prompt, schema_name="worker_result")
+        return response if isinstance(response, dict) else {}
 
     def _blocked(
         self,

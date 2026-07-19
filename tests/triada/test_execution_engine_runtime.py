@@ -31,6 +31,55 @@ class UnavailableLLM:
         raise RuntimeError("connection refused")
 
 
+class AgentSummaryLLM:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        summaries = {
+            "plan": {
+                "stage": "planning",
+                "action": "draft_plan",
+                "summary": "Orchestrator model planned one safe step.",
+                "observations": ["read-only command selected"],
+                "next_step": "dispatch_worker",
+                "confidence": 0.9,
+            },
+            "worker_result": {
+                "stage": "execution",
+                "action": "prepare_worker_step",
+                "summary": "Worker model prepared tool execution.",
+                "observations": ["echo is allowed"],
+                "next_step": "run_tool",
+                "confidence": 0.8,
+            },
+            "audit_verdict": {
+                "stage": "audit",
+                "action": "evaluate_evidence",
+                "summary": "Auditor model reviewed worker evidence.",
+                "observations": ["tool result was available"],
+                "next_step": "return_verdict",
+                "confidence": 0.85,
+            },
+        }
+        answers = {
+            "plan": {
+                "steps": [
+                    {
+                        "id": "step-1",
+                        "title": "Echo",
+                        "description": "hello",
+                        "allowed_tools": ["shell"],
+                    }
+                ]
+            },
+            "worker_result": {"status": "ready"},
+            "audit_verdict": {"approved": True},
+        }
+        return {
+            "thinking_summary_delta": summaries[schema_name],
+            "answer": answers[schema_name],
+            "model_message": {"has_reasoning_content": True},
+        }
+
+
 def make_task(*, goal: str, allowed_tools: list[str] | None = None) -> TaskRecord:
     return TaskRecord(
         id=uuid4(),
@@ -118,3 +167,36 @@ async def test_approved_write_task_can_continue_to_worker(tmp_path):
     event_types = [event["event_type"] for event in emitter.events]
     assert "task_approved" in event_types
     assert "worker_step_completed" in event_types
+
+
+@pytest.mark.asyncio
+async def test_execution_engine_emits_model_summaries_for_all_agents(tmp_path):
+    emitter = MemoryEmitter()
+    llm = AgentSummaryLLM()
+    engine = ExecutionEngine(
+        emitter=emitter,
+        workspace=tmp_path,
+        orchestrator=Orchestrator(llm),
+    )
+    engine._auditor.llm = llm
+    task = make_task(goal="Echo safely", allowed_tools=["shell"])
+
+    status = await engine.run_once(task)
+
+    assert status == "completed"
+    model_deltas = [
+        event
+        for event in emitter.events
+        if event["event_type"] == "thinking_summary_delta"
+        and event["payload"]["source"] == "model"
+    ]
+    assert [event["agent_id"] for event in model_deltas] == [
+        "orchestrator",
+        "worker-1",
+        "auditor",
+    ]
+    assert [event["payload"]["summary"] for event in model_deltas] == [
+        "Orchestrator model planned one safe step.",
+        "Worker model prepared tool execution.",
+        "Auditor model reviewed worker evidence.",
+    ]

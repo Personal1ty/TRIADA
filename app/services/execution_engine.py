@@ -27,8 +27,11 @@ class ExecutionEngine:
     ) -> None:
         self._emitter = emitter
         self._workspace = Path(workspace).resolve()
-        self._orchestrator = orchestrator or Orchestrator(self._build_llm_provider())
-        self._auditor = auditor or Auditor()
+        self._llm = orchestrator.llm if orchestrator is not None else self._build_llm_provider()
+        self._orchestrator = orchestrator or Orchestrator(self._llm)
+        self._auditor = auditor or Auditor(self._llm)
+        if getattr(self._auditor, "llm", None) is None:
+            self._auditor.llm = self._llm
         self._worker_id = worker_id
 
     async def run_once(self, task: Any) -> str:
@@ -60,6 +63,16 @@ class ExecutionEngine:
             )
             return "blocked"
         await self._emit_plan_created(task, plan)
+        model_summaries: list[dict[str, Any]] = []
+        if plan.model_thinking_summary_delta:
+            model_summaries.append(plan.model_thinking_summary_delta)
+            await self._emit_model_delta(
+                task,
+                agent_id="orchestrator",
+                agent_role=AgentRole.ORCHESTRATOR,
+                delta=plan.model_thinking_summary_delta,
+                model_message=plan.model_message,
+            )
 
         if plan.requires_approval and not self._is_approved(task):
             await self._emit(
@@ -73,7 +86,7 @@ class ExecutionEngine:
             )
             return "waiting_approval"
 
-        worker = Worker(worker_id=self._worker_id, workspace=self._workspace)
+        worker = Worker(worker_id=self._worker_id, workspace=self._workspace, llm=self._llm)
         worker_results: list[WorkerResult] = []
         tool_records: list[ToolExecutionRecord] = []
         final_status = "completed"
@@ -101,6 +114,15 @@ class ExecutionEngine:
                 approval_ref=self._approval_ref(task),
             )
             worker_results.append(result)
+            if result.model_thinking_summary_delta:
+                model_summaries.append(result.model_thinking_summary_delta)
+                await self._emit_model_delta(
+                    task,
+                    agent_id=self._worker_id,
+                    agent_role=AgentRole.WORKER,
+                    delta=result.model_thinking_summary_delta,
+                    model_message=result.model_message,
+                )
             tool_records.extend(result.tool_results)
             event_type = "worker_step_completed" if result.status == "succeeded" else f"worker_step_{result.status}"
             await self._emit(task, event_type, result.model_dump(mode="json"))
@@ -113,10 +135,19 @@ class ExecutionEngine:
                 final_status = "failed"
                 break
 
-        verdict = self._auditor.audit_tool_results(
+        verdict, auditor_model_delta, auditor_model_message = await self._auditor.audit_tool_results_with_model(
             tool_records,
             "\n".join(result.summary for result in worker_results),
+            model_summaries,
         )
+        if auditor_model_delta:
+            await self._emit_model_delta(
+                task,
+                agent_id="auditor",
+                agent_role=AgentRole.AUDITOR,
+                delta=auditor_model_delta,
+                model_message=auditor_model_message,
+            )
         await self._emit_delta(
             task,
             agent_id="auditor",
@@ -171,6 +202,35 @@ class ExecutionEngine:
             "progress_percent": progress_percent,
             "created_at": datetime.now(UTC).isoformat(),
             "metadata": {},
+        }
+        await self._emit(task, "thinking_summary_delta", payload, agent_id=agent_id)
+
+    async def _emit_model_delta(
+        self,
+        task: Any,
+        *,
+        agent_id: str,
+        agent_role: AgentRole,
+        delta: dict[str, Any],
+        model_message: dict[str, Any] | None = None,
+    ) -> None:
+        payload = {
+            "schema_version": "1.0",
+            "agent_id": agent_id,
+            "agent_role": agent_role.value,
+            "source": DeltaSource.MODEL.value,
+            "span_id": str(uuid4()),
+            "stage": delta.get("stage", "model"),
+            "action": delta.get("action", "complete_json"),
+            "summary": delta.get("summary", "Model produced a public reasoning summary."),
+            "observations": delta.get("observations", []),
+            "input_refs": delta.get("input_refs", []),
+            "output_refs": delta.get("output_refs", []),
+            "next_step": delta.get("next_step"),
+            "progress_percent": delta.get("progress_percent"),
+            "confidence": delta.get("confidence"),
+            "created_at": datetime.now(UTC).isoformat(),
+            "metadata": {"model_message": model_message or {}},
         }
         await self._emit(task, "thinking_summary_delta", payload, agent_id=agent_id)
 
