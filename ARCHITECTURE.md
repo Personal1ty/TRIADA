@@ -38,8 +38,9 @@ flowchart TD
   `validate_result`, and `rollback`.
 - Persistence boundary: `AuditEventRepository` appends ordered trace events and
   verifies the hash chain.
-- Public reasoning boundary: the system stores public `thinking_summary_delta`
-  summaries only; raw chain-of-thought capture is not part of the model.
+- Reasoning data boundary: public progress is exposed through
+  `thinking_summary_delta`; raw model reasoning, when captured, is treated as
+  sensitive audit data and is not part of public read models by default.
 
 ## Storage
 

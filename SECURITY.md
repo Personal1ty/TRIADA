@@ -26,13 +26,14 @@ Tool requests carry a `risk_policy`:
 Adapters must call `ensure_risk_allowed` before executing work and should expose
 dry-run behavior when the underlying tool can support it.
 
-## Reasoning Policy
+## Reasoning Data Policy
 
-TRIADA must not capture or expose raw chain-of-thought. Public progress is
+TRIADA treats raw model reasoning as sensitive audit data. Public progress is
 represented by bounded `thinking_summary_delta` records containing stage, action,
-summary, observations, refs, confidence, and metadata. The schema rejects unsafe
-phrases that request hidden reasoning or raw chain-of-thought and rejects secret
-text in public summaries.
+summary, observations, refs, confidence, and metadata. Public summaries must stay
+redacted and safe for API/SSE projection. If raw model reasoning is persisted, it
+must not be exposed through public read models by default and must pass the same
+secret-redaction boundary as other sensitive audit payloads.
 
 ## Operational Notes
 

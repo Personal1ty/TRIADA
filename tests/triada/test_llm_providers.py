@@ -218,7 +218,7 @@ async def test_openai_provider_parses_streaming_lines_and_marks_reasoning_summar
             headers={"content-type": "text/event-stream"},
             text="\n".join(
                 [
-                    'data: {"choices":[{"delta":{"reasoning_content":"private chain text must not persist"}}]}',
+                    'data: {"choices":[{"delta":{"reasoning_content":"private chain text should persist as sensitive data"}}]}',
                     f'data: {json.dumps({"choices": [{"delta": {"content": json.dumps(content_payload)}}]})}',
                     "data: [DONE]",
                     "",
@@ -238,7 +238,7 @@ async def test_openai_provider_parses_streaming_lines_and_marks_reasoning_summar
     assert result["answer"] == content_payload["answer"]
     assert result["thinking_summary_delta"]["summary"] == "Prepared a public plan summary."
     assert result["model_message"]["has_reasoning_content"] is True
-    assert "private chain text" not in json.dumps(result)
+    assert result["raw_reasoning_content"] == "private chain text should persist as sensitive data"
     assert seen_request is not None
     assert json.loads(seen_request.content)["stream"] is True
 

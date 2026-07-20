@@ -34,8 +34,9 @@ class OpenAICompatibleProvider(LLMProvider):
         if message["has_reasoning_content"]:
             parsed["model_message"] = {
                 "has_reasoning_content": True,
-                "reasoning_content_redacted": True,
+                "reasoning_content_stored": True,
             }
+            parsed["raw_reasoning_content"] = message["raw_reasoning_content"]
         return parsed
 
     async def complete_message(self, prompt: str, *, schema_name: str) -> dict[str, Any]:
@@ -74,11 +75,12 @@ class OpenAICompatibleProvider(LLMProvider):
         return {
             "content": content,
             "has_reasoning_content": self._has_reasoning_content(data),
+            "raw_reasoning_content": self._extract_reasoning_content(data),
         }
 
     def _read_streaming_text(self, body: str) -> dict[str, Any]:
         content_parts: list[str] = []
-        has_reasoning_content = False
+        reasoning_parts: list[str] = []
         for line in body.splitlines():
             payload = self._line_payload(line)
             if payload is None:
@@ -91,18 +93,25 @@ class OpenAICompatibleProvider(LLMProvider):
                 raise RuntimeError(
                     f"OpenAI-compatible LLM returned invalid stream JSON: {self._redact(exc)}"
                 ) from None
-            has_reasoning_content = has_reasoning_content or self._has_reasoning_content(data)
+            reasoning = self._extract_reasoning_content(data)
+            if reasoning:
+                reasoning_parts.append(reasoning)
             part = self._extract_stream_content(data)
             if part:
                 content_parts.append(part)
         content = "".join(content_parts)
         if not content:
             raise RuntimeError("OpenAI-compatible LLM response missing assistant content")
-        return {"content": content, "has_reasoning_content": has_reasoning_content}
+        raw_reasoning_content = "".join(reasoning_parts)
+        return {
+            "content": content,
+            "has_reasoning_content": bool(raw_reasoning_content),
+            "raw_reasoning_content": raw_reasoning_content or None,
+        }
 
     async def _read_streaming_message(self, response: httpx.Response) -> dict[str, Any]:
         content_parts: list[str] = []
-        has_reasoning_content = False
+        reasoning_parts: list[str] = []
         async for line in response.aiter_lines():
             payload = self._line_payload(line)
             if payload is None:
@@ -115,14 +124,21 @@ class OpenAICompatibleProvider(LLMProvider):
                 raise RuntimeError(
                     f"OpenAI-compatible LLM returned invalid stream JSON: {self._redact(exc)}"
                 ) from None
-            has_reasoning_content = has_reasoning_content or self._has_reasoning_content(data)
+            reasoning = self._extract_reasoning_content(data)
+            if reasoning:
+                reasoning_parts.append(reasoning)
             part = self._extract_stream_content(data)
             if part:
                 content_parts.append(part)
         content = "".join(content_parts)
         if not content:
             raise RuntimeError("OpenAI-compatible LLM response missing assistant content")
-        return {"content": content, "has_reasoning_content": has_reasoning_content}
+        raw_reasoning_content = "".join(reasoning_parts)
+        return {
+            "content": content,
+            "has_reasoning_content": bool(raw_reasoning_content),
+            "raw_reasoning_content": raw_reasoning_content or None,
+        }
 
     def _line_payload(self, line: str) -> str | None:
         stripped = line.strip()
@@ -173,17 +189,21 @@ class OpenAICompatibleProvider(LLMProvider):
         raise RuntimeError("OpenAI-compatible LLM response content is not text")
 
     def _has_reasoning_content(self, data: Any) -> bool:
+        return bool(self._extract_reasoning_content(data))
+
+    def _extract_reasoning_content(self, data: Any) -> str:
         choices = data.get("choices") if isinstance(data, dict) else None
         if not isinstance(choices, list):
-            return False
+            return ""
+        parts: list[str] = []
         for choice in choices:
             if not isinstance(choice, dict):
                 continue
             for key in ("delta", "message"):
                 value = choice.get(key)
                 if isinstance(value, dict) and value.get("reasoning_content"):
-                    return True
-        return False
+                    parts.append(str(value["reasoning_content"]))
+        return "".join(parts)
 
     def _redact(self, value: object) -> str:
         message = str(value)

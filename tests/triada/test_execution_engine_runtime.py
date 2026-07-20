@@ -77,6 +77,7 @@ class AgentSummaryLLM:
             "thinking_summary_delta": summaries[schema_name],
             "answer": answers[schema_name],
             "model_message": {"has_reasoning_content": True},
+            "raw_reasoning_content": f"raw {schema_name} reasoning",
         }
 
 
@@ -200,3 +201,19 @@ async def test_execution_engine_emits_model_summaries_for_all_agents(tmp_path):
         "Worker model prepared tool execution.",
         "Auditor model reviewed worker evidence.",
     ]
+    reasoning_events = [
+        event
+        for event in emitter.events
+        if event["event_type"] == "model_reasoning_content_captured"
+    ]
+    assert [event["agent_id"] for event in reasoning_events] == [
+        "orchestrator",
+        "worker-1",
+        "auditor",
+    ]
+    assert [event["payload"]["raw_reasoning_content"] for event in reasoning_events] == [
+        "raw plan reasoning",
+        "raw worker_result reasoning",
+        "raw audit_verdict reasoning",
+    ]
+    assert "raw " not in str([event["payload"] for event in model_deltas])

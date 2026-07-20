@@ -30,6 +30,7 @@ class TaskPlan(BaseModel):
     requires_approval: bool = False
     model_thinking_summary_delta: dict[str, Any] | None = None
     model_message: dict[str, Any] = Field(default_factory=dict)
+    raw_reasoning_content: str | None = Field(default=None, exclude=True)
 
 
 class LLMUnavailableError(RuntimeError):
@@ -94,6 +95,9 @@ class Orchestrator:
             model_message=provider_response.get("model_message", {})
             if isinstance(provider_response, dict)
             else {},
+            raw_reasoning_content=provider_response.get("raw_reasoning_content")
+            if isinstance(provider_response, dict)
+            else None,
         )
 
     async def _provider_response(self, goal: str, allowed_tools: list[str]) -> dict[str, Any]:

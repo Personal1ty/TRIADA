@@ -23,7 +23,7 @@ class Auditor:
         tool_results: list[ToolResult | ToolExecutionRecord | dict[str, Any]],
         worker_summary: str,
         model_summaries: list[dict[str, Any]] | None = None,
-    ) -> tuple[AuditVerdict, dict[str, Any] | None, dict[str, Any]]:
+    ) -> tuple[AuditVerdict, dict[str, Any] | None, dict[str, Any], str | None]:
         model_response = await self._review_with_model(
             tool_results=tool_results,
             worker_summary=worker_summary,
@@ -33,6 +33,7 @@ class Auditor:
             self.audit_tool_results(tool_results, worker_summary),
             model_response.get("thinking_summary_delta"),
             model_response.get("model_message", {}),
+            model_response.get("raw_reasoning_content"),
         )
 
     def audit_claims(

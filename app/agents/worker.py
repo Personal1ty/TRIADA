@@ -26,6 +26,7 @@ class WorkerResult(BaseModel):
     recommended_next_action: str | None = None
     model_thinking_summary_delta: dict | None = None
     model_message: dict = Field(default_factory=dict)
+    raw_reasoning_content: str | None = Field(default=None, exclude=True)
 
 
 class Worker:
@@ -102,6 +103,7 @@ class Worker:
                 recommended_next_action="correct_and_retry",
                 model_thinking_summary_delta=model_response.get("thinking_summary_delta"),
                 model_message=model_response.get("model_message", {}),
+                raw_reasoning_content=model_response.get("raw_reasoning_content"),
             )
 
         passed = result.exit_code == 0 and not result.timed_out
@@ -135,6 +137,7 @@ class Worker:
             recommended_next_action="audit_result" if passed else "correct_and_retry",
             model_thinking_summary_delta=model_response.get("thinking_summary_delta"),
             model_message=model_response.get("model_message", {}),
+            raw_reasoning_content=model_response.get("raw_reasoning_content"),
         )
 
     def _tool_name(self, command: list[str]) -> str:

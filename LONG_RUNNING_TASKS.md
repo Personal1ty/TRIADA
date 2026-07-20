@@ -28,7 +28,7 @@ created yet.
 
 `LongTaskSimulator` emits checkpoint-style `thinking_summary_delta` events at a
 configured interval. These summaries record public progress and references
-without exposing raw chain-of-thought.
+without exposing sensitive raw model reasoning through public progress events.
 
 ## Timeout
 

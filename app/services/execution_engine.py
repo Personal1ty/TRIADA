@@ -73,6 +73,14 @@ class ExecutionEngine:
                 delta=plan.model_thinking_summary_delta,
                 model_message=plan.model_message,
             )
+        if plan.raw_reasoning_content:
+            await self._emit_model_reasoning_content(
+                task,
+                agent_id="orchestrator",
+                agent_role=AgentRole.ORCHESTRATOR,
+                schema_name="plan",
+                raw_reasoning_content=plan.raw_reasoning_content,
+            )
 
         if plan.requires_approval and not self._is_approved(task):
             await self._emit(
@@ -123,6 +131,14 @@ class ExecutionEngine:
                     delta=result.model_thinking_summary_delta,
                     model_message=result.model_message,
                 )
+            if result.raw_reasoning_content:
+                await self._emit_model_reasoning_content(
+                    task,
+                    agent_id=self._worker_id,
+                    agent_role=AgentRole.WORKER,
+                    schema_name="worker_result",
+                    raw_reasoning_content=result.raw_reasoning_content,
+                )
             tool_records.extend(result.tool_results)
             event_type = "worker_step_completed" if result.status == "succeeded" else f"worker_step_{result.status}"
             await self._emit(task, event_type, result.model_dump(mode="json"))
@@ -135,7 +151,12 @@ class ExecutionEngine:
                 final_status = "failed"
                 break
 
-        verdict, auditor_model_delta, auditor_model_message = await self._auditor.audit_tool_results_with_model(
+        (
+            verdict,
+            auditor_model_delta,
+            auditor_model_message,
+            auditor_raw_reasoning_content,
+        ) = await self._auditor.audit_tool_results_with_model(
             tool_records,
             "\n".join(result.summary for result in worker_results),
             model_summaries,
@@ -147,6 +168,14 @@ class ExecutionEngine:
                 agent_role=AgentRole.AUDITOR,
                 delta=auditor_model_delta,
                 model_message=auditor_model_message,
+            )
+        if auditor_raw_reasoning_content:
+            await self._emit_model_reasoning_content(
+                task,
+                agent_id="auditor",
+                agent_role=AgentRole.AUDITOR,
+                schema_name="audit_verdict",
+                raw_reasoning_content=auditor_raw_reasoning_content,
             )
         await self._emit_delta(
             task,
@@ -233,6 +262,31 @@ class ExecutionEngine:
             "metadata": {"model_message": model_message or {}},
         }
         await self._emit(task, "thinking_summary_delta", payload, agent_id=agent_id)
+
+    async def _emit_model_reasoning_content(
+        self,
+        task: Any,
+        *,
+        agent_id: str,
+        agent_role: AgentRole,
+        schema_name: str,
+        raw_reasoning_content: str,
+    ) -> None:
+        await self._emit(
+            task,
+            "model_reasoning_content_captured",
+            {
+                "schema_version": "1.0",
+                "agent_id": agent_id,
+                "agent_role": agent_role.value,
+                "source": DeltaSource.MODEL.value,
+                "schema_name": schema_name,
+                "raw_reasoning_content": raw_reasoning_content,
+                "captured_at": datetime.now(UTC).isoformat(),
+                "metadata": {"sensitive": True},
+            },
+            agent_id=agent_id,
+        )
 
     async def _emit(self, task: Any, event_type: str, payload: dict[str, Any], *, agent_id: str = "orchestrator") -> None:
         await self._emitter.emit(

@@ -8,8 +8,8 @@ These instructions apply to future agents working in this repository.
   Auditor verifies.
 - Use `python3`, not `python`, in commands and documentation.
 - Prefer deterministic tests with `FakeLLMProvider` and `FakeClock`.
-- Do not capture, store, or request raw chain-of-thought. Use public
-  `thinking_summary_delta` records only.
+- Treat raw model reasoning as sensitive audit data. Public progress should use
+  `thinking_summary_delta` records.
 - Redact secrets before writing audit events, logs, or artifacts.
 - Treat audit events as append-only; add new events instead of mutating history.
 

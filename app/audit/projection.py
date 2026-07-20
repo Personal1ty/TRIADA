@@ -24,6 +24,11 @@ def thinking_deltas_from_events(events: list[Any]) -> list[dict]:
 
 
 def _event_to_public_dict(event: Any) -> dict:
+    payload = _to_json_safe(event.payload)
+    if event.event_type == "model_reasoning_content_captured" and isinstance(payload, dict):
+        payload = dict(payload)
+        if "raw_reasoning_content" in payload:
+            payload["raw_reasoning_content"] = "[REDACTED]"
     return {
         "id": str(event.id),
         "event_type": event.event_type,
@@ -33,7 +38,7 @@ def _event_to_public_dict(event: Any) -> dict:
         "span_id": _to_json_safe(event.span_id),
         "parent_span_id": _to_json_safe(event.parent_span_id),
         "sequence": event.sequence,
-        "payload": _to_json_safe(event.payload),
+        "payload": payload,
         "created_at": _serialize_datetime(event.created_at),
     }
 

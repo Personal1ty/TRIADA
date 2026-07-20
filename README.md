@@ -25,7 +25,7 @@ ExecutionEngine
 - selects LLM provider from env:
   LLM_PROVIDER=fake                -> deterministic FakeLLMProvider
   LLM_PROVIDER=openai-compatible   -> local LLM / corp-coder endpoint
-- uses streaming model responses and stores public model summaries only
+- uses streaming model responses and separates public summaries from sensitive reasoning data
       |
       v
 Orchestrator
@@ -64,8 +64,9 @@ Final task status
 completed | corrections_required | blocked | failed
 
 All important runtime facts are written as append-only audit events before they
-are exposed through the API or SSE stream. TRIADA stores public
-thinking_summary_delta records only, never raw chain-of-thought.
+are exposed through the API or SSE stream. TRIADA exposes public progress through
+thinking_summary_delta records and treats raw model reasoning as sensitive audit
+data in model_reasoning_content_captured events.
 ```
 
 ## Project Structure

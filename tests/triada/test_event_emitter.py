@@ -185,6 +185,31 @@ def test_projection_serializes_nested_uuid_datetime_payload_and_span_fields():
     assert sse_data["payload"]["artifact_id"] == str(event.payload["artifact_id"])
     assert sse_data["payload"]["timestamps"][0] == "2026-07-17T12:00:00+00:00"
 
+
+def test_projection_redacts_raw_model_reasoning_from_public_events():
+    event = SimpleNamespace(
+        id=uuid4(),
+        event_type="model_reasoning_content_captured",
+        trace_id=uuid4(),
+        task_id=uuid4(),
+        agent_id="worker-1",
+        span_id=None,
+        parent_span_id=None,
+        sequence=1,
+        payload={
+            "schema_version": "1.0",
+            "agent_role": "worker",
+            "raw_reasoning_content": "raw private model reasoning",
+        },
+        created_at=datetime(2026, 7, 17, 14, 0, tzinfo=UTC),
+    )
+
+    public_response = events_to_public_response([event])
+
+    assert public_response[0]["payload"]["raw_reasoning_content"] == "[REDACTED]"
+    assert "raw private model reasoning" not in json.dumps(public_response)
+
+
 @pytest.mark.asyncio
 async def test_projection_exposes_public_event_and_thinking_delta(tmp_path):
     session_factory = create_session_factory(f"sqlite+aiosqlite:///{tmp_path}/test.db")

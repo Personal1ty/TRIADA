@@ -32,7 +32,9 @@ and hash-chain metadata.
 
 ## thinking_summary_delta Example
 
-`thinking_summary_delta` is a public progress summary, not raw chain-of-thought.
+`thinking_summary_delta` is the public progress summary event. Raw model
+reasoning, when captured, is sensitive audit data and should use a separate
+non-public payload.
 
 ```json
 {
@@ -65,6 +67,7 @@ and hash-chain metadata.
 - `task_created`
 - `agent_heartbeat`
 - `thinking_summary_delta`
+- `model_reasoning_content_captured`
 - `tool_executed`
 - `artifact_created`
 - `task_completed`
