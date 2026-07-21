@@ -21,10 +21,10 @@ def _migration_url() -> str:
     database_url = os.environ.get("DATABASE_URL") or get_settings().database_url
     url = make_url(database_url)
     if url.drivername == "sqlite+aiosqlite":
-        return str(url.set(drivername="sqlite"))
+        return url.set(drivername="sqlite").render_as_string(hide_password=False)
     if url.drivername == "postgresql+asyncpg":
-        return str(url.set(drivername="postgresql"))
-    return str(url)
+        return url.set(drivername="postgresql+psycopg").render_as_string(hide_password=False)
+    return url.render_as_string(hide_password=False)
 
 
 def run_migrations_offline() -> None:

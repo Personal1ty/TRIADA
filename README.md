@@ -116,6 +116,14 @@ docker compose up --build
 The Docker service uses `DATABASE_URL=postgresql+asyncpg://triada:triada@postgres:5432/triada`.
 The default non-Docker setting is `sqlite+aiosqlite:///./triada.db`.
 
+If local port `5432` is already occupied, publish Postgres on another host port:
+
+```bash
+TRIADA_POSTGRES_PORT=5433 docker compose up -d postgres
+export DATABASE_URL=postgresql+asyncpg://triada:triada@127.0.0.1:5433/triada
+alembic upgrade head
+```
+
 ## Install
 
 Runtime dependencies are declared in `pyproject.toml`. Test dependencies are in
