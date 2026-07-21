@@ -25,6 +25,8 @@ ExecutionEngine
 - selects LLM provider from env:
   LLM_PROVIDER=fake                -> deterministic FakeLLMProvider
   LLM_PROVIDER=openai-compatible   -> local LLM / corp-coder endpoint
+  LLM_PROVIDER=openai-responses    -> OpenAI Responses API
+  LLM_PROVIDER=codex-bridge        -> Codex-operated demo bridge, no API key
 - uses streaming model responses and separates public summaries from sensitive reasoning data
       |
       v
@@ -78,7 +80,7 @@ TRIADA
 │   ├── api/             # FastAPI routes and SSE endpoints
 │   ├── audit/           # Redaction, append-only repository, projections, validators
 │   ├── events/          # Event schemas and in-process event bus
-│   ├── llm/             # Fake and OpenAI-compatible provider contracts
+│   ├── llm/             # Fake, OpenAI-compatible, and OpenAI Responses providers
 │   ├── persistence/     # SQLAlchemy models and async session factory
 │   ├── schemas/         # API/task/enumeration schemas
 │   ├── services/        # Task service, heartbeat, long-running supervision
@@ -126,6 +128,48 @@ python3 -m pip install -e '.[test]'
 
 Copy `.env.example` to `.env` to override settings. The fake provider is the
 default and does not require an API key.
+
+OpenAI Responses API example:
+
+```bash
+export LLM_PROVIDER=openai-responses
+export LLM_API_KEY=sk-...
+export LLM_MODEL=<openai-responses-model>
+# Optional override; defaults to https://api.openai.com/v1
+export LLM_BASE_URL=https://api.openai.com/v1
+```
+
+The Responses provider sends `stream=true` with `reasoning.summary=detailed`.
+Streaming reasoning summary/text events are stored as sensitive
+`model_reasoning_content_captured` audit events, while public progress remains
+available through `thinking_summary_delta`.
+
+Codex-operated demo example:
+
+```bash
+./run_codex_bridge.sh
+```
+
+The Codex bridge is for recording demos where a Codex chat acts as the operator
+that drives TRIADA. It does not expose hidden Codex chain-of-thought. It stores
+explicit Codex-authored reasoning notes through the same
+`model_reasoning_content_captured` audit event path used by model providers.
+
+To drive TRIADA from any clean Codex chat, start `./run_codex_bridge.sh` in a
+terminal, then paste this prompt into the new chat:
+
+```text
+Работаем в /Users/hidanhidanov/triada.
+
+TRIADA API уже запущена на http://127.0.0.1:8000 с LLM_PROVIDER=codex-bridge.
+
+Создай TRIADA-задачу через API:
+goal="Проверь текущее состояние git-репозитория TRIADA через git status и покажи, что thinking оркестратора и воркера записался в БД"
+allowed_tools=["git"]
+acceptance_criteria=["получен git status","thinking оркестратора записан в audit_events","thinking воркера записан в audit_events"]
+
+Потом запусти /run_once, покажи /thinking-summary и SQL из triada.db по trace_id.
+```
 
 ## API
 

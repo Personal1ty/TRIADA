@@ -10,8 +10,10 @@ from app.agents.orchestrator import LLMUnavailableError, Orchestrator, PlanStep,
 from app.agents.worker import Worker, WorkerResult
 from app.config import get_settings
 from app.events.models import ToolExecutionRecord
+from app.llm.codex_bridge import CodexBridgeProvider
 from app.llm.fake import FakeLLMProvider
 from app.llm.openai_compatible import OpenAICompatibleProvider
+from app.llm.openai_responses import OpenAIResponsesProvider
 from app.schemas.enums import AgentRole, AuditVerdictValue, DeltaSource
 
 
@@ -316,6 +318,18 @@ class ExecutionEngine:
                 ),
                 model=settings.llm_model,
             )
+        if settings.llm_provider == "openai-responses":
+            return OpenAIResponsesProvider(
+                base_url=settings.llm_base_url,
+                api_key=(
+                    settings.llm_api_key.get_secret_value()
+                    if settings.llm_api_key is not None
+                    else None
+                ),
+                model=settings.llm_model,
+            )
+        if settings.llm_provider == "codex-bridge":
+            return CodexBridgeProvider()
         return FakeLLMProvider()
 
     def _is_approved(self, task: Any) -> bool:

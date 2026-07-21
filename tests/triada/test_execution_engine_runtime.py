@@ -6,7 +6,9 @@ import pytest
 
 from app.agents.orchestrator import Orchestrator
 from app.config import get_settings
+from app.llm.codex_bridge import CodexBridgeProvider
 from app.llm.openai_compatible import OpenAICompatibleProvider
+from app.llm.openai_responses import OpenAIResponsesProvider
 from app.services.execution_engine import ExecutionEngine
 from app.services.task_service import TaskRecord, TaskService
 
@@ -102,6 +104,29 @@ def test_execution_engine_uses_openai_compatible_provider_from_settings(monkeypa
     assert isinstance(engine._orchestrator.llm, OpenAICompatibleProvider)
     assert engine._orchestrator.llm.base_url == "http://127.0.0.1:11434/v1"
     assert engine._orchestrator.llm.model == "corp-coder"
+
+
+def test_execution_engine_uses_openai_responses_provider_from_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("LLM_PROVIDER", "openai-responses")
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.test/v1")
+    monkeypatch.setenv("LLM_API_KEY", "sk-secret-token")
+    monkeypatch.setenv("LLM_MODEL", "gpt-test")
+    get_settings.cache_clear()
+
+    engine = ExecutionEngine(emitter=MemoryEmitter(), workspace=tmp_path)
+
+    assert isinstance(engine._orchestrator.llm, OpenAIResponsesProvider)
+    assert engine._orchestrator.llm.base_url == "https://api.openai.test/v1"
+    assert engine._orchestrator.llm.model == "gpt-test"
+
+
+def test_execution_engine_uses_codex_bridge_provider_from_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("LLM_PROVIDER", "codex-bridge")
+    get_settings.cache_clear()
+
+    engine = ExecutionEngine(emitter=MemoryEmitter(), workspace=tmp_path)
+
+    assert isinstance(engine._orchestrator.llm, CodexBridgeProvider)
 
 
 @pytest.mark.asyncio

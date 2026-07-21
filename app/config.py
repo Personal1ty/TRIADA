@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    llm_provider: Literal["fake", "openai-compatible"] = "fake"
+    llm_provider: Literal["fake", "openai-compatible", "openai-responses", "codex-bridge"] = "fake"
     llm_base_url: str | None = None
     llm_api_key: SecretStr | None = None
     llm_model: str = "fake-devops-model"

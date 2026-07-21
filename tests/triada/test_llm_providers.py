@@ -6,8 +6,10 @@ import httpx
 import pytest
 
 from app.events.models import ThinkingSummaryDelta
+from app.llm.codex_bridge import CodexBridgeProvider
 from app.llm.fake import FakeLLMProvider
 from app.llm.openai_compatible import OpenAICompatibleProvider
+from app.llm.openai_responses import OpenAIResponsesProvider
 from app.schemas.enums import AgentRole, DeltaSource
 
 
@@ -53,6 +55,38 @@ async def test_fake_llm_thinking_summary_deltas_are_public_safe(schema_name):
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
         **result["thinking_summary_delta"],
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("schema_name", ["plan", "worker_result", "audit_verdict"])
+async def test_codex_bridge_provider_returns_persistable_reasoning(schema_name):
+    provider = CodexBridgeProvider()
+
+    result = await provider.complete_json("Проверь git status", schema_name=schema_name)
+
+    assert_structured_thinking_summary(result["thinking_summary_delta"])
+    assert result["model_message"] == {
+        "has_reasoning_content": True,
+        "reasoning_content_stored": True,
+        "reasoning_source": "codex_bridge",
+    }
+    assert "Codex bridge" in result["raw_reasoning_content"]
+
+
+@pytest.mark.asyncio
+async def test_codex_bridge_provider_plans_safe_git_status_step():
+    provider = CodexBridgeProvider()
+
+    result = await provider.complete_json("Проверь git status", schema_name="plan")
+
+    assert result["answer"]["steps"] == [
+        {
+            "id": "step-1",
+            "title": "Inspect git status",
+            "description": "Run git status and summarize repository state.",
+            "allowed_tools": ["git"],
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -278,3 +312,108 @@ async def test_openai_provider_parses_jsonl_stream_without_sse_prefix():
     )
 
     assert await provider.complete_json("hello", schema_name="plan") == {"answer": {"ok": True}}
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_provider_streams_reasoning_and_json_output():
+    seen_request = None
+    content_payload = {
+        "thinking_summary_delta": {
+            "stage": "planning",
+            "action": "draft_plan",
+            "summary": "Prepared an OpenAI Responses plan summary.",
+            "observations": ["responses-streamed"],
+            "next_step": "dispatch_worker",
+            "confidence": 0.85,
+        },
+        "answer": {"steps": [{"id": "step-1", "description": "Inspect repository"}]},
+    }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_request
+        seen_request = request
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            text="\n".join(
+                [
+                    'data: {"type":"response.reasoning_summary_text.delta","delta":"orchestrator considered the plan; "}',
+                    'data: {"type":"response.reasoning_summary_text.done","text":"orchestrator considered the plan; then selected git status."}',
+                    f'data: {json.dumps({"type": "response.output_text.delta", "delta": json.dumps(content_payload)})}',
+                    "data: [DONE]",
+                    "",
+                ]
+            ),
+        )
+
+    provider = OpenAIResponsesProvider(
+        base_url="https://api.openai.test/v1",
+        api_key="sk-secret-token",
+        model="gpt-test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await provider.complete_json("hello", schema_name="plan")
+
+    assert result["answer"] == content_payload["answer"]
+    assert result["thinking_summary_delta"]["summary"] == "Prepared an OpenAI Responses plan summary."
+    assert result["model_message"] == {
+        "has_reasoning_content": True,
+        "reasoning_content_stored": True,
+        "reasoning_source": "openai_responses_stream",
+    }
+    assert result["raw_reasoning_content"] == "orchestrator considered the plan; then selected git status."
+    assert seen_request is not None
+    assert str(seen_request.url) == "https://api.openai.test/v1/responses"
+    assert seen_request.headers["authorization"] == "Bearer sk-secret-token"
+    body = json.loads(seen_request.content)
+    assert body["model"] == "gpt-test"
+    assert body["input"] == "hello"
+    assert body["stream"] is True
+    assert body["reasoning"] == {"summary": "detailed"}
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_provider_parses_non_streaming_output_text():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "output_text": json.dumps(
+                    {
+                        "thinking_summary_delta": {
+                            "stage": "audit",
+                            "action": "review",
+                            "summary": "Auditor prepared a public summary.",
+                            "observations": [],
+                            "next_step": "finish",
+                            "confidence": 0.8,
+                        },
+                        "answer": {"ok": True},
+                    }
+                ),
+                "output": [
+                    {
+                        "type": "reasoning",
+                        "summary": [
+                            {
+                                "type": "summary_text",
+                                "text": "auditor checked public evidence.",
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+
+    provider = OpenAIResponsesProvider(
+        base_url="https://api.openai.test/v1",
+        api_key="sk-test",
+        model="gpt-test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await provider.complete_json("hello", schema_name="audit_verdict")
+
+    assert result["answer"] == {"ok": True}
+    assert result["raw_reasoning_content"] == "auditor checked public evidence."
