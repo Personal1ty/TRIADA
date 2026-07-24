@@ -110,6 +110,7 @@ async def test_execution_engine_emits_chief_auditor_gate_before_human_packet(tmp
         if event["event_type"] == "human_review_packet_created"
     )
     assert human_packet["agent_id"] == "orchestrator"
+    assert human_packet["payload"]["agent_id"] == "orchestrator"
     assert human_packet["payload"]["schema_version"] == "1.0"
     assert human_packet["payload"]["contract"] == {
         "name": "human_review_packet",
