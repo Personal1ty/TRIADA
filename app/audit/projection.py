@@ -23,6 +23,35 @@ def thinking_deltas_from_events(events: list[Any]) -> list[dict]:
     return [_event_to_thinking_delta(event) for event in events if event.event_type == "thinking_summary_delta"]
 
 
+def swarm_graph_from_events(events: list[Any]) -> dict:
+    nodes: dict[str, dict] = {}
+    edges: list[dict] = []
+    for event in events:
+        if event.event_type != "swarm_route_selected":
+            continue
+        payload = event.payload if isinstance(event.payload, Mapping) else {}
+        source = payload.get("source")
+        target = payload.get("target")
+        if not source or not target:
+            continue
+        source_id = str(source)
+        target_id = str(target)
+        nodes[source_id] = {"id": source_id}
+        nodes[target_id] = {"id": target_id}
+        edges.append(
+            {
+                "id": str(event.id),
+                "source": source_id,
+                "target": target_id,
+                "reason": _to_json_safe(payload.get("reason")),
+                "input_contract": _to_json_safe(payload.get("input_contract")),
+                "output_contract": _to_json_safe(payload.get("output_contract")),
+                "sequence": event.sequence,
+            }
+        )
+    return {"nodes": list(nodes.values()), "edges": edges}
+
+
 def _event_to_public_dict(event: Any) -> dict:
     payload = _to_json_safe(event.payload)
     if event.event_type == "model_reasoning_content_captured" and isinstance(payload, dict):

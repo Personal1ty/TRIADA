@@ -8,10 +8,21 @@ from uuid import UUID
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
-from app.audit.projection import event_to_sse, events_to_public_response, thinking_deltas_from_events
+from app.audit.projection import (
+    event_to_sse,
+    events_to_public_response,
+    swarm_graph_from_events,
+    thinking_deltas_from_events,
+)
+from app.contracts.loader import load_default_swarm_contract
 from app.schemas.tasks import ApprovalRequest, CreateTaskRequest, TaskActionResponse, TaskEventsResponse, TaskResponse
 
 router = APIRouter(prefix="/v1")
+
+
+@router.get("/swarm/contract")
+async def get_swarm_contract() -> dict:
+    return load_default_swarm_contract().model_dump(mode="json")
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -96,6 +107,13 @@ async def get_thinking_summary(task_id: UUID, request: Request) -> dict:
         "trace_id": str(task.trace_id),
         "deltas": thinking_deltas_from_events(events),
     }
+
+
+@router.get("/tasks/{task_id}/swarm-graph")
+async def get_task_swarm_graph(task_id: UUID, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    return swarm_graph_from_events(events)
 
 
 @router.get("/tasks/{task_id}/audit")
