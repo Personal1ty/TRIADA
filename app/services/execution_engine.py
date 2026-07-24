@@ -9,6 +9,8 @@ from app.agents.auditor import Auditor
 from app.agents.orchestrator import LLMUnavailableError, Orchestrator, PlanStep, TaskPlan
 from app.agents.worker import Worker, WorkerResult
 from app.config import get_settings
+from app.contracts.loader import load_default_swarm_contract
+from app.contracts.swarm import AgentEndpoint, RouteMapEntry
 from app.events.models import ToolExecutionRecord
 from app.llm.codex_bridge import CodexBridgeProvider
 from app.llm.fake import FakeLLMProvider
@@ -35,6 +37,7 @@ class ExecutionEngine:
         if getattr(self._auditor, "llm", None) is None:
             self._auditor.llm = self._llm
         self._worker_id = worker_id
+        self._swarm_contract = load_default_swarm_contract()
 
     async def run_once(self, task: Any) -> str:
         await self._emit(task, "planning_started", {"goal": task.goal})
@@ -103,6 +106,13 @@ class ExecutionEngine:
 
         for step in plan.steps:
             command = self._command_for_step(step)
+            await self._emit_route(
+                task,
+                source=AgentEndpoint.ORCHESTRATOR,
+                target=AgentEndpoint.WORKER,
+                reason="assign_step",
+                agent_id="orchestrator",
+            )
             await self._emit(task, "worker_step_started", {"step_id": step.id, "title": step.title, "command": command})
             await self._emit_delta(
                 task,
@@ -153,6 +163,13 @@ class ExecutionEngine:
                 final_status = "failed"
                 break
 
+        await self._emit_route(
+            task,
+            source=AgentEndpoint.WORKER,
+            target=AgentEndpoint.ASSIGNED_AUDITOR,
+            reason="submit_evidence",
+            agent_id=self._worker_id,
+        )
         (
             verdict,
             auditor_model_delta,
@@ -235,6 +252,42 @@ class ExecutionEngine:
             "metadata": {},
         }
         await self._emit(task, "thinking_summary_delta", payload, agent_id=agent_id)
+
+    async def _emit_route(
+        self,
+        task: Any,
+        *,
+        source: AgentEndpoint,
+        target: AgentEndpoint,
+        reason: str,
+        agent_id: str,
+    ) -> None:
+        route = self._route_for(source=source, target=target, reason=reason)
+        await self._emit(
+            task,
+            "swarm_route_selected",
+            {
+                "schema_version": "1.0",
+                "source": route.source.value,
+                "target": route.target.value,
+                "reason": route.reason,
+                "input_contract": route.input_contract.ref,
+                "output_contract": route.output_contract.ref,
+            },
+            agent_id=agent_id,
+        )
+
+    def _route_for(
+        self,
+        *,
+        source: AgentEndpoint,
+        target: AgentEndpoint,
+        reason: str,
+    ) -> RouteMapEntry:
+        for route in self._swarm_contract.route_map:
+            if route.source == source and route.target == target and route.reason == reason:
+                return route
+        raise LookupError(f"swarm route not found: {source.value}->{target.value}/{reason}")
 
     async def _emit_model_delta(
         self,
