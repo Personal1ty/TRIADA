@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from importlib import resources
 from pathlib import Path
 
@@ -15,6 +16,7 @@ def load_swarm_contract(path: str | Path) -> SwarmContract:
     return SwarmContract.model_validate(payload)
 
 
+@lru_cache(maxsize=1)
 def load_default_swarm_contract() -> SwarmContract:
     resource = resources.files("app.contracts").joinpath("default_swarm_contract.json")
     payload = json.loads(resource.read_text(encoding="utf-8"))

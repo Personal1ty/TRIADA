@@ -27,6 +27,17 @@ def test_load_default_swarm_contract():
     )
 
 
+def test_load_default_swarm_contract_caches_parsed_contract():
+    load_default_swarm_contract.cache_clear()
+    try:
+        first = load_default_swarm_contract()
+        second = load_default_swarm_contract()
+
+        assert first is second
+    finally:
+        load_default_swarm_contract.cache_clear()
+
+
 def test_load_swarm_contract_from_json_path(tmp_path: Path):
     source = Path("app/contracts/default_swarm_contract.json")
     target = tmp_path / "swarm.json"
