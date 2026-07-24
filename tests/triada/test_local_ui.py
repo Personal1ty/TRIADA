@@ -1,5 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
+import tomllib
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -26,3 +28,10 @@ async def test_get_local_swarm_ui():
     assert 'id="graph"' in response.text
     assert 'id="contracts"' in response.text
     assert 'id="thinking"' in response.text
+
+
+def test_local_swarm_ui_is_packaged():
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+
+    assert Path("app/ui/__init__.py").is_file()
+    assert project["tool"]["setuptools"]["package-data"]["app.ui"] == ["*.html"]

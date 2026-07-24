@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from importlib import resources
 from pathlib import Path
 import tempfile
 from uuid import uuid4
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 
 from app.api import router as api_router
 from app.audit.emitter import AuditEmitter
@@ -50,9 +51,10 @@ def create_app(testing: bool = False) -> FastAPI:
     app.state.sse_idle_timeout_seconds = 0.1 if testing else 30.0
     app.state.testing_database_path = str(testing_database_path) if testing_database_path is not None else None
 
-    @app.get("/ui", response_class=FileResponse)
-    async def local_swarm_ui() -> FileResponse:
-        return FileResponse(Path(__file__).parent / "ui" / "index.html", media_type="text/html")
+    @app.get("/ui", response_class=HTMLResponse)
+    async def local_swarm_ui() -> HTMLResponse:
+        html = resources.files("app.ui").joinpath("index.html").read_text(encoding="utf-8")
+        return HTMLResponse(html)
 
     app.include_router(api_router)
     return app

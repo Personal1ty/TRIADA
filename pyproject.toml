@@ -34,3 +34,4 @@ include = ["app*"]
 
 [tool.setuptools.package-data]
 "app.contracts" = ["*.json"]
+"app.ui" = ["*.html"]
