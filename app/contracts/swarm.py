@@ -134,6 +134,10 @@ class SwarmContract(BaseModel):
 
     @model_validator(mode="after")
     def validate_swarm(self) -> "SwarmContract":
+        if self.topology.min_worker_auditor_pairs > self.swarm_scaling.max_pairs:
+            raise ValueError("topology minimum cannot exceed swarm scaling max_pairs")
+        if len(self.worker_auditor_pairs) > self.swarm_scaling.max_pairs:
+            raise ValueError("worker_auditor_pairs cannot exceed swarm scaling max_pairs")
         if len(self.worker_auditor_pairs) < self.topology.min_worker_auditor_pairs:
             raise ValueError("worker_auditor_pairs must satisfy topology minimum")
 
@@ -151,20 +155,58 @@ class SwarmContract(BaseModel):
             raise ValueError("chief auditor cannot be a worker or assigned auditor")
 
         required_routes = {
-            (AgentEndpoint.ORCHESTRATOR, AgentEndpoint.WORKER, "assign_step"),
-            (AgentEndpoint.WORKER, AgentEndpoint.ASSIGNED_AUDITOR, "submit_evidence"),
-            (AgentEndpoint.ASSIGNED_AUDITOR, AgentEndpoint.CHIEF_AUDITOR, "escalate_verdict"),
-            (AgentEndpoint.CHIEF_AUDITOR, AgentEndpoint.ORCHESTRATOR, "return_final_gate"),
+            (AgentEndpoint.ORCHESTRATOR, AgentEndpoint.WORKER, "assign_step"): (
+                "worker_assignment",
+                "worker_result",
+            ),
+            (AgentEndpoint.WORKER, AgentEndpoint.ASSIGNED_AUDITOR, "submit_evidence"): (
+                "worker_result",
+                "audit_verdict",
+            ),
+            (AgentEndpoint.ASSIGNED_AUDITOR, AgentEndpoint.CHIEF_AUDITOR, "escalate_verdict"): (
+                "audit_verdict",
+                "chief_audit_verdict",
+            ),
+            (AgentEndpoint.CHIEF_AUDITOR, AgentEndpoint.ORCHESTRATOR, "return_final_gate"): (
+                "chief_audit_verdict",
+                "human_review_packet",
+            ),
+            (AgentEndpoint.ORCHESTRATOR, AgentEndpoint.HUMAN, "deliver_human_packet"): (
+                "human_review_packet",
+                "human_decision",
+            ),
         }
-        declared_routes = {(route.source, route.target, route.reason) for route in self.route_map}
-        missing_routes = required_routes - declared_routes
+
+        declared_routes: dict[tuple[AgentEndpoint, AgentEndpoint, str], RouteMapEntry] = {}
+        duplicate_routes: set[tuple[AgentEndpoint, AgentEndpoint, str]] = set()
+        for route in self.route_map:
+            route_key = (route.source, route.target, route.reason)
+            if route_key in declared_routes:
+                duplicate_routes.add(route_key)
+            declared_routes[route_key] = route
+        if duplicate_routes:
+            duplicates = sorted(str(route) for route in duplicate_routes)
+            raise ValueError(f"duplicate swarm routes are not allowed: {duplicates}")
+
+        missing_routes = set(required_routes) - set(declared_routes)
         if missing_routes:
             missing = sorted(str(route) for route in missing_routes)
             raise ValueError(f"missing required swarm routes: {missing}")
 
+        for route_key, contract_names in required_routes.items():
+            expected_input, expected_output = contract_names
+            route = declared_routes[route_key]
+            if route.input_contract.name != expected_input or route.output_contract.name != expected_output:
+                raise ValueError(
+                    "required swarm route has incorrect contracts: "
+                    f"{route_key} expected {expected_input}->{expected_output}"
+                )
+
         for route in self.route_map:
-            if route.source == AgentEndpoint.WORKER and route.target == AgentEndpoint.HUMAN:
-                raise ValueError("worker cannot route directly to human")
+            if route.source == AgentEndpoint.WORKER and (
+                route.target != AgentEndpoint.ASSIGNED_AUDITOR or route.reason != "submit_evidence"
+            ):
+                raise ValueError("worker can only route to assigned auditor with submit_evidence")
 
         for rule in self.task_weight_rules:
             if rule.worker_auditor_pairs > self.swarm_scaling.max_pairs:

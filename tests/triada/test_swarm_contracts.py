@@ -58,6 +58,13 @@ def _valid_contract() -> SwarmContract:
                 input_contract=ContractRef(name="chief_audit_verdict"),
                 output_contract=ContractRef(name="human_review_packet"),
             ),
+            RouteMapEntry(
+                source=AgentEndpoint.ORCHESTRATOR,
+                target=AgentEndpoint.HUMAN,
+                reason="deliver_human_packet",
+                input_contract=ContractRef(name="human_review_packet"),
+                output_contract=ContractRef(name="human_decision"),
+            ),
         ],
         task_weight_rules=[
             TaskWeightRule(
@@ -109,6 +116,69 @@ def test_swarm_contract_requires_worker_to_assigned_auditor_route():
 def test_scaling_rule_is_bounded_by_configured_maximum():
     payload = _valid_contract().model_dump(mode="python")
     payload["task_weight_rules"][1]["worker_auditor_pairs"] = 99
+
+    with pytest.raises(ValidationError):
+        SwarmContract.model_validate(payload)
+
+
+def test_required_route_with_wrong_output_contract_is_rejected():
+    payload = _valid_contract().model_dump(mode="python")
+    payload["route_map"][0]["output_contract"] = ContractRef(name="task_plan").model_dump(mode="python")
+
+    with pytest.raises(ValidationError):
+        SwarmContract.model_validate(payload)
+
+
+@pytest.mark.parametrize("target", [AgentEndpoint.ORCHESTRATOR, AgentEndpoint.CHIEF_AUDITOR])
+def test_worker_route_to_non_assigned_auditor_is_rejected(target: AgentEndpoint):
+    payload = _valid_contract().model_dump(mode="python")
+    payload["route_map"].append(
+        {
+            "source": AgentEndpoint.WORKER,
+            "target": target,
+            "reason": "bypass_audit",
+            "input_contract": ContractRef(name="worker_result").model_dump(mode="python"),
+            "output_contract": ContractRef(name="task_plan").model_dump(mode="python"),
+            "required_events": [],
+        }
+    )
+
+    with pytest.raises(ValidationError):
+        SwarmContract.model_validate(payload)
+
+
+def test_swarm_contract_requires_final_human_packet_route():
+    payload = _valid_contract().model_dump(mode="python")
+    payload["route_map"] = [route for route in payload["route_map"] if route["reason"] != "deliver_human_packet"]
+
+    with pytest.raises(ValidationError):
+        SwarmContract.model_validate(payload)
+
+
+def test_duplicate_route_is_rejected():
+    payload = _valid_contract().model_dump(mode="python")
+    payload["route_map"].append(payload["route_map"][0])
+
+    with pytest.raises(ValidationError):
+        SwarmContract.model_validate(payload)
+
+
+def test_topology_minimum_over_scaling_max_pairs_is_rejected():
+    payload = _valid_contract().model_dump(mode="python")
+    payload["topology"]["min_worker_auditor_pairs"] = 4
+    payload["swarm_scaling"]["max_pairs"] = 3
+    payload["worker_auditor_pairs"].append({"worker_id": "worker-4", "auditor_id": "auditor-4"})
+    payload["task_weight_rules"] = []
+
+    with pytest.raises(ValidationError):
+        SwarmContract.model_validate(payload)
+
+
+def test_pair_inventory_over_scaling_max_pairs_is_rejected():
+    payload = _valid_contract().model_dump(mode="python")
+    payload["swarm_scaling"]["max_pairs"] = 3
+    payload["worker_auditor_pairs"].append({"worker_id": "worker-4", "auditor_id": "auditor-4"})
+    payload["task_weight_rules"] = []
 
     with pytest.raises(ValidationError):
         SwarmContract.model_validate(payload)
