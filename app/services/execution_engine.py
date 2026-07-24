@@ -163,6 +163,10 @@ class ExecutionEngine:
                 final_status = "failed"
                 break
 
+        has_worker_evidence = any(result.status == "succeeded" for result in worker_results)
+        if not has_worker_evidence:
+            return final_status
+
         await self._emit_route(
             task,
             source=AgentEndpoint.WORKER,
