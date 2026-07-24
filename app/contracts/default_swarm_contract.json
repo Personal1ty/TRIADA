@@ -1,0 +1,181 @@
+{
+  "schema_version": "1.0",
+  "contract_version": "1.0",
+  "topology": {
+    "orchestrator_id": "orchestrator",
+    "chief_auditor": {
+      "agent_id": "chief-auditor",
+      "strict_mode": false
+    },
+    "min_worker_auditor_pairs": 3
+  },
+  "worker_auditor_pairs": [
+    {
+      "worker_id": "worker-1",
+      "auditor_id": "auditor-1",
+      "capabilities": ["read_only_tools"],
+      "max_parallel_steps": 1
+    },
+    {
+      "worker_id": "worker-2",
+      "auditor_id": "auditor-2",
+      "capabilities": ["read_only_tools"],
+      "max_parallel_steps": 1
+    },
+    {
+      "worker_id": "worker-3",
+      "auditor_id": "auditor-3",
+      "capabilities": ["read_only_tools"],
+      "max_parallel_steps": 1
+    }
+  ],
+  "swarm_scaling": {
+    "default_pairs": 3,
+    "min_pairs": 3,
+    "max_pairs": 12,
+    "scale_by": ["task_weight", "step_count", "risk_policy", "tool_risk"]
+  },
+  "route_map": [
+    {
+      "source": "human",
+      "target": "orchestrator",
+      "reason": "create_task",
+      "input_contract": {
+        "name": "task_request",
+        "version": "1.0"
+      },
+      "output_contract": {
+        "name": "task_plan_request",
+        "version": "1.0"
+      },
+      "required_events": ["task_created"]
+    },
+    {
+      "source": "orchestrator",
+      "target": "worker",
+      "reason": "assign_step",
+      "input_contract": {
+        "name": "worker_assignment",
+        "version": "1.0"
+      },
+      "output_contract": {
+        "name": "worker_result",
+        "version": "1.0"
+      },
+      "required_events": ["worker_step_started"]
+    },
+    {
+      "source": "worker",
+      "target": "assigned_auditor",
+      "reason": "submit_evidence",
+      "input_contract": {
+        "name": "worker_result",
+        "version": "1.0"
+      },
+      "output_contract": {
+        "name": "audit_verdict",
+        "version": "1.0"
+      },
+      "required_events": ["worker_step_completed", "audit_verdict"]
+    },
+    {
+      "source": "assigned_auditor",
+      "target": "worker",
+      "reason": "request_correction",
+      "input_contract": {
+        "name": "audit_correction",
+        "version": "1.0"
+      },
+      "output_contract": {
+        "name": "worker_result",
+        "version": "1.0"
+      },
+      "required_events": ["audit_verdict"]
+    },
+    {
+      "source": "assigned_auditor",
+      "target": "chief_auditor",
+      "reason": "escalate_verdict",
+      "input_contract": {
+        "name": "audit_verdict",
+        "version": "1.0"
+      },
+      "output_contract": {
+        "name": "chief_audit_verdict",
+        "version": "1.0"
+      },
+      "required_events": ["audit_verdict"]
+    },
+    {
+      "source": "chief_auditor",
+      "target": "orchestrator",
+      "reason": "return_final_gate",
+      "input_contract": {
+        "name": "chief_audit_verdict",
+        "version": "1.0"
+      },
+      "output_contract": {
+        "name": "human_review_packet",
+        "version": "1.0"
+      },
+      "required_events": ["chief_audit_verdict"]
+    },
+    {
+      "source": "orchestrator",
+      "target": "human",
+      "reason": "deliver_human_packet",
+      "input_contract": {
+        "name": "human_review_packet",
+        "version": "1.0"
+      },
+      "output_contract": {
+        "name": "human_decision",
+        "version": "1.0"
+      },
+      "required_events": ["human_review_packet_created"]
+    }
+  ],
+  "task_weight_rules": [
+    {
+      "weight": "small",
+      "max_steps": 1,
+      "risk_policies": ["read_only"],
+      "worker_auditor_pairs": 3
+    },
+    {
+      "weight": "medium",
+      "max_steps": 5,
+      "worker_auditor_pairs": 3
+    },
+    {
+      "weight": "large",
+      "min_steps": 6,
+      "worker_auditor_pairs": 5
+    },
+    {
+      "weight": "critical",
+      "risk_policies": ["low_risk_write", "high_risk_write", "destructive"],
+      "worker_auditor_pairs": 3,
+      "requires_chief_auditor_strict_mode": true
+    }
+  ],
+  "upgrade_policy": {
+    "allow_minor_upgrade": true,
+    "breaking_changes_require": "new_major_version",
+    "migration_required_for": [
+      "route_removed",
+      "required_field_removed",
+      "audit_gate_weakened",
+      "worker_auditor_pairing_changed"
+    ],
+    "forbidden_without_explicit_approval": [
+      "remove_assigned_auditor",
+      "allow_worker_to_human_route",
+      "allow_orchestrator_final_without_chief_audit"
+    ]
+  },
+  "human_output_contract": {
+    "name": "human_review_packet",
+    "version": "1.0"
+  }
+}

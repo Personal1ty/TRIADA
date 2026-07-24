@@ -1,1 +1,1 @@
-"""Machine-checkable TRIADA role contracts."""
+"""Machine-checkable TRIADA contracts."""
