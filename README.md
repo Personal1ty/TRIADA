@@ -79,11 +79,13 @@ TRIADA
 │   ├── agents/          # Orchestrator, Worker, Auditor role logic
 │   ├── api/             # FastAPI routes and SSE endpoints
 │   ├── audit/           # Redaction, append-only repository, projections, validators
+│   ├── contracts/       # Role and swarm contracts, default contract JSON
 │   ├── events/          # Event schemas and in-process event bus
 │   ├── llm/             # Fake, OpenAI-compatible, and OpenAI Responses providers
 │   ├── persistence/     # SQLAlchemy models and async session factory
 │   ├── schemas/         # API/task/enumeration schemas
 │   ├── services/        # Task service, heartbeat, long-running supervision
+│   ├── ui/              # Local swarm dashboard HTML
 │   └── tools/           # Safe DevOps tool adapters
 ├── alembic/             # Database migrations
 ├── tests/triada/        # TRIADA unit and integration tests
@@ -125,6 +127,21 @@ If local port `5432` is already occupied, publish Postgres on another host port:
 TRIADA_POSTGRES_PORT=5433 docker compose up -d postgres
 export DATABASE_URL=postgresql+asyncpg://triada:triada@127.0.0.1:5433/triada
 alembic upgrade head
+```
+
+Verify that pgvector is enabled in local PostgreSQL:
+
+```bash
+psql postgresql://triada:triada@127.0.0.1:5433/triada \
+  -c "select extname from pg_extension where extname = 'vector';"
+```
+
+Expected result:
+
+```text
+ extname
+---------
+ vector
 ```
 
 ## Install
@@ -188,15 +205,25 @@ The FastAPI application factory is `app.main:create_app`.
 
 Core endpoints under `/v1`:
 
+- `GET /v1/swarm/contract` returns the active default swarm contract.
 - `POST /v1/tasks` creates a task.
 - `GET /v1/tasks/{task_id}` returns task status.
 - `GET /v1/tasks/{task_id}/events` returns redacted audit events.
 - `GET /v1/tasks/{task_id}/stream` streams Server-Sent Events.
 - `GET /v1/tasks/{task_id}/thinking-summary` returns public thinking summaries.
+- `GET /v1/tasks/{task_id}/swarm-graph` returns graph-ready route events.
 - `GET /v1/tasks/{task_id}/audit` verifies and returns the audit trace.
 - `GET /v1/tasks/{task_id}/artifacts` returns artifact records.
 - `POST /v1/tasks/{task_id}/approve`, `/cancel`, `/resume`, and `/run_once`
   control task execution.
+
+Local dashboard:
+
+- `GET /ui` opens a compact local TRIADA Swarm dashboard.
+- The dashboard reads `/v1/swarm/contract`, `/v1/tasks/{task_id}/swarm-graph`,
+  and `/v1/tasks/{task_id}/thinking-summary`.
+- It shows contract routes, graph edges, and public thinking summaries. Raw
+  reasoning stays in sensitive audit events and is not displayed by this UI.
 
 Example:
 
