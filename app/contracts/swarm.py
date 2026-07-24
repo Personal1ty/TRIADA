@@ -156,24 +156,24 @@ class SwarmContract(BaseModel):
 
         required_routes = {
             (AgentEndpoint.ORCHESTRATOR, AgentEndpoint.WORKER, "assign_step"): (
-                "worker_assignment",
-                "worker_result",
+                "worker_assignment@1.0",
+                "worker_result@1.0",
             ),
             (AgentEndpoint.WORKER, AgentEndpoint.ASSIGNED_AUDITOR, "submit_evidence"): (
-                "worker_result",
-                "audit_verdict",
+                "worker_result@1.0",
+                "audit_verdict@1.0",
             ),
             (AgentEndpoint.ASSIGNED_AUDITOR, AgentEndpoint.CHIEF_AUDITOR, "escalate_verdict"): (
-                "audit_verdict",
-                "chief_audit_verdict",
+                "audit_verdict@1.0",
+                "chief_audit_verdict@1.0",
             ),
             (AgentEndpoint.CHIEF_AUDITOR, AgentEndpoint.ORCHESTRATOR, "return_final_gate"): (
-                "chief_audit_verdict",
-                "human_review_packet",
+                "chief_audit_verdict@1.0",
+                "human_review_packet@1.0",
             ),
             (AgentEndpoint.ORCHESTRATOR, AgentEndpoint.HUMAN, "deliver_human_packet"): (
-                "human_review_packet",
-                "human_decision",
+                "human_review_packet@1.0",
+                "human_decision@1.0",
             ),
         }
 
@@ -196,7 +196,7 @@ class SwarmContract(BaseModel):
         for route_key, contract_names in required_routes.items():
             expected_input, expected_output = contract_names
             route = declared_routes[route_key]
-            if route.input_contract.name != expected_input or route.output_contract.name != expected_output:
+            if route.input_contract.ref != expected_input or route.output_contract.ref != expected_output:
                 raise ValueError(
                     "required swarm route has incorrect contracts: "
                     f"{route_key} expected {expected_input}->{expected_output}"

@@ -129,6 +129,14 @@ def test_required_route_with_wrong_output_contract_is_rejected():
         SwarmContract.model_validate(payload)
 
 
+def test_required_route_with_wrong_input_contract_version_is_rejected():
+    payload = _valid_contract().model_dump(mode="python")
+    payload["route_map"][0]["input_contract"]["version"] = "2.0"
+
+    with pytest.raises(ValidationError):
+        SwarmContract.model_validate(payload)
+
+
 @pytest.mark.parametrize("target", [AgentEndpoint.ORCHESTRATOR, AgentEndpoint.CHIEF_AUDITOR])
 def test_worker_route_to_non_assigned_auditor_is_rejected(target: AgentEndpoint):
     payload = _valid_contract().model_dump(mode="python")
