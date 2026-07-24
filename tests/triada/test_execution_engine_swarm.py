@@ -80,10 +80,16 @@ async def test_execution_engine_emits_chief_auditor_gate_before_human_packet(tmp
     routes_by_reason = {
         event["payload"]["reason"]: event["payload"] for event in route_events
     }
+    assert routes_by_reason["escalate_verdict"]["source"] == "assigned_auditor"
+    assert routes_by_reason["escalate_verdict"]["target"] == "chief_auditor"
     assert routes_by_reason["escalate_verdict"]["input_contract"] == "audit_verdict@1.0"
     assert routes_by_reason["escalate_verdict"]["output_contract"] == "chief_audit_verdict@1.0"
+    assert routes_by_reason["return_final_gate"]["source"] == "chief_auditor"
+    assert routes_by_reason["return_final_gate"]["target"] == "orchestrator"
     assert routes_by_reason["return_final_gate"]["input_contract"] == "chief_audit_verdict@1.0"
     assert routes_by_reason["return_final_gate"]["output_contract"] == "human_review_packet@1.0"
+    assert routes_by_reason["deliver_human_packet"]["source"] == "orchestrator"
+    assert routes_by_reason["deliver_human_packet"]["target"] == "human"
     assert routes_by_reason["deliver_human_packet"]["input_contract"] == "human_review_packet@1.0"
     assert routes_by_reason["deliver_human_packet"]["output_contract"] == "human_decision@1.0"
 
@@ -91,4 +97,27 @@ async def test_execution_engine_emits_chief_auditor_gate_before_human_packet(tmp
         event for event in emitter.events if event["event_type"] == "chief_audit_verdict"
     )
     assert chief_verdict["agent_id"] == "chief-auditor"
+    assert chief_verdict["payload"]["schema_version"] == "1.0"
+    assert chief_verdict["payload"]["chief_auditor_id"] == "chief-auditor"
+    assert chief_verdict["payload"]["verdict"] == "pass"
+    assert chief_verdict["payload"]["source_verdict_refs"] == ["audit_verdict"]
+    assert "summary" in chief_verdict["payload"]
     assert chief_verdict["payload"]["agent_id"] == "chief-auditor"
+
+    human_packet = next(
+        event
+        for event in emitter.events
+        if event["event_type"] == "human_review_packet_created"
+    )
+    assert human_packet["agent_id"] == "orchestrator"
+    assert human_packet["payload"]["schema_version"] == "1.0"
+    assert human_packet["payload"]["contract"] == {
+        "name": "human_review_packet",
+        "version": "1.0",
+    }
+    assert human_packet["payload"]["status"] == "completed"
+    assert human_packet["payload"]["chief_auditor_verdict"] == chief_verdict["payload"]["verdict"]
+    assert "summary" in human_packet["payload"]
+    assert human_packet["payload"]["worker_result_count"] == 1
+    assert human_packet["payload"]["tool_result_count"] >= 1
+    assert human_packet["payload"]["raw_reasoning_refs"] == []
