@@ -219,7 +219,7 @@ async def test_execution_engine_emits_model_summaries_for_all_agents(tmp_path):
     assert [event["agent_id"] for event in model_deltas] == [
         "orchestrator",
         "worker-1",
-        "auditor",
+        "auditor-1",
     ]
     assert [event["payload"]["summary"] for event in model_deltas] == [
         "Orchestrator model planned one safe step.",
@@ -234,7 +234,7 @@ async def test_execution_engine_emits_model_summaries_for_all_agents(tmp_path):
     assert [event["agent_id"] for event in reasoning_events] == [
         "orchestrator",
         "worker-1",
-        "auditor",
+        "auditor-1",
     ]
     assert [event["payload"]["raw_reasoning_content"] for event in reasoning_events] == [
         "raw plan reasoning",

@@ -20,4 +20,6 @@ def downgrade() -> None:
     if bind.dialect.name != "postgresql":
         return
 
-    op.execute("DROP EXTENSION IF EXISTS vector")
+    # The vector extension can be shared or pre-existing in local PostgreSQL.
+    # Keep downgrade non-destructive and leave extension ownership to the operator.
+    return

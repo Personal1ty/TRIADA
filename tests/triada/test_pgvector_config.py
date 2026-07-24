@@ -16,3 +16,4 @@ def test_pgvector_migration_is_postgres_guarded() -> None:
 
     assert "CREATE EXTENSION IF NOT EXISTS vector" in migration
     assert 'bind.dialect.name != "postgresql"' in migration
+    assert "DROP EXTENSION" not in migration

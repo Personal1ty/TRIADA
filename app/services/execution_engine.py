@@ -163,7 +163,7 @@ class ExecutionEngine:
                 final_status = "failed"
                 break
 
-        has_worker_evidence = any(result.status == "succeeded" for result in worker_results)
+        has_worker_evidence = final_status != "blocked" and any(result.tool_results for result in worker_results)
         if not has_worker_evidence:
             return final_status
 
@@ -188,7 +188,7 @@ class ExecutionEngine:
         if auditor_model_delta:
             await self._emit_model_delta(
                 task,
-                agent_id="auditor",
+                agent_id=assigned_auditor_id,
                 agent_role=AgentRole.AUDITOR,
                 delta=auditor_model_delta,
                 model_message=auditor_model_message,
@@ -196,14 +196,14 @@ class ExecutionEngine:
         if auditor_raw_reasoning_content:
             await self._emit_model_reasoning_content(
                 task,
-                agent_id="auditor",
+                agent_id=assigned_auditor_id,
                 agent_role=AgentRole.AUDITOR,
                 schema_name="audit_verdict",
                 raw_reasoning_content=auditor_raw_reasoning_content,
             )
         await self._emit_delta(
             task,
-            agent_id="auditor",
+            agent_id=assigned_auditor_id,
             agent_role=AgentRole.AUDITOR,
             stage="audit",
             action="audit_tool_results",

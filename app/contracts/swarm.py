@@ -147,6 +147,9 @@ class SwarmContract(BaseModel):
             raise ValueError("worker ids must be unique")
         if len(set(auditor_ids)) != len(auditor_ids):
             raise ValueError("auditor ids must be unique")
+        if overlapping_pair_agents := set(worker_ids) & set(auditor_ids):
+            overlapping = sorted(overlapping_pair_agents)
+            raise ValueError(f"worker and auditor ids must be disjoint: {overlapping}")
 
         if self.topology.orchestrator_id in worker_ids or self.topology.orchestrator_id in auditor_ids:
             raise ValueError("orchestrator cannot be a worker or assigned auditor")

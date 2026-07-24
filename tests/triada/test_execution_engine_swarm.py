@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.agents.orchestrator import Orchestrator
 from app.events.models import AuditVerdict
 from app.schemas.enums import AuditVerdictValue
 from app.services.execution_engine import ExecutionEngine
@@ -26,6 +27,30 @@ class CorrectionsRequiredAuditor:
             {},
             None,
         )
+
+
+class SuccessfulThenBlockedLLM:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        if schema_name == "plan":
+            return {
+                "answer": {
+                    "steps": [
+                        {
+                            "id": "step-1",
+                            "title": "Echo first",
+                            "description": "first step",
+                            "allowed_tools": ["shell"],
+                        },
+                        {
+                            "id": "step-2",
+                            "title": "Unsupported second",
+                            "description": "second step",
+                            "allowed_tools": ["unknown"],
+                        },
+                    ]
+                }
+            }
+        return {}
 
 
 @pytest.mark.asyncio
@@ -79,6 +104,74 @@ async def test_execution_engine_does_not_submit_evidence_when_worker_blocks(tmp_
     ]
     assert "assign_step" in route_reasons
     assert "submit_evidence" not in route_reasons
+
+
+@pytest.mark.asyncio
+async def test_execution_engine_does_not_submit_partial_evidence_after_later_block(tmp_path):
+    emitter = MemoryEmitter()
+    engine = ExecutionEngine(
+        emitter=emitter,
+        workspace=tmp_path,
+        orchestrator=Orchestrator(SuccessfulThenBlockedLLM()),
+    )
+    task = make_task(
+        goal="Run a supported step then an unsupported step",
+        allowed_tools=["shell", "unknown"],
+    )
+
+    status = await engine.run_once(task)
+
+    assert status == "blocked"
+    route_reasons = [
+        event["payload"]["reason"]
+        for event in emitter.events
+        if event["event_type"] == "swarm_route_selected"
+    ]
+    assert route_reasons == ["assign_step", "assign_step"]
+    event_types = [event["event_type"] for event in emitter.events]
+    assert "worker_step_completed" in event_types
+    assert "worker_step_blocked" in event_types
+    assert "tool_execution_completed" in event_types
+    assert "audit_verdict" not in event_types
+    assert "chief_audit_verdict" not in event_types
+    assert "human_review_packet_created" not in event_types
+
+
+@pytest.mark.asyncio
+async def test_execution_engine_audits_failed_worker_tool_evidence(tmp_path):
+    emitter = MemoryEmitter()
+    engine = ExecutionEngine(emitter=emitter, workspace=tmp_path)
+    task = make_task(goal="Inspect repository status", allowed_tools=["git"])
+
+    status = await engine.run_once(task)
+
+    assert status == "failed"
+    route_reasons = [
+        event["payload"]["reason"]
+        for event in emitter.events
+        if event["event_type"] == "swarm_route_selected"
+    ]
+    assert route_reasons == [
+        "assign_step",
+        "submit_evidence",
+        "escalate_verdict",
+        "return_final_gate",
+        "deliver_human_packet",
+    ]
+    event_types = [event["event_type"] for event in emitter.events]
+    assert "worker_step_failed" in event_types
+    assert "tool_execution_completed" in event_types
+    assert "audit_verdict" in event_types
+    assert "chief_audit_verdict" in event_types
+    assert "human_review_packet_created" in event_types
+
+    human_packet = next(
+        event
+        for event in emitter.events
+        if event["event_type"] == "human_review_packet_created"
+    )
+    assert human_packet["payload"]["status"] == "failed"
+    assert human_packet["payload"]["tool_result_count"] >= 1
 
 
 @pytest.mark.asyncio

@@ -105,6 +105,14 @@ def test_swarm_contract_rejects_worker_without_unique_auditor():
         SwarmContract.model_validate(payload)
 
 
+def test_swarm_contract_rejects_agent_used_as_worker_and_auditor():
+    payload = _valid_contract().model_dump(mode="python")
+    payload["worker_auditor_pairs"][0]["auditor_id"] = "worker-2"
+
+    with pytest.raises(ValidationError):
+        SwarmContract.model_validate(payload)
+
+
 def test_swarm_contract_requires_worker_to_assigned_auditor_route():
     payload = _valid_contract().model_dump(mode="python")
     payload["route_map"] = [route for route in payload["route_map"] if route["reason"] != "submit_evidence"]
