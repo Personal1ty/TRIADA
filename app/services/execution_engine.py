@@ -167,6 +167,7 @@ class ExecutionEngine:
         if not has_worker_evidence:
             return final_status
 
+        assigned_auditor_id = self._assigned_auditor_id_for_worker(self._worker_id)
         await self._emit_route(
             task,
             source=AgentEndpoint.WORKER,
@@ -209,7 +210,7 @@ class ExecutionEngine:
             summary="Auditor evaluated worker evidence.",
             progress_percent=90,
         )
-        await self._emit(task, "audit_verdict", verdict.model_dump(mode="json"), agent_id="auditor")
+        await self._emit(task, "audit_verdict", verdict.model_dump(mode="json"), agent_id=assigned_auditor_id)
 
         if final_status == "completed" and verdict.verdict != AuditVerdictValue.PASS:
             final_status = "corrections_required"
@@ -220,7 +221,7 @@ class ExecutionEngine:
             source=AgentEndpoint.ASSIGNED_AUDITOR,
             target=AgentEndpoint.CHIEF_AUDITOR,
             reason="escalate_verdict",
-            agent_id="auditor",
+            agent_id=assigned_auditor_id,
         )
         await self._emit(
             task,
@@ -242,13 +243,6 @@ class ExecutionEngine:
             reason="return_final_gate",
             agent_id=chief_auditor_id,
         )
-        await self._emit_route(
-            task,
-            source=AgentEndpoint.ORCHESTRATOR,
-            target=AgentEndpoint.HUMAN,
-            reason="deliver_human_packet",
-            agent_id="orchestrator",
-        )
         await self._emit(
             task,
             "human_review_packet_created",
@@ -263,6 +257,13 @@ class ExecutionEngine:
                 "raw_reasoning_refs": [],
                 "agent_id": "orchestrator",
             },
+        )
+        await self._emit_route(
+            task,
+            source=AgentEndpoint.ORCHESTRATOR,
+            target=AgentEndpoint.HUMAN,
+            reason="deliver_human_packet",
+            agent_id="orchestrator",
         )
         return final_status
 
@@ -343,6 +344,12 @@ class ExecutionEngine:
             if route.source == source and route.target == target and route.reason == reason:
                 return route
         raise LookupError(f"swarm route not found: {source.value}->{target.value}/{reason}")
+
+    def _assigned_auditor_id_for_worker(self, worker_id: str) -> str:
+        for pair in self._swarm_contract.worker_auditor_pairs:
+            if pair.worker_id == worker_id:
+                return pair.auditor_id
+        raise LookupError(f"assigned auditor not found for worker: {worker_id}")
 
     async def _emit_model_delta(
         self,

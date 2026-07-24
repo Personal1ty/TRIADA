@@ -2,8 +2,30 @@ from __future__ import annotations
 
 import pytest
 
+from app.events.models import AuditVerdict
+from app.schemas.enums import AuditVerdictValue
 from app.services.execution_engine import ExecutionEngine
 from tests.triada.test_execution_engine_runtime import MemoryEmitter, make_task
+
+
+class CorrectionsRequiredAuditor:
+    llm = None
+
+    async def audit_tool_results_with_model(
+        self,
+        tool_results,
+        worker_summary,
+        model_summaries=None,
+    ):
+        return (
+            AuditVerdict(
+                verdict=AuditVerdictValue.CORRECTIONS_REQUIRED,
+                summary="Corrections are required.",
+            ),
+            None,
+            {},
+            None,
+        )
 
 
 @pytest.mark.asyncio
@@ -73,6 +95,13 @@ async def test_execution_engine_emits_chief_auditor_gate_before_human_packet(tmp
     chief_index = event_types.index("chief_audit_verdict")
     packet_index = event_types.index("human_review_packet_created")
     assert audit_index < chief_index < packet_index
+    deliver_index = next(
+        index
+        for index, event in enumerate(emitter.events)
+        if event["event_type"] == "swarm_route_selected"
+        and event["payload"]["reason"] == "deliver_human_packet"
+    )
+    assert packet_index < deliver_index
 
     route_events = [
         event for event in emitter.events if event["event_type"] == "swarm_route_selected"
@@ -80,6 +109,10 @@ async def test_execution_engine_emits_chief_auditor_gate_before_human_packet(tmp
     routes_by_reason = {
         event["payload"]["reason"]: event["payload"] for event in route_events
     }
+    route_events_by_reason = {
+        event["payload"]["reason"]: event for event in route_events
+    }
+    assert route_events_by_reason["escalate_verdict"]["agent_id"] == "auditor-1"
     assert routes_by_reason["escalate_verdict"]["source"] == "assigned_auditor"
     assert routes_by_reason["escalate_verdict"]["target"] == "chief_auditor"
     assert routes_by_reason["escalate_verdict"]["input_contract"] == "audit_verdict@1.0"
@@ -122,3 +155,30 @@ async def test_execution_engine_emits_chief_auditor_gate_before_human_packet(tmp
     assert human_packet["payload"]["worker_result_count"] == 1
     assert human_packet["payload"]["tool_result_count"] >= 1
     assert human_packet["payload"]["raw_reasoning_refs"] == []
+
+
+@pytest.mark.asyncio
+async def test_execution_engine_routes_corrections_required_verdict_to_human_packet(tmp_path):
+    emitter = MemoryEmitter()
+    engine = ExecutionEngine(
+        emitter=emitter,
+        workspace=tmp_path,
+        auditor=CorrectionsRequiredAuditor(),
+    )
+    task = make_task(goal="Echo repository status", allowed_tools=["shell"])
+
+    status = await engine.run_once(task)
+
+    assert status == "corrections_required"
+    chief_verdict = next(
+        event for event in emitter.events if event["event_type"] == "chief_audit_verdict"
+    )
+    assert chief_verdict["payload"]["verdict"] == "corrections_required"
+
+    human_packet = next(
+        event
+        for event in emitter.events
+        if event["event_type"] == "human_review_packet_created"
+    )
+    assert human_packet["payload"]["status"] == "corrections_required"
+    assert human_packet["payload"]["chief_auditor_verdict"] == "corrections_required"
