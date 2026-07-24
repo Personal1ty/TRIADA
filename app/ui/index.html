@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TRIADA Swarm</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --line: #d9dee5;
+      --text: #1f2933;
+      --muted: #5f6b7a;
+      --accent: #0f766e;
+      --accent-dark: #115e59;
+      --warn: #92400e;
+      --soft: #eef2f7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+      gap: 16px;
+      padding: 16px 24px 24px;
+    }
+
+    section {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    section h2 {
+      margin: 0;
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    .panel-body {
+      padding: 14px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 16px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    input {
+      width: min(440px, 48vw);
+      min-width: 220px;
+      height: 34px;
+      padding: 6px 10px;
+      border: 1px solid #b8c1cc;
+      border-radius: 6px;
+      background: #ffffff;
+      color: var(--text);
+      font: inherit;
+    }
+
+    button {
+      height: 34px;
+      padding: 0 13px;
+      border: 1px solid var(--accent-dark);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #ffffff;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      cursor: default;
+      opacity: 0.58;
+    }
+
+    .metric {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--soft);
+    }
+
+    .metric strong {
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    ul {
+      margin: 12px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    li {
+      padding: 9px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .route {
+      display: grid;
+      gap: 3px;
+    }
+
+    .route code,
+    .pill {
+      border-radius: 999px;
+      background: #e8edf3;
+      padding: 2px 7px;
+      color: #263241;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .route small,
+    .muted {
+      color: var(--muted);
+    }
+
+    .graph-wrap {
+      overflow: auto;
+      min-height: 300px;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      min-width: 720px;
+      height: 360px;
+    }
+
+    .node rect {
+      fill: #ffffff;
+      stroke: #8ca0b3;
+      stroke-width: 1.2;
+    }
+
+    .node text {
+      fill: var(--text);
+      font-size: 12px;
+      font-weight: 650;
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }
+
+    .edge {
+      stroke: #64748b;
+      stroke-width: 1.5;
+      marker-end: url(#arrow);
+    }
+
+    .edge-label {
+      fill: #435266;
+      font-size: 11px;
+      text-anchor: middle;
+    }
+
+    .thinking-list li {
+      display: grid;
+      gap: 4px;
+    }
+
+    .thinking-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .error {
+      color: var(--warn);
+    }
+
+    @media (max-width: 860px) {
+      header,
+      main {
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      main {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        width: 100%;
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      input,
+      button {
+        width: 100%;
+        min-width: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>TRIADA Swarm</h1>
+    <form class="controls" id="task-form">
+      <label for="task-id">Task id</label>
+      <input id="task-id" name="task-id" type="text" autocomplete="off" placeholder="UUID">
+      <button id="load-task" type="submit">Load Task</button>
+    </form>
+  </header>
+
+  <main>
+    <div class="stack">
+      <section id="contracts">
+        <h2>Contracts</h2>
+        <div class="panel-body">
+          <div class="metric">
+            <span>Worker auditor pairs</span>
+            <strong id="pair-count">-</strong>
+          </div>
+          <ul id="route-map">
+            <li class="status">Loading /v1/swarm/contract...</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="thinking">
+        <h2>Thinking Summaries</h2>
+        <div class="panel-body">
+          <p class="status" id="thinking-status">Enter a task id to load public summary deltas.</p>
+          <ul class="thinking-list" id="thinking-list"></ul>
+        </div>
+      </section>
+    </div>
+
+    <section id="graph">
+      <h2>Swarm Graph</h2>
+      <div class="panel-body graph-wrap" id="graph-body">
+        <p class="status">Enter a task id to load /v1/tasks/{task_id}/swarm-graph.</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const contractUrl = "/v1/swarm/contract";
+    const pairCount = document.getElementById("pair-count");
+    const routeMap = document.getElementById("route-map");
+    const taskForm = document.getElementById("task-form");
+    const taskInput = document.getElementById("task-id");
+    const loadTaskButton = document.getElementById("load-task");
+    const graphBody = document.getElementById("graph-body");
+    const thinkingStatus = document.getElementById("thinking-status");
+    const thinkingList = document.getElementById("thinking-list");
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;"
+      })[char]);
+    }
+
+    async function fetchJson(url) {
+      const response = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+      return response.json();
+    }
+
+    function contractRef(contract) {
+      if (!contract) {
+        return "";
+      }
+      if (typeof contract === "string") {
+        return contract;
+      }
+      return `${contract.name}@${contract.version}`;
+    }
+
+    function renderContract(contract) {
+      const pairs = Array.isArray(contract.worker_auditor_pairs) ? contract.worker_auditor_pairs : [];
+      const routes = Array.isArray(contract.route_map) ? contract.route_map : [];
+      pairCount.textContent = String(pairs.length);
+      routeMap.innerHTML = routes.map((route) => `
+        <li class="route">
+          <div>
+            <code>${escapeHtml(route.source)}</code>
+            <span class="muted">to</span>
+            <code>${escapeHtml(route.target)}</code>
+          </div>
+          <small>${escapeHtml(route.reason)}: ${escapeHtml(contractRef(route.input_contract))} -> ${escapeHtml(contractRef(route.output_contract))}</small>
+        </li>
+      `).join("") || '<li class="status">No routes in contract.</li>';
+    }
+
+    function renderGraph(graph) {
+      const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+      const edges = Array.isArray(graph.edges) ? graph.edges : [];
+      if (!nodes.length) {
+        graphBody.innerHTML = '<p class="status">No swarm route graph events are available for this task.</p>';
+        return;
+      }
+
+      const width = Math.max(720, nodes.length * 150);
+      const height = 360;
+      const y = 170;
+      const positions = new Map(nodes.map((node, index) => [
+        node.id,
+        {
+          x: 80 + index * ((width - 160) / Math.max(1, nodes.length - 1)),
+          y
+        }
+      ]));
+
+      const edgeMarkup = edges.map((edge, index) => {
+        const source = positions.get(edge.source);
+        const target = positions.get(edge.target);
+        if (!source || !target) {
+          return "";
+        }
+        const offset = (index % 3 - 1) * 18;
+        const labelX = (source.x + target.x) / 2;
+        const labelY = (source.y + target.y) / 2 - 18 + offset;
+        return `
+          <line class="edge" x1="${source.x}" y1="${source.y - 32 + offset}" x2="${target.x}" y2="${target.y - 32 + offset}"></line>
+          <text class="edge-label" x="${labelX}" y="${labelY}">${escapeHtml(edge.reason)}</text>
+        `;
+      }).join("");
+
+      const nodeMarkup = nodes.map((node) => {
+        const position = positions.get(node.id);
+        return `
+          <g class="node">
+            <rect x="${position.x - 55}" y="${position.y - 22}" width="110" height="44" rx="7"></rect>
+            <text x="${position.x}" y="${position.y}">${escapeHtml(node.id)}</text>
+          </g>
+        `;
+      }).join("");
+
+      graphBody.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Task swarm route graph">
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+              <path d="M 0 0 L 8 4 L 0 8 z" fill="#64748b"></path>
+            </marker>
+          </defs>
+          ${edgeMarkup}
+          ${nodeMarkup}
+        </svg>
+      `;
+    }
+
+    function renderThinking(payload) {
+      const deltas = Array.isArray(payload.deltas) ? payload.deltas : [];
+      thinkingStatus.textContent = deltas.length ? `${deltas.length} public summary delta${deltas.length === 1 ? "" : "s"}.` : "No public thinking summaries are available for this task.";
+      thinkingList.innerHTML = deltas.map((delta) => `
+        <li>
+          <div>${escapeHtml(delta.summary || delta.action || "Summary delta")}</div>
+          <div class="thinking-meta">
+            <span class="pill">${escapeHtml(delta.agent_role || delta.agent_id || "agent")}</span>
+            <span>${escapeHtml(delta.stage || "stage unknown")}</span>
+            <span>${escapeHtml(delta.progress_percent ?? "")}${delta.progress_percent == null ? "" : "%"}</span>
+          </div>
+        </li>
+      `).join("");
+    }
+
+    async function loadContract() {
+      try {
+        renderContract(await fetchJson(contractUrl));
+      } catch (error) {
+        routeMap.innerHTML = `<li class="status error">Unable to load ${contractUrl}: ${escapeHtml(error.message)}</li>`;
+      }
+    }
+
+    async function loadTask(taskId) {
+      const graphUrl = `/v1/tasks/${encodeURIComponent(taskId)}/swarm-graph`;
+      const thinkingUrl = `/v1/tasks/${encodeURIComponent(taskId)}/thinking-summary`;
+      loadTaskButton.disabled = true;
+      graphBody.innerHTML = `<p class="status">Loading ${escapeHtml(graphUrl)}...</p>`;
+      thinkingStatus.textContent = `Loading ${thinkingUrl}...`;
+      thinkingList.innerHTML = "";
+      try {
+        const [graph, thinking] = await Promise.all([fetchJson(graphUrl), fetchJson(thinkingUrl)]);
+        renderGraph(graph);
+        renderThinking(thinking);
+      } catch (error) {
+        graphBody.innerHTML = `<p class="status error">Unable to load task: ${escapeHtml(error.message)}</p>`;
+        thinkingStatus.textContent = "Task load failed.";
+      } finally {
+        loadTaskButton.disabled = false;
+      }
+    }
+
+    taskForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const taskId = taskInput.value.trim();
+      if (taskId) {
+        loadTask(taskId);
+      }
+    });
+
+    loadContract();
+  </script>
+</body>
+</html>
