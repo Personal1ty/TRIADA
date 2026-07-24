@@ -114,6 +114,9 @@ docker compose up --build
 ```
 
 The Docker service uses `DATABASE_URL=postgresql+asyncpg://triada:triada@postgres:5432/triada`.
+Local PostgreSQL uses the `pgvector/pgvector:pg16` image. Alembic migration
+`0002_enable_pgvector` enables the vector extension for PostgreSQL and skips it
+on SQLite.
 The default non-Docker setting is `sqlite+aiosqlite:///./triada.db`.
 
 If local port `5432` is already occupied, publish Postgres on another host port:
