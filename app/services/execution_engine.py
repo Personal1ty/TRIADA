@@ -213,6 +213,57 @@ class ExecutionEngine:
 
         if final_status == "completed" and verdict.verdict != AuditVerdictValue.PASS:
             final_status = "corrections_required"
+        chief_auditor_id = self._swarm_contract.topology.chief_auditor.agent_id
+        verdict_value = verdict.verdict.value
+        await self._emit_route(
+            task,
+            source=AgentEndpoint.ASSIGNED_AUDITOR,
+            target=AgentEndpoint.CHIEF_AUDITOR,
+            reason="escalate_verdict",
+            agent_id="auditor",
+        )
+        await self._emit(
+            task,
+            "chief_audit_verdict",
+            {
+                "schema_version": "1.0",
+                "chief_auditor_id": chief_auditor_id,
+                "verdict": verdict_value,
+                "source_verdict_refs": ["audit_verdict"],
+                "summary": verdict.summary,
+                "agent_id": chief_auditor_id,
+            },
+            agent_id=chief_auditor_id,
+        )
+        await self._emit_route(
+            task,
+            source=AgentEndpoint.CHIEF_AUDITOR,
+            target=AgentEndpoint.ORCHESTRATOR,
+            reason="return_final_gate",
+            agent_id=chief_auditor_id,
+        )
+        await self._emit_route(
+            task,
+            source=AgentEndpoint.ORCHESTRATOR,
+            target=AgentEndpoint.HUMAN,
+            reason="deliver_human_packet",
+            agent_id="orchestrator",
+        )
+        await self._emit(
+            task,
+            "human_review_packet_created",
+            {
+                "schema_version": "1.0",
+                "contract": {"name": "human_review_packet", "version": "1.0"},
+                "status": final_status,
+                "chief_auditor_verdict": verdict_value,
+                "summary": verdict.summary,
+                "worker_result_count": len(worker_results),
+                "tool_result_count": len(tool_records),
+                "raw_reasoning_refs": [],
+                "agent_id": "orchestrator",
+            },
+        )
         return final_status
 
     async def _emit_plan_created(self, task: Any, plan: TaskPlan) -> None:
