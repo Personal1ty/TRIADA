@@ -16,6 +16,7 @@ from app.llm.codex_bridge import CodexBridgeProvider
 from app.llm.fake import FakeLLMProvider
 from app.llm.openai_compatible import OpenAICompatibleProvider
 from app.llm.openai_responses import OpenAIResponsesProvider
+from app.llm.runtime_config import LLMConfigService
 from app.schemas.enums import AgentRole, AuditVerdictValue, DeltaSource
 
 
@@ -28,9 +29,12 @@ class ExecutionEngine:
         orchestrator: Orchestrator | None = None,
         auditor: Auditor | None = None,
         worker_id: str = "worker-1",
+        llm_config_service: LLMConfigService | None = None,
     ) -> None:
         self._emitter = emitter
         self._workspace = Path(workspace).resolve()
+        self._llm_config_service = llm_config_service
+        self._owns_agents = orchestrator is None
         self._llm = orchestrator.llm if orchestrator is not None else self._build_llm_provider()
         self._orchestrator = orchestrator or Orchestrator(self._llm)
         self._auditor = auditor or Auditor(self._llm)
@@ -40,6 +44,10 @@ class ExecutionEngine:
         self._swarm_contract = load_default_swarm_contract()
 
     async def run_once(self, task: Any) -> str:
+        if self._owns_agents:
+            self._llm = self._build_llm_provider()
+            self._orchestrator.llm = self._llm
+            self._auditor.llm = self._llm
         await self._emit(task, "planning_started", {"goal": task.goal})
         await self._emit_delta(
             task,
@@ -422,28 +430,36 @@ class ExecutionEngine:
         return []
 
     def _build_llm_provider(self):
-        settings = get_settings()
-        if settings.llm_provider == "openai-compatible":
+        if self._llm_config_service is not None:
+            config = self._llm_config_service.current_config()
+            provider = config.provider
+            base_url = config.base_url
+            api_key = config.api_key
+            model = config.model
+        else:
+            settings = get_settings()
+            provider = settings.llm_provider
+            base_url = settings.llm_base_url
+            api_key = (
+                settings.llm_api_key.get_secret_value()
+                if settings.llm_api_key is not None
+                else None
+            )
+            model = settings.llm_model
+
+        if provider == "openai-compatible":
             return OpenAICompatibleProvider(
-                base_url=settings.llm_base_url,
-                api_key=(
-                    settings.llm_api_key.get_secret_value()
-                    if settings.llm_api_key is not None
-                    else None
-                ),
-                model=settings.llm_model,
+                base_url=base_url,
+                api_key=api_key,
+                model=model,
             )
-        if settings.llm_provider == "openai-responses":
+        if provider == "openai-responses":
             return OpenAIResponsesProvider(
-                base_url=settings.llm_base_url,
-                api_key=(
-                    settings.llm_api_key.get_secret_value()
-                    if settings.llm_api_key is not None
-                    else None
-                ),
-                model=settings.llm_model,
+                base_url=base_url,
+                api_key=api_key,
+                model=model,
             )
-        if settings.llm_provider == "codex-bridge":
+        if provider == "codex-bridge":
             return CodexBridgeProvider()
         return FakeLLMProvider()
 

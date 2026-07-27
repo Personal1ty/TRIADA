@@ -14,6 +14,7 @@ from app.audit.emitter import AuditEmitter
 from app.audit.repository import AuditEventRepository
 from app.config import get_settings
 from app.events.bus import InMemoryEventBus
+from app.llm.runtime_config import LLMConfigService
 from app.persistence.session import create_session_factory
 from app.services.execution_engine import ExecutionEngine
 from app.services.task_service import TaskService
@@ -21,11 +22,22 @@ from app.services.task_service import TaskService
 
 def create_app(testing: bool = False) -> FastAPI:
     database_url, testing_database_path = _database_url(testing)
+    llm_config_path, llm_key_path = _llm_config_paths(testing)
+    settings = get_settings()
     session_factory = create_session_factory(database_url)
     event_repository = AuditEventRepository(session_factory)
     event_bus = InMemoryEventBus()
     audit_emitter = AuditEmitter(event_repository, event_bus)
-    execution_engine = ExecutionEngine(emitter=audit_emitter, workspace=Path.cwd())
+    llm_config_service = LLMConfigService(
+        settings=settings,
+        config_path=llm_config_path,
+        key_path=llm_key_path,
+    )
+    execution_engine = ExecutionEngine(
+        emitter=audit_emitter,
+        workspace=Path.cwd(),
+        llm_config_service=llm_config_service,
+    )
     task_service = TaskService(emitter=audit_emitter, execution_engine=execution_engine)
 
     @asynccontextmanager
@@ -46,6 +58,7 @@ def create_app(testing: bool = False) -> FastAPI:
     app.state.event_repository = event_repository
     app.state.event_bus = event_bus
     app.state.audit_emitter = audit_emitter
+    app.state.llm_config_service = llm_config_service
     app.state.execution_engine = execution_engine
     app.state.task_service = task_service
     app.state.sse_idle_timeout_seconds = 0.1 if testing else 30.0
@@ -65,3 +78,11 @@ def _database_url(testing: bool) -> tuple[str, Path | None]:
         return get_settings().database_url, None
     path = Path(tempfile.gettempdir()) / f"triada-test-{uuid4()}.db"
     return f"sqlite+aiosqlite:///{path}", path
+
+
+def _llm_config_paths(testing: bool) -> tuple[Path, Path]:
+    if testing:
+        directory = Path(tempfile.gettempdir()) / f"triada-test-llm-{uuid4()}"
+        return directory / "llm_config.enc", directory / "llm_config.key"
+    settings = get_settings()
+    return Path(settings.llm_config_path), Path(settings.llm_secret_key_path)

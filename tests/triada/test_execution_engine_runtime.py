@@ -7,6 +7,7 @@ import pytest
 from app.agents.orchestrator import Orchestrator
 from app.config import get_settings
 from app.llm.codex_bridge import CodexBridgeProvider
+from app.llm.runtime_config import LLMConfigService, LLMProviderConfig
 from app.llm.openai_compatible import OpenAICompatibleProvider
 from app.llm.openai_responses import OpenAIResponsesProvider
 from app.services.execution_engine import ExecutionEngine
@@ -104,6 +105,35 @@ def test_execution_engine_uses_openai_compatible_provider_from_settings(monkeypa
     assert isinstance(engine._orchestrator.llm, OpenAICompatibleProvider)
     assert engine._orchestrator.llm.base_url == "http://127.0.0.1:11434/v1"
     assert engine._orchestrator.llm.model == "corp-coder"
+
+
+def test_execution_engine_prefers_runtime_llm_config_over_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("LLM_PROVIDER", "fake")
+    get_settings.cache_clear()
+    service = LLMConfigService(
+        settings=get_settings(),
+        config_path=tmp_path / "llm-config.enc",
+        key_path=tmp_path / "llm-config.key",
+    )
+    service.save(
+        LLMProviderConfig(
+            provider="openai-compatible",
+            base_url="https://runtime-llm.example/v1",
+            model="runtime-model",
+            api_key="sk-runtime-secret",
+        )
+    )
+
+    engine = ExecutionEngine(
+        emitter=MemoryEmitter(),
+        workspace=tmp_path,
+        llm_config_service=service,
+    )
+
+    assert isinstance(engine._orchestrator.llm, OpenAICompatibleProvider)
+    assert engine._orchestrator.llm.base_url == "https://runtime-llm.example/v1"
+    assert engine._orchestrator.llm.model == "runtime-model"
+    assert engine._orchestrator.llm.api_key == "sk-runtime-secret"
 
 
 def test_execution_engine_uses_openai_responses_provider_from_settings(monkeypatch, tmp_path):

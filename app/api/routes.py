@@ -15,6 +15,8 @@ from app.audit.projection import (
     thinking_deltas_from_events,
 )
 from app.contracts.loader import load_default_swarm_contract
+from app.llm.runtime_config import LLMProviderConfig
+from app.schemas.llm import LLMConfigRequest, LLMConfigResponse, LLMTestResponse
 from app.schemas.tasks import ApprovalRequest, CreateTaskRequest, TaskActionResponse, TaskEventsResponse, TaskResponse
 
 router = APIRouter(prefix="/v1")
@@ -23,6 +25,60 @@ router = APIRouter(prefix="/v1")
 @router.get("/swarm/contract")
 async def get_swarm_contract() -> dict:
     return load_default_swarm_contract().model_dump(mode="json")
+
+
+@router.get("/llm/config", response_model=LLMConfigResponse)
+async def get_llm_config(request: Request) -> dict:
+    return request.app.state.llm_config_service.public_config()
+
+
+@router.post("/llm/config", response_model=LLMConfigResponse)
+async def save_llm_config(payload: LLMConfigRequest, request: Request) -> dict:
+    current_config = request.app.state.llm_config_service.current_config()
+    if payload.clear_api_key:
+        api_key = None
+    elif payload.api_key:
+        api_key = payload.api_key
+    else:
+        api_key = current_config.api_key
+    saved = request.app.state.llm_config_service.save(
+        LLMProviderConfig(
+            provider=payload.provider,
+            base_url=payload.base_url,
+            model=payload.model,
+            api_key=api_key,
+        )
+    )
+    return {
+        "provider": saved.provider,
+        "base_url": saved.base_url,
+        "model": saved.model,
+        "has_api_key": bool(saved.api_key),
+        "source": saved.source,
+    }
+
+
+@router.post("/llm/test", response_model=LLMTestResponse)
+async def test_llm_config(request: Request) -> dict:
+    config = request.app.state.llm_config_service.current_config()
+    provider = request.app.state.execution_engine._build_llm_provider()
+    try:
+        await provider.complete_json("TRIADA provider connectivity test", schema_name="plan")
+    except Exception as exc:
+        return {
+            "ok": False,
+            "provider": config.provider,
+            "base_url": config.base_url,
+            "model": config.model,
+            "error": _redact_secret(str(exc), config.api_key),
+        }
+    return {
+        "ok": True,
+        "provider": config.provider,
+        "base_url": config.base_url,
+        "model": config.model,
+        "error": None,
+    }
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -218,3 +274,9 @@ def _format_sse(message: dict[str, str]) -> str:
     data = json.loads(message["data"])
     lines.append(f"data: {json.dumps(data, sort_keys=True)}")
     return "\n".join(lines) + "\n\n"
+
+
+def _redact_secret(value: str, secret: str | None) -> str:
+    if secret:
+        return value.replace(secret, "[redacted]")
+    return value

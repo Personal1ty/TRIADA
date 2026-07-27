@@ -92,7 +92,8 @@
       font-weight: 600;
     }
 
-    input {
+    input,
+    select {
       width: min(440px, 48vw);
       min-width: 220px;
       height: 34px;
@@ -102,6 +103,28 @@
       background: #ffffff;
       color: var(--text);
       font: inherit;
+    }
+
+    input[type="checkbox"] {
+      width: auto;
+      min-width: 0;
+      height: auto;
+    }
+
+    .form-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
     }
 
     button {
@@ -251,6 +274,7 @@
       }
 
       input,
+      select,
       button {
         width: 100%;
         min-width: 0;
@@ -270,6 +294,44 @@
 
   <main>
     <div class="stack">
+      <section id="llm-config">
+        <h2>LLM Provider</h2>
+        <div class="panel-body">
+          <form class="form-grid" id="llm-form">
+            <div class="field">
+              <label for="llm-provider">Provider</label>
+              <select id="llm-provider" name="llm-provider">
+                <option value="openai-compatible">OpenAI-compatible</option>
+                <option value="openai-responses">OpenAI Responses</option>
+                <option value="codex-bridge">Codex Bridge</option>
+                <option value="fake">Fake</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="llm-base-url">Base URL</label>
+              <input id="llm-base-url" name="llm-base-url" type="url" autocomplete="off" placeholder="http://127.0.0.1:11434/v1">
+            </div>
+            <div class="field">
+              <label for="llm-model">Model</label>
+              <input id="llm-model" name="llm-model" type="text" autocomplete="off" placeholder="deepseek-reasoner">
+            </div>
+            <div class="field">
+              <label for="llm-api-key">Token / API key</label>
+              <input id="llm-api-key" name="llm-api-key" type="password" autocomplete="new-password" placeholder="Leave empty to keep saved token">
+            </div>
+            <label class="controls" for="llm-clear-api-key">
+              <input id="llm-clear-api-key" name="llm-clear-api-key" type="checkbox">
+              <span>Clear saved token</span>
+            </label>
+            <div class="button-row">
+              <button id="save-llm" type="submit">Save</button>
+              <button id="test-llm" type="button">Test</button>
+            </div>
+          </form>
+          <p class="status" id="llm-status">Loading /v1/llm/config...</p>
+        </div>
+      </section>
+
       <section id="contracts">
         <h2>Contracts</h2>
         <div class="panel-body">
@@ -301,7 +363,18 @@
   </main>
 
   <script>
+    const llmConfigUrl = "/v1/llm/config";
+    const llmTestUrl = "/v1/llm/test";
     const contractUrl = "/v1/swarm/contract";
+    const llmForm = document.getElementById("llm-form");
+    const llmProvider = document.getElementById("llm-provider");
+    const llmBaseUrl = document.getElementById("llm-base-url");
+    const llmModel = document.getElementById("llm-model");
+    const llmApiKey = document.getElementById("llm-api-key");
+    const llmClearApiKey = document.getElementById("llm-clear-api-key");
+    const saveLlmButton = document.getElementById("save-llm");
+    const testLlmButton = document.getElementById("test-llm");
+    const llmStatus = document.getElementById("llm-status");
     const pairCount = document.getElementById("pair-count");
     const routeMap = document.getElementById("route-map");
     const taskForm = document.getElementById("task-form");
@@ -327,6 +400,86 @@
         throw new Error(`${response.status} ${response.statusText}`);
       }
       return response.json();
+    }
+
+    async function postJson(url, body) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body ?? {})
+      });
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+      return response.json();
+    }
+
+    function renderLlmConfig(config) {
+      llmProvider.value = config.provider || "openai-compatible";
+      llmBaseUrl.value = config.base_url || "";
+      llmModel.value = config.model || "";
+      llmApiKey.value = "";
+      llmClearApiKey.checked = false;
+      llmStatus.textContent = `${config.provider} / ${config.model} (${config.source}); token saved: ${config.has_api_key ? "yes" : "no"}`;
+    }
+
+    function llmFormPayload() {
+      const payload = {
+        provider: llmProvider.value,
+        base_url: llmBaseUrl.value.trim() || null,
+        model: llmModel.value.trim() || "fake-devops-model"
+      };
+      if (llmApiKey.value.trim()) {
+        payload.api_key = llmApiKey.value.trim();
+      }
+      if (llmClearApiKey.checked) {
+        payload.clear_api_key = true;
+      }
+      return payload;
+    }
+
+    async function loadLlmConfig() {
+      try {
+        renderLlmConfig(await fetchJson(llmConfigUrl));
+      } catch (error) {
+        llmStatus.textContent = `Unable to load ${llmConfigUrl}: ${error.message}`;
+        llmStatus.classList.add("error");
+      }
+    }
+
+    async function saveLlmConfig() {
+      saveLlmButton.disabled = true;
+      llmStatus.classList.remove("error");
+      llmStatus.textContent = `Saving ${llmConfigUrl}...`;
+      try {
+        renderLlmConfig(await postJson(llmConfigUrl, llmFormPayload()));
+      } catch (error) {
+        llmStatus.textContent = `Unable to save LLM config: ${error.message}`;
+        llmStatus.classList.add("error");
+      } finally {
+        saveLlmButton.disabled = false;
+      }
+    }
+
+    async function testLlmConfig() {
+      testLlmButton.disabled = true;
+      llmStatus.classList.remove("error");
+      llmStatus.textContent = `Testing ${llmTestUrl}...`;
+      try {
+        const result = await postJson(llmTestUrl, {});
+        llmStatus.textContent = result.ok
+          ? `Connection ok: ${result.provider} / ${result.model}`
+          : `Connection failed: ${result.error || "provider unavailable"}`;
+        llmStatus.classList.toggle("error", !result.ok);
+      } catch (error) {
+        llmStatus.textContent = `Unable to test LLM config: ${error.message}`;
+        llmStatus.classList.add("error");
+      } finally {
+        testLlmButton.disabled = false;
+      }
     }
 
     function contractRef(contract) {
@@ -462,6 +615,16 @@
       }
     });
 
+    llmForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      saveLlmConfig();
+    });
+
+    testLlmButton.addEventListener("click", () => {
+      testLlmConfig();
+    });
+
+    loadLlmConfig();
     loadContract();
   </script>
 </body>

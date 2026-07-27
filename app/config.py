@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     capture_reasoning_summary: bool = True
     pass_reasoning_summary_to_auditor: bool = True
     event_output_dir: str = ".triada/artifacts"
+    llm_config_path: str = ".triada/secrets/llm_config.enc"
+    llm_secret_key_path: str = ".triada/secrets/llm_config.key"
     shell_timeout_seconds: int = Field(default=60, ge=1, le=3600)
     max_tool_output_bytes: int = Field(default=65536, ge=1024)
 

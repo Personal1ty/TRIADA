@@ -22,7 +22,7 @@ TaskService
       v
 ExecutionEngine
 - emits planning_started
-- selects LLM provider from env:
+- selects LLM provider from runtime config, then falls back to env:
   LLM_PROVIDER=fake                -> deterministic FakeLLMProvider
   LLM_PROVIDER=openai-compatible   -> local LLM / corp-coder endpoint
   LLM_PROVIDER=openai-responses    -> OpenAI Responses API
@@ -154,8 +154,15 @@ python3 -m pip install -e .
 python3 -m pip install -e '.[test]'
 ```
 
-Copy `.env.example` to `.env` to override settings. The fake provider is the
-default and does not require an API key.
+Copy `.env.example` to `.env` to override default settings. The fake provider is
+the default and does not require an API key. You can also configure the active
+LLM at runtime through `POST /v1/llm/config` or the local `/ui` dashboard.
+Runtime config is saved under `.triada/secrets/`; API responses never return the
+token and expose only `has_api_key`. Omitting `api_key` in `POST /v1/llm/config`
+keeps the currently saved token; send `"clear_api_key": true` to remove it.
+The local secret file is encrypted to avoid accidental plaintext storage in the
+workspace, but it is not a replacement for an OS keychain or external secrets
+manager.
 
 OpenAI Responses API example:
 
@@ -165,6 +172,21 @@ export LLM_API_KEY=sk-...
 export LLM_MODEL=<openai-responses-model>
 # Optional override; defaults to https://api.openai.com/v1
 export LLM_BASE_URL=https://api.openai.com/v1
+```
+
+OpenAI-compatible local/corp/DeepSeek-style example through API:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8000/v1/llm/config \
+  -H 'content-type: application/json' \
+  -d '{
+    "provider":"openai-compatible",
+    "base_url":"http://127.0.0.1:11434/v1",
+    "model":"deepseek-reasoner",
+    "api_key":null
+  }'
+
+curl -sS -X POST http://127.0.0.1:8000/v1/llm/test
 ```
 
 The Responses provider sends `stream=true` with `reasoning.summary=detailed`.
@@ -205,6 +227,11 @@ The FastAPI application factory is `app.main:create_app`.
 
 Core endpoints under `/v1`:
 
+- `GET /v1/llm/config` returns public active LLM settings without the token.
+- `POST /v1/llm/config` saves runtime provider, base URL, model, and optional token.
+  Omit `api_key` to preserve the current token, or send `clear_api_key=true` to
+  remove it.
+- `POST /v1/llm/test` checks the currently configured provider.
 - `GET /v1/swarm/contract` returns the active default swarm contract.
 - `POST /v1/tasks` creates a task.
 - `GET /v1/tasks/{task_id}` returns task status.
@@ -220,10 +247,11 @@ Core endpoints under `/v1`:
 Local dashboard:
 
 - `GET /ui` opens a compact local TRIADA Swarm dashboard.
-- The dashboard reads `/v1/swarm/contract`, `/v1/tasks/{task_id}/swarm-graph`,
-  and `/v1/tasks/{task_id}/thinking-summary`.
-- It shows contract routes, graph edges, and public thinking summaries. Raw
-  reasoning stays in sensitive audit events and is not displayed by this UI.
+- The dashboard reads `/v1/llm/config`, `/v1/swarm/contract`,
+  `/v1/tasks/{task_id}/swarm-graph`, and `/v1/tasks/{task_id}/thinking-summary`.
+- It can save/test the active LLM provider and shows contract routes, graph
+  edges, and public thinking summaries. Raw reasoning stays in sensitive audit
+  events and is not displayed by this UI.
 
 Example:
 

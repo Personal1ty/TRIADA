@@ -25,9 +25,13 @@ async def test_get_local_swarm_ui():
     assert response.status_code == 200
     assert "TRIADA Swarm" in response.text
     assert "/v1/swarm/contract" in response.text
+    assert "/v1/llm/config" in response.text
+    assert "/v1/llm/test" in response.text
     assert 'id="graph"' in response.text
     assert 'id="contracts"' in response.text
     assert 'id="thinking"' in response.text
+    assert 'id="llm-config"' in response.text
+    assert 'id="llm-clear-api-key"' in response.text
 
 
 def test_local_swarm_ui_is_packaged():
