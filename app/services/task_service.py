@@ -73,6 +73,16 @@ class TaskService:
         task = self._tasks.get(normalized_id)
         return deepcopy(task) if task is not None else None
 
+    async def list_tasks(self, *, limit: int = 20) -> list[TaskRecord]:
+        if self._repository is not None and hasattr(self._repository, "list_tasks"):
+            return await self._repository.list_tasks(limit=limit)
+        tasks = sorted(
+            self._tasks.values(),
+            key=lambda task: task.created_at,
+            reverse=True,
+        )
+        return [deepcopy(task) for task in tasks[:limit]]
+
     async def cancel_task(self, task_id: UUID | str, *, reason: str | None = None) -> TaskRecord:
         return await self._transition_task(
             task_id,

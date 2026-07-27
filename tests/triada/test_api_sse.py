@@ -32,8 +32,30 @@ async def test_create_task_and_list_events():
         task_id = created.json()["task_id"]
 
         events = await client.get(f"/v1/tasks/{task_id}/events")
-        assert events.status_code == 200
-        assert events.json()["events"]
+    assert events.status_code == 200
+    assert events.json()["events"]
+
+
+@pytest.mark.asyncio
+async def test_list_recent_tasks_returns_latest_tasks_first():
+    async with _client() as client:
+        first = await client.post("/v1/tasks", json={"goal": "First task", "allowed_tools": ["shell"]})
+        second = await client.post("/v1/tasks", json={"goal": "Second task", "allowed_tools": ["git"]})
+
+        response = await client.get("/v1/tasks")
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert response.status_code == 200
+    tasks = response.json()["tasks"]
+    assert [task["task_id"] for task in tasks[:2]] == [
+        second.json()["task_id"],
+        first.json()["task_id"],
+    ]
+    assert tasks[0]["goal"] == "Second task"
+    assert tasks[0]["allowed_tools"] == ["git"]
+    assert tasks[0]["status"] == "created"
+    assert "created_at" in tasks[0]
 
 
 @pytest.mark.asyncio

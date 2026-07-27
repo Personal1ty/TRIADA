@@ -5,7 +5,7 @@ import json
 from collections.abc import AsyncIterator
 from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException, Request, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.audit.projection import (
@@ -17,7 +17,14 @@ from app.audit.projection import (
 from app.contracts.loader import load_default_swarm_contract
 from app.llm.runtime_config import LLMProviderConfig
 from app.schemas.llm import LLMConfigRequest, LLMConfigResponse, LLMTestResponse
-from app.schemas.tasks import ApprovalRequest, CreateTaskRequest, TaskActionResponse, TaskEventsResponse, TaskResponse
+from app.schemas.tasks import (
+    ApprovalRequest,
+    CreateTaskRequest,
+    TaskActionResponse,
+    TaskEventsResponse,
+    TaskListResponse,
+    TaskResponse,
+)
 
 router = APIRouter(prefix="/v1")
 
@@ -94,6 +101,12 @@ async def create_task(payload: CreateTaskRequest, request: Request) -> TaskRespo
         metadata=payload.metadata,
     )
     return _task_response(task)
+
+
+@router.get("/tasks", response_model=TaskListResponse)
+async def list_tasks(request: Request, limit: int = Query(default=20, ge=1, le=100)) -> TaskListResponse:
+    tasks = await request.app.state.task_service.list_tasks(limit=limit)
+    return TaskListResponse(tasks=[_task_summary_response(task) for task in tasks])
 
 
 @router.get("/tasks/{task_id}", response_model=TaskResponse)
@@ -251,6 +264,18 @@ async def _event_id_belongs_to_trace(request: Request, trace_id: UUID, event_id:
 
 def _task_response(task) -> TaskResponse:
     return TaskResponse(task_id=str(task.id), trace_id=str(task.trace_id), status=task.status)
+
+
+def _task_summary_response(task) -> dict:
+    return {
+        "task_id": str(task.id),
+        "trace_id": str(task.trace_id),
+        "status": task.status,
+        "goal": task.goal,
+        "allowed_tools": task.allowed_tools,
+        "created_at": task.created_at.isoformat(),
+        "updated_at": task.updated_at.isoformat(),
+    }
 
 
 def _task_action_response(task, action: str) -> TaskActionResponse:

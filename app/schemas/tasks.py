@@ -45,6 +45,24 @@ class TaskResponse(BaseModel):
     status: str
 
 
+class TaskSummaryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str
+    trace_id: str
+    status: str
+    goal: str
+    allowed_tools: list[str]
+    created_at: str
+    updated_at: str
+
+
+class TaskListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tasks: list[TaskSummaryResponse]
+
+
 class TaskEventsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

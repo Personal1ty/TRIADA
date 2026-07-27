@@ -32,6 +32,11 @@ async def test_get_local_swarm_ui():
     assert 'id="thinking"' in response.text
     assert 'id="llm-config"' in response.text
     assert 'id="llm-clear-api-key"' in response.text
+    assert 'id="create-task-form"' in response.text
+    assert 'id="run-task"' in response.text
+    assert 'id="event-feed"' in response.text
+    assert "/v1/tasks" in response.text
+    assert "/run_once" in response.text
 
 
 def test_local_swarm_ui_is_packaged():

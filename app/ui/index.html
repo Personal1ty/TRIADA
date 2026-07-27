@@ -93,16 +93,26 @@
     }
 
     input,
-    select {
+    select,
+    textarea {
       width: min(440px, 48vw);
       min-width: 220px;
-      height: 34px;
       padding: 6px 10px;
       border: 1px solid #b8c1cc;
       border-radius: 6px;
       background: #ffffff;
       color: var(--text);
       font: inherit;
+    }
+
+    input,
+    select {
+      height: 34px;
+    }
+
+    textarea {
+      min-height: 78px;
+      resize: vertical;
     }
 
     input[type="checkbox"] {
@@ -234,6 +244,18 @@
       gap: 4px;
     }
 
+    .event-feed li,
+    .task-list li {
+      display: grid;
+      gap: 4px;
+    }
+
+    .event-type {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
     .thinking-meta {
       display: flex;
       flex-wrap: wrap;
@@ -275,6 +297,7 @@
 
       input,
       select,
+      textarea,
       button {
         width: 100%;
         min-width: 0;
@@ -345,6 +368,35 @@
         </div>
       </section>
 
+      <section id="task-runner">
+        <h2>Task Runner</h2>
+        <div class="panel-body">
+          <form class="form-grid" id="create-task-form">
+            <div class="field">
+              <label for="task-goal">Goal</label>
+              <textarea id="task-goal" name="task-goal" placeholder="Inspect repository status"></textarea>
+            </div>
+            <div class="field">
+              <label for="task-tools">Allowed tools</label>
+              <input id="task-tools" name="task-tools" type="text" autocomplete="off" value="git" placeholder="git, echo">
+            </div>
+            <div class="field">
+              <label for="task-criteria">Acceptance criteria</label>
+              <input id="task-criteria" name="task-criteria" type="text" autocomplete="off" value="return useful result" placeholder="criterion one, criterion two">
+            </div>
+            <div class="button-row">
+              <button id="create-task" type="submit">Create</button>
+              <button id="create-run-task" type="button">Create & Run</button>
+              <button id="run-task" type="button" disabled>Run once</button>
+            </div>
+          </form>
+          <p class="status" id="task-status">Create a task or load an existing task id.</p>
+          <ul class="task-list" id="recent-tasks">
+            <li class="status">Loading recent tasks...</li>
+          </ul>
+        </div>
+      </section>
+
       <section id="thinking">
         <h2>Thinking Summaries</h2>
         <div class="panel-body">
@@ -358,6 +410,14 @@
       <h2>Swarm Graph</h2>
       <div class="panel-body graph-wrap" id="graph-body">
         <p class="status">Enter a task id to load /v1/tasks/{task_id}/swarm-graph.</p>
+      </div>
+    </section>
+
+    <section id="events">
+      <h2>Event Feed</h2>
+      <div class="panel-body">
+        <p class="status" id="events-status">Create, run, or load a task to inspect audit events.</p>
+        <ul class="event-feed" id="event-feed"></ul>
       </div>
     </section>
   </main>
@@ -380,9 +440,21 @@
     const taskForm = document.getElementById("task-form");
     const taskInput = document.getElementById("task-id");
     const loadTaskButton = document.getElementById("load-task");
+    const createTaskForm = document.getElementById("create-task-form");
+    const taskGoal = document.getElementById("task-goal");
+    const taskTools = document.getElementById("task-tools");
+    const taskCriteria = document.getElementById("task-criteria");
+    const createTaskButton = document.getElementById("create-task");
+    const createRunTaskButton = document.getElementById("create-run-task");
+    const runTaskButton = document.getElementById("run-task");
+    const taskStatus = document.getElementById("task-status");
+    const recentTasks = document.getElementById("recent-tasks");
     const graphBody = document.getElementById("graph-body");
     const thinkingStatus = document.getElementById("thinking-status");
     const thinkingList = document.getElementById("thinking-list");
+    const eventsStatus = document.getElementById("events-status");
+    const eventFeed = document.getElementById("event-feed");
+    let currentTaskId = "";
 
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -439,6 +511,13 @@
         payload.clear_api_key = true;
       }
       return payload;
+    }
+
+    function parseList(value) {
+      return String(value || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
     }
 
     async function loadLlmConfig() {
@@ -580,6 +659,31 @@
       `).join("");
     }
 
+    function renderEvents(payload) {
+      const events = Array.isArray(payload.events) ? payload.events : [];
+      eventsStatus.textContent = events.length ? `${events.length} audit event${events.length === 1 ? "" : "s"}.` : "No events are available for this task.";
+      eventFeed.innerHTML = events.slice().reverse().map((event) => `
+        <li>
+          <div>
+            <span class="event-type">${escapeHtml(event.event_type)}</span>
+            <span class="muted">${escapeHtml(event.agent_id || "agent")}</span>
+          </div>
+          <small>${escapeHtml(event.created_at || "")}</small>
+        </li>
+      `).join("");
+    }
+
+    function renderRecentTasks(payload) {
+      const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+      recentTasks.innerHTML = tasks.map((task) => `
+        <li>
+          <button type="button" class="task-link" data-task-id="${escapeHtml(task.task_id)}">${escapeHtml(task.status)}</button>
+          <span>${escapeHtml(task.goal)}</span>
+          <small class="muted">${escapeHtml(task.task_id)}</small>
+        </li>
+      `).join("") || '<li class="status">No recent tasks.</li>';
+    }
+
     async function loadContract() {
       try {
         renderContract(await fetchJson(contractUrl));
@@ -588,17 +692,40 @@
       }
     }
 
+    async function loadRecentTasks() {
+      try {
+        renderRecentTasks(await fetchJson("/v1/tasks"));
+      } catch (error) {
+        recentTasks.innerHTML = `<li class="status error">Unable to load recent tasks: ${escapeHtml(error.message)}</li>`;
+      }
+    }
+
+    async function loadEvents(taskId) {
+      try {
+        renderEvents(await fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/events`));
+      } catch (error) {
+        eventsStatus.textContent = `Unable to load events: ${error.message}`;
+        eventsStatus.classList.add("error");
+      }
+    }
+
     async function loadTask(taskId) {
+      currentTaskId = taskId;
+      taskInput.value = taskId;
+      runTaskButton.disabled = false;
       const graphUrl = `/v1/tasks/${encodeURIComponent(taskId)}/swarm-graph`;
       const thinkingUrl = `/v1/tasks/${encodeURIComponent(taskId)}/thinking-summary`;
+      const taskUrl = `/v1/tasks/${encodeURIComponent(taskId)}`;
       loadTaskButton.disabled = true;
       graphBody.innerHTML = `<p class="status">Loading ${escapeHtml(graphUrl)}...</p>`;
       thinkingStatus.textContent = `Loading ${thinkingUrl}...`;
       thinkingList.innerHTML = "";
       try {
-        const [graph, thinking] = await Promise.all([fetchJson(graphUrl), fetchJson(thinkingUrl)]);
+        const [task, graph, thinking] = await Promise.all([fetchJson(taskUrl), fetchJson(graphUrl), fetchJson(thinkingUrl)]);
+        taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
         renderGraph(graph);
         renderThinking(thinking);
+        await loadEvents(taskId);
       } catch (error) {
         graphBody.innerHTML = `<p class="status error">Unable to load task: ${escapeHtml(error.message)}</p>`;
         thinkingStatus.textContent = "Task load failed.";
@@ -607,11 +734,88 @@
       }
     }
 
+    async function createTask(runAfterCreate) {
+      const goal = taskGoal.value.trim();
+      if (!goal) {
+        taskStatus.textContent = "Goal is required.";
+        taskStatus.classList.add("error");
+        return;
+      }
+      createTaskButton.disabled = true;
+      createRunTaskButton.disabled = true;
+      taskStatus.classList.remove("error");
+      taskStatus.textContent = "Creating task...";
+      try {
+        const created = await postJson("/v1/tasks", {
+          goal,
+          allowed_tools: parseList(taskTools.value),
+          acceptance_criteria: parseList(taskCriteria.value)
+        });
+        currentTaskId = created.task_id;
+        taskInput.value = created.task_id;
+        runTaskButton.disabled = false;
+        taskStatus.textContent = `Task ${created.task_id}: ${created.status}`;
+        await loadRecentTasks();
+        if (runAfterCreate) {
+          await runCurrentTask();
+        } else {
+          await loadTask(created.task_id);
+        }
+      } catch (error) {
+        taskStatus.textContent = `Unable to create task: ${error.message}`;
+        taskStatus.classList.add("error");
+      } finally {
+        createTaskButton.disabled = false;
+        createRunTaskButton.disabled = false;
+      }
+    }
+
+    async function runCurrentTask() {
+      if (!currentTaskId) {
+        taskStatus.textContent = "Load or create a task first.";
+        taskStatus.classList.add("error");
+        return;
+      }
+      runTaskButton.disabled = true;
+      taskStatus.classList.remove("error");
+      taskStatus.textContent = `Running ${currentTaskId}...`;
+      try {
+        const result = await postJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/run_once`, {});
+        taskStatus.textContent = `Task ${result.task_id}: ${result.status}`;
+        await Promise.all([loadTask(currentTaskId), loadRecentTasks()]);
+      } catch (error) {
+        taskStatus.textContent = `Unable to run task: ${error.message}`;
+        taskStatus.classList.add("error");
+      } finally {
+        runTaskButton.disabled = false;
+      }
+    }
+
     taskForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const taskId = taskInput.value.trim();
       if (taskId) {
         loadTask(taskId);
+      }
+    });
+
+    createTaskForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      createTask(false);
+    });
+
+    createRunTaskButton.addEventListener("click", () => {
+      createTask(true);
+    });
+
+    runTaskButton.addEventListener("click", () => {
+      runCurrentTask();
+    });
+
+    recentTasks.addEventListener("click", (event) => {
+      const button = event.target.closest(".task-link");
+      if (button?.dataset.taskId) {
+        loadTask(button.dataset.taskId);
       }
     });
 
@@ -626,6 +830,7 @@
 
     loadLlmConfig();
     loadContract();
+    loadRecentTasks();
   </script>
 </body>
 </html>

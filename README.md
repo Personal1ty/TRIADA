@@ -233,6 +233,7 @@ Core endpoints under `/v1`:
   remove it.
 - `POST /v1/llm/test` checks the currently configured provider.
 - `GET /v1/swarm/contract` returns the active default swarm contract.
+- `GET /v1/tasks` lists recent tasks for dashboards and local operators.
 - `POST /v1/tasks` creates a task.
 - `GET /v1/tasks/{task_id}` returns task status.
 - `GET /v1/tasks/{task_id}/events` returns redacted audit events.
@@ -248,10 +249,11 @@ Local dashboard:
 
 - `GET /ui` opens a compact local TRIADA Swarm dashboard.
 - The dashboard reads `/v1/llm/config`, `/v1/swarm/contract`,
+  `/v1/tasks`, `/v1/tasks/{task_id}/events`,
   `/v1/tasks/{task_id}/swarm-graph`, and `/v1/tasks/{task_id}/thinking-summary`.
 - It can save/test the active LLM provider and shows contract routes, graph
-  edges, and public thinking summaries. Raw reasoning stays in sensitive audit
-  events and is not displayed by this UI.
+  edges, task runs, audit events, and public thinking summaries. Raw reasoning
+  stays in sensitive audit events and is not displayed by this UI.
 
 Example:
 
