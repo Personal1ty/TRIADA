@@ -250,6 +250,14 @@
       gap: 4px;
     }
 
+    .inline-controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
     .event-type {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 12px;
@@ -416,6 +424,13 @@
     <section id="events">
       <h2>Event Feed</h2>
       <div class="panel-body">
+        <div class="inline-controls">
+          <label class="controls" for="event-auto-refresh">
+            <input id="event-auto-refresh" name="event-auto-refresh" type="checkbox" checked>
+            <span>Auto-refresh</span>
+          </label>
+          <button id="refresh-events" type="button">Refresh now</button>
+        </div>
         <p class="status" id="events-status">Create, run, or load a task to inspect audit events.</p>
         <ul class="event-feed" id="event-feed"></ul>
       </div>
@@ -454,7 +469,11 @@
     const thinkingList = document.getElementById("thinking-list");
     const eventsStatus = document.getElementById("events-status");
     const eventFeed = document.getElementById("event-feed");
+    const eventAutoRefresh = document.getElementById("event-auto-refresh");
+    const refreshEventsButton = document.getElementById("refresh-events");
     let currentTaskId = "";
+    let eventPollTimer = null;
+    const terminalStatuses = new Set(["completed", "blocked", "failed", "cancelled", "corrections_required"]);
 
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -709,6 +728,48 @@
       }
     }
 
+    function stopEventPolling() {
+      if (eventPollTimer !== null) {
+        clearInterval(eventPollTimer);
+        eventPollTimer = null;
+      }
+    }
+
+    function startEventPolling() {
+      stopEventPolling();
+      if (!eventAutoRefresh.checked || !currentTaskId) {
+        return;
+      }
+      eventPollTimer = setInterval(() => {
+        refreshCurrentTask({ quiet: true });
+      }, 2000);
+    }
+
+    async function refreshCurrentTask(options = {}) {
+      if (!currentTaskId) {
+        return;
+      }
+      try {
+        const task = await fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}`);
+        taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
+        const [graph, thinking] = await Promise.all([
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/swarm-graph`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/thinking-summary`)
+        ]);
+        renderGraph(graph);
+        renderThinking(thinking);
+        await loadEvents(currentTaskId);
+        if (terminalStatuses.has(task.status)) {
+          stopEventPolling();
+        }
+      } catch (error) {
+        if (!options.quiet) {
+          eventsStatus.textContent = `Unable to refresh task: ${error.message}`;
+          eventsStatus.classList.add("error");
+        }
+      }
+    }
+
     async function loadTask(taskId) {
       currentTaskId = taskId;
       taskInput.value = taskId;
@@ -726,6 +787,11 @@
         renderGraph(graph);
         renderThinking(thinking);
         await loadEvents(taskId);
+        if (!terminalStatuses.has(task.status)) {
+          startEventPolling();
+        } else {
+          stopEventPolling();
+        }
       } catch (error) {
         graphBody.innerHTML = `<p class="status error">Unable to load task: ${escapeHtml(error.message)}</p>`;
         thinkingStatus.textContent = "Task load failed.";
@@ -755,6 +821,7 @@
         taskInput.value = created.task_id;
         runTaskButton.disabled = false;
         taskStatus.textContent = `Task ${created.task_id}: ${created.status}`;
+        startEventPolling();
         await loadRecentTasks();
         if (runAfterCreate) {
           await runCurrentTask();
@@ -780,6 +847,7 @@
       taskStatus.classList.remove("error");
       taskStatus.textContent = `Running ${currentTaskId}...`;
       try {
+        startEventPolling();
         const result = await postJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/run_once`, {});
         taskStatus.textContent = `Task ${result.task_id}: ${result.status}`;
         await Promise.all([loadTask(currentTaskId), loadRecentTasks()]);
@@ -810,6 +878,18 @@
 
     runTaskButton.addEventListener("click", () => {
       runCurrentTask();
+    });
+
+    refreshEventsButton.addEventListener("click", () => {
+      refreshCurrentTask();
+    });
+
+    eventAutoRefresh.addEventListener("change", () => {
+      if (eventAutoRefresh.checked) {
+        startEventPolling();
+      } else {
+        stopEventPolling();
+      }
     });
 
     recentTasks.addEventListener("click", (event) => {

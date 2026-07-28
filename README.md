@@ -252,7 +252,8 @@ Local dashboard:
   `/v1/tasks`, `/v1/tasks/{task_id}/events`,
   `/v1/tasks/{task_id}/swarm-graph`, and `/v1/tasks/{task_id}/thinking-summary`.
 - It can save/test the active LLM provider and shows contract routes, graph
-  edges, task runs, audit events, and public thinking summaries. Raw reasoning
+  edges, task runs, audit events, and public thinking summaries. The selected
+  task and event feed can auto-refresh while a run is active. Raw reasoning
   stays in sensitive audit events and is not displayed by this UI.
 
 Example:

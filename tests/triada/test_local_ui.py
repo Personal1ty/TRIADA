@@ -35,6 +35,10 @@ async def test_get_local_swarm_ui():
     assert 'id="create-task-form"' in response.text
     assert 'id="run-task"' in response.text
     assert 'id="event-feed"' in response.text
+    assert 'id="event-auto-refresh"' in response.text
+    assert 'id="event-auto-refresh" name="event-auto-refresh" type="checkbox" checked' in response.text
+    assert 'id="refresh-events"' in response.text
+    assert '"waiting_approval"' not in response.text.partition("const terminalStatuses = new Set(")[2].partition(");")[0]
     assert "/v1/tasks" in response.text
     assert "/run_once" in response.text
 
