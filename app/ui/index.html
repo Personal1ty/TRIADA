@@ -154,6 +154,31 @@
       gap: 5px;
     }
 
+    .compact-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .pair-editor {
+      display: grid;
+      gap: 8px;
+      margin: 10px 0;
+    }
+
+    .pair-row {
+      display: grid;
+      grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(140px, 1fr) 92px 38px;
+      gap: 8px;
+      align-items: end;
+    }
+
+    .pair-row button {
+      width: 38px;
+      padding: 0;
+    }
+
     .button-row {
       display: flex;
       flex-wrap: wrap;
@@ -227,6 +252,24 @@
     .graph-wrap {
       overflow: auto;
       min-height: 300px;
+    }
+
+    .graph-summary {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .graph-route-list {
+      margin-top: 10px;
+    }
+
+    .graph-node-meta {
+      fill: var(--muted);
+      font-size: 10px;
+      font-weight: 500;
+      text-anchor: middle;
+      dominant-baseline: middle;
     }
 
     svg {
@@ -334,6 +377,15 @@
         width: 100%;
         min-width: 0;
       }
+
+      .compact-grid,
+      .pair-row {
+        grid-template-columns: 1fr;
+      }
+
+      .pair-row button {
+        width: 100%;
+      }
     }
   </style>
 </head>
@@ -427,6 +479,8 @@
       <section id="graph">
         <h2>Swarm Graph</h2>
         <div class="panel-body graph-wrap" id="graph-body">
+          <p class="graph-summary" id="graph-summary">No route graph loaded.</p>
+          <ul class="graph-route-list" id="graph-route-list"></ul>
           <p class="status">Enter a task id to load /v1/tasks/{task_id}/swarm-graph.</p>
         </div>
       </section>
@@ -440,6 +494,7 @@
               <span>Auto-refresh</span>
             </label>
             <button id="refresh-events" type="button">Refresh now</button>
+            <button id="load-more-events" type="button" disabled>Load more</button>
           </div>
           <p class="status" id="events-status">Create, run, or load a task to inspect audit events.</p>
           <ul class="event-feed" id="event-feed"></ul>
@@ -484,6 +539,48 @@
             <button id="refresh-contract-versions" type="button">Refresh versions</button>
             <button id="load-contract-version" type="button">Load version</button>
             <button id="save-contract" type="button">Save contract</button>
+          </div>
+          <div class="form-grid" id="contract-form">
+            <div class="field">
+              <label for="contract-version">Contract version</label>
+              <input id="contract-version" name="contract-version" type="text" autocomplete="off" placeholder="local-v1">
+            </div>
+            <div class="compact-grid">
+              <div class="field">
+                <label for="chief-auditor-id">Chief auditor</label>
+                <input id="chief-auditor-id" name="chief-auditor-id" type="text" autocomplete="off" placeholder="chief-auditor">
+              </div>
+              <label class="controls" for="chief-auditor-strict">
+                <input id="chief-auditor-strict" name="chief-auditor-strict" type="checkbox">
+                <span>Strict mode</span>
+              </label>
+              <div class="field">
+                <label for="scaling-default-pairs">Default pairs</label>
+                <input id="scaling-default-pairs" name="scaling-default-pairs" type="number" min="3" step="1">
+              </div>
+            </div>
+            <div class="compact-grid">
+              <div class="field">
+                <label for="scaling-min-pairs">Minimum pairs</label>
+                <input id="scaling-min-pairs" name="scaling-min-pairs" type="number" min="3" step="1">
+              </div>
+              <div class="field">
+                <label for="scaling-max-pairs">Maximum pairs</label>
+                <input id="scaling-max-pairs" name="scaling-max-pairs" type="number" min="3" step="1">
+              </div>
+              <div class="field">
+                <label for="topology-min-pairs">Topology minimum</label>
+                <input id="topology-min-pairs" name="topology-min-pairs" type="number" min="3" step="1">
+              </div>
+            </div>
+            <div>
+              <label>Worker-auditor pairs</label>
+              <div class="pair-editor" id="worker-pair-editor"></div>
+              <div class="button-row">
+                <button id="add-worker-pair" type="button">Add pair</button>
+                <button id="sync-contract-json" type="button">Sync JSON</button>
+              </div>
+            </div>
           </div>
           <textarea id="contract-json" name="contract-json" spellcheck="false" placeholder="Swarm contract JSON"></textarea>
           <p class="status" id="contract-status">Loading /v1/swarm/contract...</p>
@@ -533,6 +630,16 @@
     const refreshContractVersionsButton = document.getElementById("refresh-contract-versions");
     const loadContractVersionButton = document.getElementById("load-contract-version");
     const saveContractButton = document.getElementById("save-contract");
+    const contractVersionInput = document.getElementById("contract-version");
+    const chiefAuditorId = document.getElementById("chief-auditor-id");
+    const chiefAuditorStrict = document.getElementById("chief-auditor-strict");
+    const scalingDefaultPairs = document.getElementById("scaling-default-pairs");
+    const scalingMinPairs = document.getElementById("scaling-min-pairs");
+    const scalingMaxPairs = document.getElementById("scaling-max-pairs");
+    const topologyMinPairs = document.getElementById("topology-min-pairs");
+    const workerPairEditor = document.getElementById("worker-pair-editor");
+    const addWorkerPairButton = document.getElementById("add-worker-pair");
+    const syncContractJsonButton = document.getElementById("sync-contract-json");
     const contractJson = document.getElementById("contract-json");
     const contractStatus = document.getElementById("contract-status");
     const taskForm = document.getElementById("task-form");
@@ -554,6 +661,7 @@
     const eventFeed = document.getElementById("event-feed");
     const eventAutoRefresh = document.getElementById("event-auto-refresh");
     const refreshEventsButton = document.getElementById("refresh-events");
+    const loadMoreEventsButton = document.getElementById("load-more-events");
     const approvalQueue = document.getElementById("approval-queue");
     const approvalsStatus = document.getElementById("approvals-status");
     const refreshApprovalsButton = document.getElementById("refresh-approvals");
@@ -563,6 +671,8 @@
     const rawReasoningOutput = document.getElementById("raw-reasoning-output");
     let currentTaskId = "";
     let eventPollTimer = null;
+    let nextEventsCursor = null;
+    let currentContract = null;
     const terminalStatuses = new Set(["completed", "blocked", "failed", "cancelled", "corrections_required"]);
 
     function escapeHtml(value) {
@@ -680,11 +790,91 @@
       return `${contract.name}@${contract.version}`;
     }
 
+    function toPositiveInteger(value, fallback) {
+      const parsed = Number.parseInt(value, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    }
+
+    function renderPairEditor(pairs) {
+      workerPairEditor.innerHTML = pairs.map((pair, index) => `
+        <div class="pair-row" data-index="${index}">
+          <div class="field">
+            <label for="worker-id-${index}">Worker</label>
+            <input id="worker-id-${index}" class="pair-worker" type="text" value="${escapeHtml(pair.worker_id || "")}">
+          </div>
+          <div class="field">
+            <label for="auditor-id-${index}">Auditor</label>
+            <input id="auditor-id-${index}" class="pair-auditor" type="text" value="${escapeHtml(pair.auditor_id || "")}">
+          </div>
+          <div class="field">
+            <label for="pair-capabilities-${index}">Capabilities</label>
+            <input id="pair-capabilities-${index}" class="pair-capabilities" type="text" value="${escapeHtml((pair.capabilities || []).join(", "))}">
+          </div>
+          <div class="field">
+            <label for="pair-parallel-${index}">Parallel</label>
+            <input id="pair-parallel-${index}" class="pair-parallel" type="number" min="1" step="1" value="${escapeHtml(pair.max_parallel_steps || 1)}">
+          </div>
+          <button type="button" class="remove-worker-pair" aria-label="Remove pair">x</button>
+        </div>
+      `).join("");
+    }
+
+    function renderContractForm(contract) {
+      contractVersionInput.value = contract.contract_version || "";
+      chiefAuditorId.value = contract.topology?.chief_auditor?.agent_id || "chief-auditor";
+      chiefAuditorStrict.checked = Boolean(contract.topology?.chief_auditor?.strict_mode);
+      scalingDefaultPairs.value = contract.swarm_scaling?.default_pairs ?? 3;
+      scalingMinPairs.value = contract.swarm_scaling?.min_pairs ?? 3;
+      scalingMaxPairs.value = contract.swarm_scaling?.max_pairs ?? 12;
+      topologyMinPairs.value = contract.topology?.min_worker_auditor_pairs ?? 3;
+      renderPairEditor(Array.isArray(contract.worker_auditor_pairs) ? contract.worker_auditor_pairs : []);
+    }
+
+    function pairsFromEditor() {
+      return Array.from(workerPairEditor.querySelectorAll(".pair-row")).map((row) => ({
+        worker_id: row.querySelector(".pair-worker").value.trim(),
+        auditor_id: row.querySelector(".pair-auditor").value.trim(),
+        capabilities: parseList(row.querySelector(".pair-capabilities").value),
+        max_parallel_steps: toPositiveInteger(row.querySelector(".pair-parallel").value, 1)
+      })).filter((pair) => pair.worker_id || pair.auditor_id);
+    }
+
+    function contractFromForm() {
+      const base = JSON.parse(contractJson.value || "{}");
+      const pairs = pairsFromEditor();
+      base.contract_version = contractVersionInput.value.trim() || base.contract_version || "local-v1";
+      base.topology = base.topology || {};
+      base.topology.chief_auditor = base.topology.chief_auditor || {};
+      base.topology.chief_auditor.agent_id = chiefAuditorId.value.trim() || "chief-auditor";
+      base.topology.chief_auditor.strict_mode = chiefAuditorStrict.checked;
+      base.topology.min_worker_auditor_pairs = toPositiveInteger(topologyMinPairs.value, 3);
+      base.worker_auditor_pairs = pairs;
+      base.swarm_scaling = base.swarm_scaling || {};
+      base.swarm_scaling.default_pairs = toPositiveInteger(scalingDefaultPairs.value, 3);
+      base.swarm_scaling.min_pairs = toPositiveInteger(scalingMinPairs.value, 3);
+      base.swarm_scaling.max_pairs = toPositiveInteger(scalingMaxPairs.value, 12);
+      return base;
+    }
+
+    function syncContractJsonFromForm() {
+      try {
+        const contract = contractFromForm();
+        contractJson.value = JSON.stringify(contract, null, 2);
+        contractStatus.textContent = "Contract JSON synced from form.";
+        contractStatus.classList.remove("error");
+      } catch (error) {
+        contractStatus.textContent = `Unable to sync contract JSON: ${error.message}`;
+        contractStatus.classList.add("error");
+      }
+    }
+
     function renderContract(contract) {
+      currentContract = contract;
       const pairs = Array.isArray(contract.worker_auditor_pairs) ? contract.worker_auditor_pairs : [];
       const routes = Array.isArray(contract.route_map) ? contract.route_map : [];
       pairCount.textContent = String(pairs.length);
       contractJson.value = JSON.stringify(contract, null, 2);
+      renderContractForm(contract);
       contractStatus.textContent = `Loaded contract ${contract.contract_version || "unknown"}.`;
       routeMap.innerHTML = routes.map((route) => `
         <li class="route">
@@ -702,7 +892,11 @@
       const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
       const edges = Array.isArray(graph.edges) ? graph.edges : [];
       if (!nodes.length) {
-        graphBody.innerHTML = '<p class="status">No swarm route graph events are available for this task.</p>';
+        graphBody.innerHTML = `
+          <p class="graph-summary" id="graph-summary">No route graph loaded.</p>
+          <ul class="graph-route-list" id="graph-route-list"></ul>
+          <p class="status">No swarm route graph events are available for this task.</p>
+        `;
         return;
       }
 
@@ -734,15 +928,32 @@
 
       const nodeMarkup = nodes.map((node) => {
         const position = positions.get(node.id);
+        const label = node.label || node.id;
+        const meta = `${node.incoming_count || 0} in / ${node.outgoing_count || 0} out`;
         return `
           <g class="node">
             <rect x="${position.x - 55}" y="${position.y - 22}" width="110" height="44" rx="7"></rect>
-            <text x="${position.x}" y="${position.y}">${escapeHtml(node.id)}</text>
+            <text x="${position.x}" y="${position.y - 6}">${escapeHtml(label)}</text>
+            <text class="graph-node-meta" x="${position.x}" y="${position.y + 10}">${escapeHtml(meta)}</text>
           </g>
         `;
       }).join("");
 
+      const summary = graph.summary || {};
+      const routeList = edges.map((edge) => `
+        <li class="route">
+          <div>
+            <span class="pill">${escapeHtml(edge.label || edge.reason)}</span>
+            <code>${escapeHtml(edge.source)}</code>
+            <span class="muted">to</span>
+            <code>${escapeHtml(edge.target)}</code>
+          </div>
+          <small>${escapeHtml(edge.input_contract)} -> ${escapeHtml(edge.output_contract)} · ${escapeHtml(edge.status || "selected")}</small>
+        </li>
+      `).join("");
+
       graphBody.innerHTML = `
+        <p class="graph-summary" id="graph-summary">${escapeHtml(summary.node_count ?? nodes.length)} agents, ${escapeHtml(summary.edge_count ?? edges.length)} selected route${edges.length === 1 ? "" : "s"}.</p>
         <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Task swarm route graph">
           <defs>
             <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
@@ -752,6 +963,7 @@
           ${edgeMarkup}
           ${nodeMarkup}
         </svg>
+        <ul class="graph-route-list" id="graph-route-list">${routeList}</ul>
       `;
     }
 
@@ -770,10 +982,13 @@
       `).join("");
     }
 
-    function renderEvents(payload) {
+    function renderEvents(payload, options = {}) {
       const events = Array.isArray(payload.events) ? payload.events : [];
-      eventsStatus.textContent = events.length ? `${events.length} audit event${events.length === 1 ? "" : "s"}.` : "No events are available for this task.";
-      eventFeed.innerHTML = events.slice().reverse().map((event) => `
+      nextEventsCursor = payload.next_cursor || null;
+      loadMoreEventsButton.disabled = !payload.has_more || !nextEventsCursor;
+      const pageText = payload.has_more ? " More events are available." : "";
+      eventsStatus.textContent = events.length ? `${events.length} audit event${events.length === 1 ? "" : "s"} loaded.${pageText}` : "No events are available for this task.";
+      const markup = events.map((event) => `
         <li>
           <div>
             <span class="event-type">${escapeHtml(event.event_type)}</span>
@@ -782,6 +997,11 @@
           <small>${escapeHtml(event.created_at || "")}</small>
         </li>
       `).join("");
+      if (options.append) {
+        eventFeed.insertAdjacentHTML("beforeend", markup);
+      } else {
+        eventFeed.innerHTML = markup;
+      }
       renderRawReasoningRefs(payload);
     }
 
@@ -871,7 +1091,7 @@
     async function saveContract() {
       contractStatus.classList.remove("error");
       try {
-        const payload = JSON.parse(contractJson.value);
+        const payload = contractFromForm();
         renderContract(await postJson("/v1/swarm/contract", payload));
         await loadContractVersions();
       } catch (error) {
@@ -938,9 +1158,16 @@
       rawReasoningOutput.textContent = "";
     }
 
-    async function loadEvents(taskId) {
+    async function loadEvents(taskId, options = {}) {
       try {
-        renderEvents(await fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/events`));
+        const params = new URLSearchParams({ limit: "100" });
+        if (options.after_event_id) {
+          params.set("after_event_id", options.after_event_id);
+        }
+        renderEvents(
+          await fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/events?${params.toString()}`),
+          { append: Boolean(options.append) }
+        );
       } catch (error) {
         eventsStatus.textContent = `Unable to load events: ${error.message}`;
         eventsStatus.classList.add("error");
@@ -1104,6 +1331,12 @@
       refreshCurrentTask();
     });
 
+    loadMoreEventsButton.addEventListener("click", () => {
+      if (currentTaskId && nextEventsCursor) {
+        loadEvents(currentTaskId, { after_event_id: nextEventsCursor, append: true });
+      }
+    });
+
     eventAutoRefresh.addEventListener("change", () => {
       if (eventAutoRefresh.checked) {
         startEventPolling();
@@ -1132,6 +1365,32 @@
 
     saveContractButton.addEventListener("click", () => {
       saveContract();
+    });
+
+    addWorkerPairButton.addEventListener("click", () => {
+      const pairs = pairsFromEditor();
+      const next = pairs.length + 1;
+      pairs.push({
+        worker_id: `worker-${next}`,
+        auditor_id: `auditor-${next}`,
+        capabilities: [],
+        max_parallel_steps: 1
+      });
+      renderPairEditor(pairs);
+    });
+
+    syncContractJsonButton.addEventListener("click", () => {
+      syncContractJsonFromForm();
+    });
+
+    workerPairEditor.addEventListener("click", (event) => {
+      const removeButton = event.target.closest(".remove-worker-pair");
+      if (!removeButton) {
+        return;
+      }
+      const row = removeButton.closest(".pair-row");
+      row?.remove();
+      syncContractJsonFromForm();
     });
 
     approvalQueue.addEventListener("click", (event) => {

@@ -36,20 +36,53 @@ def swarm_graph_from_events(events: list[Any]) -> dict:
             continue
         source_id = str(source)
         target_id = str(target)
-        nodes[source_id] = {"id": source_id}
-        nodes[target_id] = {"id": target_id}
+        nodes.setdefault(source_id, _graph_node(source_id))
+        nodes.setdefault(target_id, _graph_node(target_id))
+        nodes[source_id]["outgoing_count"] += 1
+        nodes[source_id]["last_sequence"] = event.sequence
+        nodes[target_id]["incoming_count"] += 1
+        nodes[target_id]["last_sequence"] = event.sequence
+        if nodes[source_id]["first_sequence"] is None:
+            nodes[source_id]["first_sequence"] = event.sequence
+        if nodes[target_id]["first_sequence"] is None:
+            nodes[target_id]["first_sequence"] = event.sequence
+        reason = _to_json_safe(payload.get("reason"))
         edges.append(
             {
                 "id": str(event.id),
                 "source": source_id,
                 "target": target_id,
-                "reason": _to_json_safe(payload.get("reason")),
+                "reason": reason,
+                "label": f"{event.sequence}. {reason}",
+                "status": "selected",
                 "input_contract": _to_json_safe(payload.get("input_contract")),
                 "output_contract": _to_json_safe(payload.get("output_contract")),
                 "sequence": event.sequence,
             }
         )
-    return {"nodes": list(nodes.values()), "edges": edges}
+    ordered_nodes = sorted(nodes.values(), key=lambda node: (node["first_sequence"] or 0, node["id"]))
+    ordered_edges = sorted(edges, key=lambda edge: edge["sequence"])
+    return {
+        "summary": {
+            "node_count": len(ordered_nodes),
+            "edge_count": len(ordered_edges),
+            "route_reasons": [edge["reason"] for edge in ordered_edges],
+        },
+        "nodes": ordered_nodes,
+        "edges": ordered_edges,
+    }
+
+
+def _graph_node(node_id: str) -> dict:
+    return {
+        "id": node_id,
+        "label": node_id.replace("_", " ").title(),
+        "role": node_id,
+        "incoming_count": 0,
+        "outgoing_count": 0,
+        "first_sequence": None,
+        "last_sequence": None,
+    }
 
 
 def _event_to_public_dict(event: Any) -> dict:

@@ -267,3 +267,18 @@ class TaskCheckpoint(Base):
     state: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
+
+
+class SwarmContractVersion(Base):
+    __tablename__ = "swarm_contract_versions"
+    __table_args__ = (
+        Index("ix_swarm_contract_versions_active_updated_at", "is_active", "updated_at"),
+        Index("ix_swarm_contract_versions_created_at", "created_at"),
+    )
+
+    contract_version: Mapped[str] = mapped_column(String(64), primary_key=True)
+    contract: Mapped[dict] = mapped_column(JSON, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)

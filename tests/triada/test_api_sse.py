@@ -101,6 +101,43 @@ async def test_task_events_can_be_filtered_without_sensitive_payloads():
 
 
 @pytest.mark.asyncio
+async def test_task_events_support_cursor_pagination():
+    app = create_app(testing=True)
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            created = await client.post("/v1/tasks", json={"goal": "Paginate events"})
+            task_id = created.json()["task_id"]
+            trace_id = created.json()["trace_id"]
+            for index in range(5):
+                await app.state.event_repository.append_event(
+                    event_type="custom_page_event",
+                    trace_id=trace_id,
+                    task_id=task_id,
+                    agent_id="tester",
+                    payload={"index": index},
+                )
+
+            first_page = await client.get(f"/v1/tasks/{task_id}/events?event_type=custom_page_event&limit=2")
+            cursor = first_page.json()["next_cursor"]
+            second_page = await client.get(
+                f"/v1/tasks/{task_id}/events?event_type=custom_page_event&limit=2&after_event_id={cursor}"
+            )
+
+    assert first_page.status_code == 200
+    first_payload = first_page.json()
+    assert len(first_payload["events"]) == 2
+    assert first_payload["has_more"] is True
+    assert first_payload["limit"] == 2
+    assert first_payload["next_cursor"] == first_payload["events"][-1]["id"]
+
+    assert second_page.status_code == 200
+    second_payload = second_page.json()
+    assert [event["payload"]["index"] for event in second_payload["events"]] == [2, 3]
+    assert second_payload["has_more"] is True
+    assert second_payload["next_cursor"] == second_payload["events"][-1]["id"]
+
+
+@pytest.mark.asyncio
 async def test_raw_reasoning_reveal_requires_explicit_acknowledgement():
     app = create_app(testing=True)
     async with app.router.lifespan_context(app):

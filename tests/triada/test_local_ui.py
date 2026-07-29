@@ -28,6 +28,9 @@ async def test_get_local_swarm_ui():
     assert "/v1/llm/config" in response.text
     assert "/v1/llm/test" in response.text
     assert 'id="graph"' in response.text
+    assert 'id="graph-summary"' in response.text
+    assert 'id="graph-route-list"' in response.text
+    assert 'class="graph-node-meta"' in response.text
     assert 'id="contracts"' in response.text
     assert 'id="thinking"' in response.text
     assert 'id="runs-tab"' in response.text
@@ -43,6 +46,15 @@ async def test_get_local_swarm_ui():
     assert 'id="raw-reasoning-refs"' in response.text
     assert 'class="reveal-raw-reasoning"' in response.text
     assert 'id="contract-version-select"' in response.text
+    assert 'id="contract-version"' in response.text
+    assert 'id="chief-auditor-id"' in response.text
+    assert 'id="chief-auditor-strict"' in response.text
+    assert 'id="scaling-default-pairs"' in response.text
+    assert 'id="scaling-min-pairs"' in response.text
+    assert 'id="scaling-max-pairs"' in response.text
+    assert 'id="worker-pair-editor"' in response.text
+    assert 'id="add-worker-pair"' in response.text
+    assert 'id="sync-contract-json"' in response.text
     assert 'id="contract-json"' in response.text
     assert 'id="save-contract"' in response.text
     assert 'id="refresh-contract-versions"' in response.text
@@ -54,6 +66,8 @@ async def test_get_local_swarm_ui():
     assert 'id="event-auto-refresh"' in response.text
     assert 'id="event-auto-refresh" name="event-auto-refresh" type="checkbox" checked' in response.text
     assert 'id="refresh-events"' in response.text
+    assert 'id="load-more-events"' in response.text
+    assert "after_event_id" in response.text
     assert '"waiting_approval"' not in response.text.partition("const terminalStatuses = new Set(")[2].partition(");")[0]
     assert "/v1/tasks" in response.text
     assert "/v1/tasks?status=waiting_approval" in response.text

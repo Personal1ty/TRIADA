@@ -33,9 +33,7 @@ router = APIRouter(prefix="/v1")
 
 @router.get("/swarm/contract")
 async def get_swarm_contract(request: Request, version: str | None = Query(default=None, max_length=64)) -> dict:
-    versions = request.app.state.swarm_contract_versions
-    selected_version = version or request.app.state.active_swarm_contract_version
-    contract = versions.get(selected_version)
+    contract = await request.app.state.swarm_contract_repository.get_contract(version)
     if contract is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="swarm contract version not found")
     return contract.model_dump(mode="json")
@@ -43,17 +41,18 @@ async def get_swarm_contract(request: Request, version: str | None = Query(defau
 
 @router.get("/swarm/contracts")
 async def list_swarm_contract_versions(request: Request) -> dict:
+    active_version, versions = await request.app.state.swarm_contract_repository.list_versions()
     return {
-        "active_version": request.app.state.active_swarm_contract_version,
-        "versions": sorted(request.app.state.swarm_contract_versions),
+        "active_version": active_version,
+        "versions": versions,
     }
 
 
 @router.post("/swarm/contract")
 async def save_swarm_contract(payload: dict, request: Request) -> dict:
     contract = SwarmContract.model_validate(payload)
-    request.app.state.swarm_contract_versions[contract.contract_version] = contract
-    request.app.state.active_swarm_contract_version = contract.contract_version
+    await request.app.state.swarm_contract_repository.save_contract(contract, activate=True)
+    request.app.state.execution_engine.set_swarm_contract(contract)
     return contract.model_dump(mode="json")
 
 
@@ -149,20 +148,37 @@ async def list_task_events(
     event_type: str | None = Query(default=None, min_length=1, max_length=255),
     agent_id: str | None = Query(default=None, min_length=1, max_length=255),
     trace_id: UUID | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=200),
+    after_event_id: UUID | None = Query(default=None),
 ) -> TaskEventsResponse:
     task = await _get_task_or_404(task_id, request)
     if trace_id is not None and trace_id != task.trace_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="trace_id not found for task")
+    if after_event_id is not None and not await _event_id_belongs_to_trace(request, task.trace_id, after_event_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="after_event_id not found for task")
     events = await request.app.state.event_repository.list_events(task.trace_id)
     if event_type is not None:
         events = [event for event in events if event.event_type == event_type]
     if agent_id is not None:
         events = [event for event in events if event.agent_id == agent_id]
+    if after_event_id is not None:
+        after_id = str(after_event_id)
+        for index, event in enumerate(events):
+            if event.id == after_id:
+                events = events[index + 1 :]
+                break
+        else:
+            events = []
+    page_events = events[:limit]
+    has_more = len(events) > limit
     return TaskEventsResponse(
         task_id=str(task.id),
         trace_id=str(task.trace_id),
-        raw_reasoning_refs=_raw_reasoning_refs(events),
-        events=_events_without_raw_reasoning(events),
+        limit=limit,
+        next_cursor=str(page_events[-1].id) if has_more and page_events else None,
+        has_more=has_more,
+        raw_reasoning_refs=_raw_reasoning_refs(page_events),
+        events=_events_without_raw_reasoning(page_events),
     )
 
 

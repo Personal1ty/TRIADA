@@ -118,7 +118,8 @@ docker compose up --build
 The Docker service uses `DATABASE_URL=postgresql+asyncpg://triada:triada@postgres:5432/triada`.
 Local PostgreSQL uses the `pgvector/pgvector:pg16` image. Alembic migration
 `0002_enable_pgvector` enables the vector extension for PostgreSQL and skips it
-on SQLite.
+on SQLite. Migration `0003_swarm_contract_versions` stores configurable swarm
+contract versions in the database.
 The default non-Docker setting is `sqlite+aiosqlite:///./triada.db`.
 
 If local port `5432` is already occupied, publish Postgres on another host port:
@@ -233,23 +234,27 @@ Core endpoints under `/v1`:
   remove it.
 - `POST /v1/llm/test` checks the currently configured provider.
 - `GET /v1/swarm/contract` returns the active swarm contract. Optional
-  `version=<contract_version>` loads a saved runtime version.
-- `GET /v1/swarm/contracts` lists runtime contract versions.
-- `POST /v1/swarm/contract` validates and saves a runtime swarm contract
-  version for local configuration.
+  `version=<contract_version>` loads a saved version.
+- `GET /v1/swarm/contracts` lists database-backed contract versions and the
+  active version.
+- `POST /v1/swarm/contract` validates, saves, activates, and applies a swarm
+  contract version for local configuration.
 - `GET /v1/tasks` lists recent tasks for dashboards and local operators.
   Optional `status=waiting_approval` filters the list for approval queues.
 - `POST /v1/tasks` creates a task.
 - `GET /v1/tasks/{task_id}` returns task status.
 - `GET /v1/tasks/{task_id}/events` returns public audit events. Optional
-  `event_type`, `agent_id`, and `trace_id` query parameters filter the task
-  trace. Raw model reasoning payloads are not returned by default; the response
-  exposes `raw_reasoning_refs` for sensitive audit lookup.
+  `event_type`, `agent_id`, `trace_id`, `limit`, and `after_event_id` query
+  parameters filter and page the task trace. Raw model reasoning payloads are
+  not returned by default; the response exposes `raw_reasoning_refs` for
+  sensitive audit lookup.
 - `POST /v1/tasks/{task_id}/raw-reasoning/{event_id}/reveal` returns raw
   reasoning only when `acknowledge_sensitive=true` is provided.
 - `GET /v1/tasks/{task_id}/stream` streams Server-Sent Events.
 - `GET /v1/tasks/{task_id}/thinking-summary` returns public thinking summaries.
-- `GET /v1/tasks/{task_id}/swarm-graph` returns graph-ready route events.
+- `GET /v1/tasks/{task_id}/swarm-graph` returns graph-ready route events with
+  route summary, node roles/counts, edge labels, selected status, and contract
+  refs.
 - `GET /v1/tasks/{task_id}/audit` verifies and returns the audit trace.
 - `GET /v1/tasks/{task_id}/artifacts` returns artifact records.
 - `POST /v1/tasks/{task_id}/approve`, `/cancel`, `/resume`, and `/run_once`
@@ -261,12 +266,15 @@ Local dashboard:
 - The dashboard reads `/v1/llm/config`, `/v1/swarm/contract`,
   `/v1/tasks`, `/v1/tasks/{task_id}/events`,
   `/v1/tasks/{task_id}/swarm-graph`, and `/v1/tasks/{task_id}/thinking-summary`.
-- It can save/test the active LLM provider, edit local swarm contract JSON,
-  show contract routes, graph edges, task runs, audit events, public thinking
-  summaries, raw reasoning refs with an explicit reveal checkbox, and a
-  `waiting_approval` queue with approve actions. The selected task and event
-  feed can auto-refresh while a run is active. Raw reasoning stays in sensitive
-  audit events and is hidden until explicitly revealed.
+- It can save/test the active LLM provider, edit local swarm contracts through
+  forms for chief auditor, scaling rules, and worker-auditor pairs, keep the
+  raw JSON available for advanced changes, show contract routes, graph edges,
+  a readable route list, task runs, audit events, public thinking summaries,
+  raw reasoning refs with an explicit reveal checkbox, and a `waiting_approval`
+  queue with approve actions. The selected task and event feed can auto-refresh
+  while a run is active, and the event feed can load additional pages through
+  the audit-event cursor. Raw reasoning stays in sensitive audit events and is
+  hidden until explicitly revealed.
 
 Safe read-only tools currently supported by the worker: `git status`, `echo`,
 `pytest`, `rg`, `ls`, `cat`, and `sed` without mutating flags such as `-i`.

@@ -8,8 +8,8 @@ from app.main import create_app
 
 
 @asynccontextmanager
-async def _client() -> AsyncIterator[AsyncClient]:
-    app = create_app(testing=True)
+async def _client(*, database_url: str | None = None) -> AsyncIterator[AsyncClient]:
+    app = create_app(testing=True, database_url=database_url)
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             yield client
@@ -46,6 +46,30 @@ async def test_save_and_load_runtime_swarm_contract_version():
 
 
 @pytest.mark.asyncio
+async def test_saved_swarm_contract_versions_survive_app_restart(tmp_path):
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'triada.db'}"
+
+    async with _client(database_url=database_url) as client:
+        current = (await client.get("/v1/swarm/contract")).json()
+        current["contract_version"] = "persisted-test"
+        current["topology"]["chief_auditor"]["strict_mode"] = True
+
+        saved = await client.post("/v1/swarm/contract", json=current)
+
+    assert saved.status_code == 200
+
+    async with _client(database_url=database_url) as client:
+        versions = await client.get("/v1/swarm/contracts")
+        loaded = await client.get("/v1/swarm/contract?version=persisted-test")
+
+    assert versions.status_code == 200
+    assert versions.json()["active_version"] == "persisted-test"
+    assert "persisted-test" in versions.json()["versions"]
+    assert loaded.status_code == 200
+    assert loaded.json()["topology"]["chief_auditor"]["strict_mode"] is True
+
+
+@pytest.mark.asyncio
 async def test_get_task_route_graph():
     async with _client() as client:
         created = await client.post(
@@ -65,6 +89,9 @@ async def test_get_task_route_graph():
     payload = response.json()
     assert payload["nodes"]
     assert payload["edges"]
+    assert payload["summary"]["edge_count"] == len(payload["edges"])
+    assert payload["summary"]["node_count"] == len(payload["nodes"])
+    assert "assign_step" in payload["summary"]["route_reasons"]
 
     reasons = {edge["reason"] for edge in payload["edges"]}
     assert {
@@ -77,3 +104,14 @@ async def test_get_task_route_graph():
     for edge in payload["edges"]:
         assert edge["input_contract"].endswith("@1.0")
         assert edge["output_contract"].endswith("@1.0")
+        assert edge["label"].startswith(f"{edge['sequence']}. ")
+        assert edge["status"] == "selected"
+
+    nodes = {node["id"]: node for node in payload["nodes"]}
+    assert nodes["orchestrator"]["role"] == "orchestrator"
+    assert nodes["orchestrator"]["label"] == "Orchestrator"
+    assert nodes["worker"]["role"] == "worker"
+    assert nodes["assigned_auditor"]["label"] == "Assigned Auditor"
+    assert nodes["chief_auditor"]["role"] == "chief_auditor"
+    assert nodes["human"]["label"] == "Human"
+    assert nodes["orchestrator"]["outgoing_count"] >= 1

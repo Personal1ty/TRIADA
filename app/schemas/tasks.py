@@ -68,6 +68,9 @@ class TaskEventsResponse(BaseModel):
 
     task_id: str
     trace_id: str
+    limit: int
+    next_cursor: str | None = None
+    has_more: bool = False
     raw_reasoning_refs: list[dict[str, Any]] = Field(default_factory=list)
     events: list[dict[str, Any]]
 

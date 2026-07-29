@@ -10,7 +10,7 @@ from app.agents.orchestrator import LLMUnavailableError, Orchestrator, PlanStep,
 from app.agents.worker import Worker, WorkerResult
 from app.config import get_settings
 from app.contracts.loader import load_default_swarm_contract
-from app.contracts.swarm import AgentEndpoint, RouteMapEntry
+from app.contracts.swarm import AgentEndpoint, RouteMapEntry, SwarmContract
 from app.events.models import ToolExecutionRecord
 from app.llm.codex_bridge import CodexBridgeProvider
 from app.llm.fake import FakeLLMProvider
@@ -42,6 +42,9 @@ class ExecutionEngine:
             self._auditor.llm = self._llm
         self._worker_id = worker_id
         self._swarm_contract = load_default_swarm_contract()
+
+    def set_swarm_contract(self, contract: SwarmContract) -> None:
+        self._swarm_contract = contract
 
     async def run_once(self, task: Any) -> str:
         if self._owns_agents:
