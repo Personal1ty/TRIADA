@@ -104,8 +104,12 @@ async def create_task(payload: CreateTaskRequest, request: Request) -> TaskRespo
 
 
 @router.get("/tasks", response_model=TaskListResponse)
-async def list_tasks(request: Request, limit: int = Query(default=20, ge=1, le=100)) -> TaskListResponse:
-    tasks = await request.app.state.task_service.list_tasks(limit=limit)
+async def list_tasks(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+    status_filter: str | None = Query(default=None, alias="status", min_length=1, max_length=64),
+) -> TaskListResponse:
+    tasks = await request.app.state.task_service.list_tasks(limit=limit, status=status_filter)
     return TaskListResponse(tasks=[_task_summary_response(task) for task in tasks])
 
 
@@ -116,13 +120,26 @@ async def get_task(task_id: UUID, request: Request) -> TaskResponse:
 
 
 @router.get("/tasks/{task_id}/events", response_model=TaskEventsResponse)
-async def list_task_events(task_id: UUID, request: Request) -> TaskEventsResponse:
+async def list_task_events(
+    task_id: UUID,
+    request: Request,
+    event_type: str | None = Query(default=None, min_length=1, max_length=255),
+    agent_id: str | None = Query(default=None, min_length=1, max_length=255),
+    trace_id: UUID | None = Query(default=None),
+) -> TaskEventsResponse:
     task = await _get_task_or_404(task_id, request)
+    if trace_id is not None and trace_id != task.trace_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="trace_id not found for task")
     events = await request.app.state.event_repository.list_events(task.trace_id)
+    if event_type is not None:
+        events = [event for event in events if event.event_type == event_type]
+    if agent_id is not None:
+        events = [event for event in events if event.agent_id == agent_id]
     return TaskEventsResponse(
         task_id=str(task.id),
         trace_id=str(task.trace_id),
-        events=events_to_public_response(events),
+        raw_reasoning_refs=_raw_reasoning_refs(events),
+        events=_events_without_raw_reasoning(events),
     )
 
 
@@ -280,6 +297,41 @@ def _task_summary_response(task) -> dict:
 
 def _task_action_response(task, action: str) -> TaskActionResponse:
     return TaskActionResponse(task_id=str(task.id), trace_id=str(task.trace_id), status=task.status, action=action)
+
+
+def _events_without_raw_reasoning(events: list) -> list[dict]:
+    public_events = events_to_public_response(events)
+    for event in public_events:
+        event["payload"] = _strip_raw_reasoning_content(event.get("payload"))
+    return public_events
+
+
+def _strip_raw_reasoning_content(value):
+    if isinstance(value, dict):
+        return {
+            key: _strip_raw_reasoning_content(item)
+            for key, item in value.items()
+            if key != "raw_reasoning_content"
+        }
+    if isinstance(value, list):
+        return [_strip_raw_reasoning_content(item) for item in value]
+    return value
+
+
+def _raw_reasoning_refs(events: list) -> list[dict]:
+    refs: list[dict] = []
+    for event in events:
+        if event.event_type != "model_reasoning_content_captured":
+            continue
+        refs.append(
+            {
+                "event_id": str(event.id),
+                "agent_id": event.agent_id,
+                "sequence": event.sequence,
+                "created_at": event.created_at.isoformat(),
+            }
+        )
+    return refs
 
 
 def _parse_optional_uuid(value: str | None, header_name: str) -> UUID | None:

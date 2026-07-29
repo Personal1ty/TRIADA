@@ -80,6 +80,29 @@
       gap: 16px;
     }
 
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px 24px 0;
+    }
+
+    .tab-button {
+      border-color: #a7b3c2;
+      background: #ffffff;
+      color: var(--text);
+    }
+
+    .tab-button[aria-selected="true"] {
+      border-color: var(--accent-dark);
+      background: var(--accent);
+      color: #ffffff;
+    }
+
+    .tab-panel[hidden] {
+      display: none;
+    }
+
     .controls {
       display: flex;
       align-items: center;
@@ -245,7 +268,8 @@
     }
 
     .event-feed li,
-    .task-list li {
+    .task-list li,
+    .approval-list li {
       display: grid;
       gap: 4px;
     }
@@ -323,8 +347,16 @@
     </form>
   </header>
 
+  <nav class="tabs" aria-label="TRIADA dashboard views">
+    <button class="tab-button" id="runs-tab" type="button" data-tab-target="runs-view" aria-selected="true">Runs</button>
+    <button class="tab-button" id="thinking-tab" type="button" data-tab-target="thinking-view" aria-selected="false">Thinking</button>
+    <button class="tab-button" id="raw-reasoning-tab" type="button" data-tab-target="raw-reasoning-view" aria-selected="false">Raw Reasoning</button>
+    <button class="tab-button" id="contracts-tab" type="button" data-tab-target="contracts-view" aria-selected="false">Contracts</button>
+    <button class="tab-button" id="approvals-tab" type="button" data-tab-target="approvals-view" aria-selected="false">Approvals</button>
+  </nav>
+
   <main>
-    <div class="stack">
+    <div class="stack tab-panel" id="runs-view">
       <section id="llm-config">
         <h2>LLM Provider</h2>
         <div class="panel-body">
@@ -363,19 +395,6 @@
         </div>
       </section>
 
-      <section id="contracts">
-        <h2>Contracts</h2>
-        <div class="panel-body">
-          <div class="metric">
-            <span>Worker auditor pairs</span>
-            <strong id="pair-count">-</strong>
-          </div>
-          <ul id="route-map">
-            <li class="status">Loading /v1/swarm/contract...</li>
-          </ul>
-        </div>
-      </section>
-
       <section id="task-runner">
         <h2>Task Runner</h2>
         <div class="panel-body">
@@ -405,6 +424,30 @@
         </div>
       </section>
 
+      <section id="graph">
+        <h2>Swarm Graph</h2>
+        <div class="panel-body graph-wrap" id="graph-body">
+          <p class="status">Enter a task id to load /v1/tasks/{task_id}/swarm-graph.</p>
+        </div>
+      </section>
+
+      <section id="events">
+        <h2>Event Feed</h2>
+        <div class="panel-body">
+          <div class="inline-controls">
+            <label class="controls" for="event-auto-refresh">
+              <input id="event-auto-refresh" name="event-auto-refresh" type="checkbox" checked>
+              <span>Auto-refresh</span>
+            </label>
+            <button id="refresh-events" type="button">Refresh now</button>
+          </div>
+          <p class="status" id="events-status">Create, run, or load a task to inspect audit events.</p>
+          <ul class="event-feed" id="event-feed"></ul>
+        </div>
+      </section>
+    </div>
+
+    <div class="stack tab-panel" id="thinking-view" hidden>
       <section id="thinking">
         <h2>Thinking Summaries</h2>
         <div class="panel-body">
@@ -414,33 +457,50 @@
       </section>
     </div>
 
-    <section id="graph">
-      <h2>Swarm Graph</h2>
-      <div class="panel-body graph-wrap" id="graph-body">
-        <p class="status">Enter a task id to load /v1/tasks/{task_id}/swarm-graph.</p>
-      </div>
-    </section>
-
-    <section id="events">
-      <h2>Event Feed</h2>
-      <div class="panel-body">
-        <div class="inline-controls">
-          <label class="controls" for="event-auto-refresh">
-            <input id="event-auto-refresh" name="event-auto-refresh" type="checkbox" checked>
-            <span>Auto-refresh</span>
-          </label>
-          <button id="refresh-events" type="button">Refresh now</button>
+    <div class="stack tab-panel" id="raw-reasoning-view" hidden>
+      <section id="raw-reasoning">
+        <h2>Raw Reasoning</h2>
+        <div class="panel-body">
+          <p class="status" id="raw-reasoning-locked">Sensitive raw reasoning is locked. This UI shows public summaries and raw reasoning refs only; raw payload reveal requires an explicit sensitive-data endpoint.</p>
         </div>
-        <p class="status" id="events-status">Create, run, or load a task to inspect audit events.</p>
-        <ul class="event-feed" id="event-feed"></ul>
-      </div>
-    </section>
+      </section>
+    </div>
+
+    <div class="stack tab-panel" id="contracts-view" hidden>
+      <section id="contracts">
+        <h2>Contracts</h2>
+        <div class="panel-body">
+          <div class="metric">
+            <span>Worker auditor pairs</span>
+            <strong id="pair-count">-</strong>
+          </div>
+          <ul id="route-map">
+            <li class="status">Loading /v1/swarm/contract...</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+
+    <div class="stack tab-panel" id="approvals-view" hidden>
+      <section id="approvals">
+        <h2>Approvals</h2>
+        <div class="panel-body">
+          <div class="inline-controls">
+            <button id="refresh-approvals" type="button">Refresh approvals</button>
+          </div>
+          <p class="status" id="approvals-status">Loading /v1/tasks?status=waiting_approval...</p>
+          <ul class="approval-list" id="approval-queue"></ul>
+        </div>
+      </section>
+    </div>
   </main>
 
   <script>
     const llmConfigUrl = "/v1/llm/config";
     const llmTestUrl = "/v1/llm/test";
     const contractUrl = "/v1/swarm/contract";
+    const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
+    const tabPanels = Array.from(document.querySelectorAll(".tab-panel[id$='-view']"));
     const llmForm = document.getElementById("llm-form");
     const llmProvider = document.getElementById("llm-provider");
     const llmBaseUrl = document.getElementById("llm-base-url");
@@ -471,6 +531,9 @@
     const eventFeed = document.getElementById("event-feed");
     const eventAutoRefresh = document.getElementById("event-auto-refresh");
     const refreshEventsButton = document.getElementById("refresh-events");
+    const approvalQueue = document.getElementById("approval-queue");
+    const approvalsStatus = document.getElementById("approvals-status");
+    const refreshApprovalsButton = document.getElementById("refresh-approvals");
     let currentTaskId = "";
     let eventPollTimer = null;
     const terminalStatuses = new Set(["completed", "blocked", "failed", "cancelled", "corrections_required"]);
@@ -703,6 +766,33 @@
       `).join("") || '<li class="status">No recent tasks.</li>';
     }
 
+    function renderApprovalQueue(payload) {
+      const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+      approvalsStatus.textContent = tasks.length ? `${tasks.length} task${tasks.length === 1 ? "" : "s"} waiting approval.` : "No tasks are waiting approval.";
+      approvalQueue.innerHTML = tasks.map((task) => `
+        <li>
+          <div>
+            <button type="button" class="task-link" data-task-id="${escapeHtml(task.task_id)}">${escapeHtml(task.status)}</button>
+            <button type="button" class="approve-task" data-task-id="${escapeHtml(task.task_id)}">Approve</button>
+          </div>
+          <span>${escapeHtml(task.goal)}</span>
+          <small class="muted">${escapeHtml(task.task_id)}</small>
+        </li>
+      `).join("") || '<li class="status">No approvals pending.</li>';
+    }
+
+    function selectTab(targetId) {
+      tabButtons.forEach((button) => {
+        button.setAttribute("aria-selected", String(button.dataset.tabTarget === targetId));
+      });
+      tabPanels.forEach((panel) => {
+        panel.hidden = panel.id !== targetId;
+      });
+      if (targetId === "approvals-view") {
+        loadApprovalQueue();
+      }
+    }
+
     async function loadContract() {
       try {
         renderContract(await fetchJson(contractUrl));
@@ -716,6 +806,30 @@
         renderRecentTasks(await fetchJson("/v1/tasks"));
       } catch (error) {
         recentTasks.innerHTML = `<li class="status error">Unable to load recent tasks: ${escapeHtml(error.message)}</li>`;
+      }
+    }
+
+    async function loadApprovalQueue() {
+      try {
+        renderApprovalQueue(await fetchJson("/v1/tasks?status=waiting_approval"));
+      } catch (error) {
+        approvalsStatus.textContent = `Unable to load approvals: ${error.message}`;
+        approvalsStatus.classList.add("error");
+      }
+    }
+
+    async function approveTask(taskId) {
+      approvalsStatus.classList.remove("error");
+      approvalsStatus.textContent = `Approving ${taskId}...`;
+      try {
+        await postJson(`/v1/tasks/${encodeURIComponent(taskId)}/approve`, { approved: true, approved_by: "local-ui" });
+        await Promise.all([loadApprovalQueue(), loadRecentTasks()]);
+        if (currentTaskId === taskId) {
+          await loadTask(taskId);
+        }
+      } catch (error) {
+        approvalsStatus.textContent = `Unable to approve task: ${error.message}`;
+        approvalsStatus.classList.add("error");
       }
     }
 
@@ -822,7 +936,7 @@
         runTaskButton.disabled = false;
         taskStatus.textContent = `Task ${created.task_id}: ${created.status}`;
         startEventPolling();
-        await loadRecentTasks();
+        await Promise.all([loadRecentTasks(), loadApprovalQueue()]);
         if (runAfterCreate) {
           await runCurrentTask();
         } else {
@@ -850,7 +964,7 @@
         startEventPolling();
         const result = await postJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/run_once`, {});
         taskStatus.textContent = `Task ${result.task_id}: ${result.status}`;
-        await Promise.all([loadTask(currentTaskId), loadRecentTasks()]);
+        await Promise.all([loadTask(currentTaskId), loadRecentTasks(), loadApprovalQueue()]);
       } catch (error) {
         taskStatus.textContent = `Unable to run task: ${error.message}`;
         taskStatus.classList.add("error");
@@ -892,6 +1006,28 @@
       }
     });
 
+    tabButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        selectTab(button.dataset.tabTarget);
+      });
+    });
+
+    refreshApprovalsButton.addEventListener("click", () => {
+      loadApprovalQueue();
+    });
+
+    approvalQueue.addEventListener("click", (event) => {
+      const approveButton = event.target.closest(".approve-task");
+      if (approveButton?.dataset.taskId) {
+        approveTask(approveButton.dataset.taskId);
+        return;
+      }
+      const taskButton = event.target.closest(".task-link");
+      if (taskButton?.dataset.taskId) {
+        loadTask(taskButton.dataset.taskId);
+      }
+    });
+
     recentTasks.addEventListener("click", (event) => {
       const button = event.target.closest(".task-link");
       if (button?.dataset.taskId) {
@@ -911,6 +1047,7 @@
     loadLlmConfig();
     loadContract();
     loadRecentTasks();
+    loadApprovalQueue();
   </script>
 </body>
 </html>

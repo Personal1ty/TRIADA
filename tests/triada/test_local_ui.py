@@ -30,6 +30,15 @@ async def test_get_local_swarm_ui():
     assert 'id="graph"' in response.text
     assert 'id="contracts"' in response.text
     assert 'id="thinking"' in response.text
+    assert 'id="runs-tab"' in response.text
+    assert 'id="thinking-tab"' in response.text
+    assert 'id="raw-reasoning-tab"' in response.text
+    assert 'id="contracts-tab"' in response.text
+    assert 'id="approvals-tab"' in response.text
+    assert 'id="approval-queue"' in response.text
+    assert 'id="refresh-approvals"' in response.text
+    assert 'class="approve-task"' in response.text
+    assert 'id="raw-reasoning-locked"' in response.text
     assert 'id="llm-config"' in response.text
     assert 'id="llm-clear-api-key"' in response.text
     assert 'id="create-task-form"' in response.text
@@ -40,7 +49,12 @@ async def test_get_local_swarm_ui():
     assert 'id="refresh-events"' in response.text
     assert '"waiting_approval"' not in response.text.partition("const terminalStatuses = new Set(")[2].partition(");")[0]
     assert "/v1/tasks" in response.text
+    assert "/v1/tasks?status=waiting_approval" in response.text
+    assert "/approve" in response.text
     assert "/run_once" in response.text
+    runs_view = response.text.partition('id="runs-view"')[2].partition('id="thinking-view"')[0]
+    assert 'id="graph"' in runs_view
+    assert 'id="events"' in runs_view
 
 
 def test_local_swarm_ui_is_packaged():

@@ -37,6 +37,70 @@ async def test_create_task_and_list_events():
 
 
 @pytest.mark.asyncio
+async def test_task_events_can_be_filtered_without_sensitive_payloads():
+    app = create_app(testing=True)
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            created = await client.post(
+                "/v1/tasks",
+                json={
+                    "goal": "Inspect repository status",
+                    "allowed_tools": ["git"],
+                    "acceptance_criteria": ["git status was inspected"],
+                },
+            )
+            task_id = created.json()["task_id"]
+            trace_id = created.json()["trace_id"]
+            await client.post(f"/v1/tasks/{task_id}/run_once")
+            await app.state.event_repository.append_event(
+                event_type="model_reasoning_content_captured",
+                trace_id=created.json()["trace_id"],
+                task_id=task_id,
+                agent_id="worker-1",
+                payload={
+                    "agent_role": "worker",
+                    "raw_reasoning_content": "private reasoning must not be returned by public events",
+                },
+            )
+            await app.state.event_repository.append_event(
+                event_type="custom_debug_event",
+                trace_id=created.json()["trace_id"],
+                task_id=task_id,
+                agent_id="worker-1",
+                payload={
+                    "raw_reasoning_content": "misplaced private reasoning must also be stripped",
+                    "nested": {"raw_reasoning_content": "nested private reasoning"},
+                },
+            )
+
+            tool_events = await client.get(f"/v1/tasks/{task_id}/events?event_type=tool_execution_completed")
+            all_events = await client.get(f"/v1/tasks/{task_id}/events")
+            worker_events = await client.get(f"/v1/tasks/{task_id}/events?agent_id=worker-1")
+            trace_events = await client.get(f"/v1/tasks/{task_id}/events?trace_id={trace_id}")
+
+            other = await client.post("/v1/tasks", json={"goal": "Other task"})
+            mismatched_trace = await client.get(f"/v1/tasks/{task_id}/events?trace_id={other.json()['trace_id']}")
+
+    assert tool_events.status_code == 200
+    assert {event["event_type"] for event in tool_events.json()["events"]} == {"tool_execution_completed"}
+    assert worker_events.status_code == 200
+    assert worker_events.json()["events"]
+    assert {event["agent_id"] for event in worker_events.json()["events"]} == {"worker-1"}
+    assert trace_events.status_code == 200
+    assert trace_events.json()["trace_id"] == trace_id
+    assert mismatched_trace.status_code == 404
+
+    payload = all_events.json()
+    assert payload["raw_reasoning_refs"]
+    reasoning_events = [event for event in payload["events"] if event["event_type"] == "model_reasoning_content_captured"]
+    assert reasoning_events
+    assert all("raw_reasoning_content" not in event["payload"] for event in reasoning_events)
+    custom_events = [event for event in payload["events"] if event["event_type"] == "custom_debug_event"]
+    assert custom_events
+    assert "raw_reasoning_content" not in str(custom_events[0]["payload"])
+
+
+@pytest.mark.asyncio
 async def test_list_recent_tasks_returns_latest_tasks_first():
     async with _client() as client:
         first = await client.post("/v1/tasks", json={"goal": "First task", "allowed_tools": ["shell"]})
@@ -56,6 +120,37 @@ async def test_list_recent_tasks_returns_latest_tasks_first():
     assert tasks[0]["allowed_tools"] == ["git"]
     assert tasks[0]["status"] == "created"
     assert "created_at" in tasks[0]
+
+
+@pytest.mark.asyncio
+async def test_list_recent_tasks_can_filter_waiting_approval():
+    async with _client() as client:
+        waiting = await client.post(
+            "/v1/tasks",
+            json={
+                "goal": "Write repository file after approval",
+                "allowed_tools": ["shell"],
+                "acceptance_criteria": ["change approved"],
+            },
+        )
+        waiting_task_id = waiting.json()["task_id"]
+        await client.post(f"/v1/tasks/{waiting_task_id}/run_once")
+        completed = await client.post(
+            "/v1/tasks",
+            json={
+                "goal": "Inspect repository status",
+                "allowed_tools": ["git"],
+                "acceptance_criteria": ["git status inspected"],
+            },
+        )
+        await client.post(f"/v1/tasks/{completed.json()['task_id']}/run_once")
+
+        response = await client.get("/v1/tasks?status=waiting_approval")
+
+    assert response.status_code == 200
+    tasks = response.json()["tasks"]
+    assert [task["task_id"] for task in tasks] == [waiting_task_id]
+    assert tasks[0]["status"] == "waiting_approval"
 
 
 @pytest.mark.asyncio
