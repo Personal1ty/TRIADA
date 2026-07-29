@@ -39,6 +39,13 @@ async def test_get_local_swarm_ui():
     assert 'id="refresh-approvals"' in response.text
     assert 'class="approve-task"' in response.text
     assert 'id="raw-reasoning-locked"' in response.text
+    assert 'id="raw-reasoning-ack"' in response.text
+    assert 'id="raw-reasoning-refs"' in response.text
+    assert 'class="reveal-raw-reasoning"' in response.text
+    assert 'id="contract-version-select"' in response.text
+    assert 'id="contract-json"' in response.text
+    assert 'id="save-contract"' in response.text
+    assert 'id="refresh-contract-versions"' in response.text
     assert 'id="llm-config"' in response.text
     assert 'id="llm-clear-api-key"' in response.text
     assert 'id="create-task-form"' in response.text
@@ -51,10 +58,14 @@ async def test_get_local_swarm_ui():
     assert "/v1/tasks" in response.text
     assert "/v1/tasks?status=waiting_approval" in response.text
     assert "/approve" in response.text
+    assert "/raw-reasoning/" in response.text
+    assert "/v1/swarm/contracts" in response.text
     assert "/run_once" in response.text
     runs_view = response.text.partition('id="runs-view"')[2].partition('id="thinking-view"')[0]
     assert 'id="graph"' in runs_view
     assert 'id="events"' in runs_view
+    load_task_body = response.text.partition("async function loadTask(taskId)")[2].partition("async function createTask")[0]
+    assert "clearRawReasoningReveal();" in load_task_body
 
 
 def test_local_swarm_ui_is_packaged():

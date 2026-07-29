@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 import pytest
+import shutil
 
 from app.agents.auditor import Auditor
 from app.agents.orchestrator import Orchestrator
@@ -132,6 +133,108 @@ async def test_worker_supports_git_status_when_git_tool_allowed(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "command", "fixture_file"),
+    [
+        ("ls", ["ls"], None),
+        ("cat", ["cat", "note.txt"], "note.txt"),
+        ("sed", ["sed", "-n", "1p", "note.txt"], "note.txt"),
+        ("rg", ["rg", "hello", "note.txt"], "note.txt"),
+    ],
+)
+async def test_worker_supports_safe_read_only_tools(tmp_path, tool_name, command, fixture_file):
+    if shutil.which(command[0]) is None:
+        pytest.skip(f"{command[0]} is not installed")
+    if fixture_file is not None:
+        (tmp_path / fixture_file).write_text("hello\n")
+
+    result = await Worker(worker_id="worker-1", workspace=tmp_path).run_step(
+        task_id="task-1",
+        step_id="step-1",
+        title=f"Run {tool_name}",
+        allowed_tools=[tool_name],
+        command=command,
+    )
+
+    assert result.status == "succeeded"
+    assert result.commands == [command]
+
+
+@pytest.mark.asyncio
+async def test_worker_supports_pytest_as_safe_read_only_tool(tmp_path):
+    if shutil.which("pytest") is None:
+        pytest.skip("pytest is not installed")
+    test_file = tmp_path / "test_sample.py"
+    test_file.write_text("def test_sample():\n    assert True\n")
+
+    result = await Worker(worker_id="worker-1", workspace=tmp_path).run_step(
+        task_id="task-1",
+        step_id="step-1",
+        title="Run pytest",
+        allowed_tools=["pytest"],
+        command=["pytest", "-q", "test_sample.py"],
+    )
+
+    assert result.status == "succeeded"
+    assert result.commands == [["pytest", "-q", "test_sample.py"]]
+
+
+@pytest.mark.asyncio
+async def test_worker_blocks_mutating_sed_flag(tmp_path):
+    note = tmp_path / "note.txt"
+    note.write_text("hello\n")
+
+    result = await Worker(worker_id="worker-1", workspace=tmp_path).run_step(
+        task_id="task-1",
+        step_id="step-1",
+        title="Mutate with sed",
+        allowed_tools=["sed"],
+        command=["sed", "-i", "s/hello/bye/", "note.txt"],
+    )
+
+    assert result.status == "blocked"
+    assert "not supported as a safe read-only command" in result.errors[0]
+    assert note.read_text() == "hello\n"
+
+
+@pytest.mark.asyncio
+async def test_worker_blocks_sed_in_place_suffix(tmp_path):
+    note = tmp_path / "note.txt"
+    note.write_text("hello\n")
+
+    result = await Worker(worker_id="worker-1", workspace=tmp_path).run_step(
+        task_id="task-1",
+        step_id="step-1",
+        title="Mutate with sed suffix",
+        allowed_tools=["sed"],
+        command=["sed", "-i.tmp", "s/hello/bye/", "note.txt"],
+    )
+
+    assert result.status == "blocked"
+    assert "not supported as a safe read-only command" in result.errors[0]
+    assert note.read_text() == "hello\n"
+
+
+@pytest.mark.asyncio
+async def test_worker_blocks_symlink_read_outside_workspace(tmp_path):
+    outside = tmp_path.parent / "outside-secret.txt"
+    outside.write_text("secret\n")
+    link = tmp_path / "link.txt"
+    link.symlink_to(outside)
+
+    result = await Worker(worker_id="worker-1", workspace=tmp_path).run_step(
+        task_id="task-1",
+        step_id="step-1",
+        title="Read symlink",
+        allowed_tools=["cat"],
+        command=["cat", "link.txt"],
+    )
+
+    assert result.status == "blocked"
+    assert "not supported as a safe read-only command" in result.errors[0]
+
+
+@pytest.mark.asyncio
 async def test_worker_rejects_disallowed_tool(tmp_path):
     result = await Worker(worker_id="worker-1", workspace=tmp_path).run_step(
         task_id="task-1",
@@ -142,7 +245,7 @@ async def test_worker_rejects_disallowed_tool(tmp_path):
     )
 
     assert result.status == "blocked"
-    assert result.errors == ["tool 'shell' is not allowed"]
+    assert result.errors == ["tool 'echo' is not allowed"]
 
 
 @pytest.mark.asyncio

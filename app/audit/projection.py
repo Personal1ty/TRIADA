@@ -53,11 +53,7 @@ def swarm_graph_from_events(events: list[Any]) -> dict:
 
 
 def _event_to_public_dict(event: Any) -> dict:
-    payload = _to_json_safe(event.payload)
-    if event.event_type == "model_reasoning_content_captured" and isinstance(payload, dict):
-        payload = dict(payload)
-        if "raw_reasoning_content" in payload:
-            payload["raw_reasoning_content"] = "[REDACTED]"
+    payload = _strip_raw_reasoning_content(_to_json_safe(event.payload))
     return {
         "id": str(event.id),
         "event_type": event.event_type,
@@ -114,4 +110,16 @@ def _to_json_safe(value: Any) -> Any:
         return {str(_to_json_safe(key)): _to_json_safe(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_to_json_safe(item) for item in value]
+    return value
+
+
+def _strip_raw_reasoning_content(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _strip_raw_reasoning_content(item)
+            for key, item in value.items()
+            if key != "raw_reasoning_content"
+        }
+    if isinstance(value, list):
+        return [_strip_raw_reasoning_content(item) for item in value]
     return value

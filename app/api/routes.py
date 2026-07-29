@@ -14,12 +14,14 @@ from app.audit.projection import (
     swarm_graph_from_events,
     thinking_deltas_from_events,
 )
-from app.contracts.loader import load_default_swarm_contract
+from app.contracts.swarm import SwarmContract
 from app.llm.runtime_config import LLMProviderConfig
 from app.schemas.llm import LLMConfigRequest, LLMConfigResponse, LLMTestResponse
 from app.schemas.tasks import (
     ApprovalRequest,
     CreateTaskRequest,
+    RawReasoningRevealRequest,
+    RawReasoningRevealResponse,
     TaskActionResponse,
     TaskEventsResponse,
     TaskListResponse,
@@ -30,8 +32,29 @@ router = APIRouter(prefix="/v1")
 
 
 @router.get("/swarm/contract")
-async def get_swarm_contract() -> dict:
-    return load_default_swarm_contract().model_dump(mode="json")
+async def get_swarm_contract(request: Request, version: str | None = Query(default=None, max_length=64)) -> dict:
+    versions = request.app.state.swarm_contract_versions
+    selected_version = version or request.app.state.active_swarm_contract_version
+    contract = versions.get(selected_version)
+    if contract is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="swarm contract version not found")
+    return contract.model_dump(mode="json")
+
+
+@router.get("/swarm/contracts")
+async def list_swarm_contract_versions(request: Request) -> dict:
+    return {
+        "active_version": request.app.state.active_swarm_contract_version,
+        "versions": sorted(request.app.state.swarm_contract_versions),
+    }
+
+
+@router.post("/swarm/contract")
+async def save_swarm_contract(payload: dict, request: Request) -> dict:
+    contract = SwarmContract.model_validate(payload)
+    request.app.state.swarm_contract_versions[contract.contract_version] = contract
+    request.app.state.active_swarm_contract_version = contract.contract_version
+    return contract.model_dump(mode="json")
 
 
 @router.get("/llm/config", response_model=LLMConfigResponse)
@@ -184,6 +207,33 @@ async def stream_task_events(
     )
 
 
+@router.post("/tasks/{task_id}/raw-reasoning/{event_id}/reveal", response_model=RawReasoningRevealResponse)
+async def reveal_raw_reasoning(
+    task_id: UUID,
+    event_id: UUID,
+    payload: RawReasoningRevealRequest,
+    request: Request,
+) -> RawReasoningRevealResponse:
+    if not payload.acknowledge_sensitive:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="sensitive reveal acknowledgement required")
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    event = next((item for item in events if str(item.id) == str(event_id)), None)
+    if event is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="reasoning event not found for task")
+    event_payload = event.payload if isinstance(event.payload, dict) else {}
+    raw_reasoning_content = event_payload.get("raw_reasoning_content")
+    if not isinstance(raw_reasoning_content, str) or not raw_reasoning_content:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="raw reasoning content not found")
+    return RawReasoningRevealResponse(
+        task_id=str(task.id),
+        trace_id=str(task.trace_id),
+        event_id=str(event.id),
+        agent_id=event.agent_id,
+        raw_reasoning_content=raw_reasoning_content,
+    )
+
+
 @router.get("/tasks/{task_id}/thinking-summary")
 async def get_thinking_summary(task_id: UUID, request: Request) -> dict:
     task = await _get_task_or_404(task_id, request)
@@ -300,22 +350,7 @@ def _task_action_response(task, action: str) -> TaskActionResponse:
 
 
 def _events_without_raw_reasoning(events: list) -> list[dict]:
-    public_events = events_to_public_response(events)
-    for event in public_events:
-        event["payload"] = _strip_raw_reasoning_content(event.get("payload"))
-    return public_events
-
-
-def _strip_raw_reasoning_content(value):
-    if isinstance(value, dict):
-        return {
-            key: _strip_raw_reasoning_content(item)
-            for key, item in value.items()
-            if key != "raw_reasoning_content"
-        }
-    if isinstance(value, list):
-        return [_strip_raw_reasoning_content(item) for item in value]
-    return value
+    return events_to_public_response(events)
 
 
 def _raw_reasoning_refs(events: list) -> list[dict]:

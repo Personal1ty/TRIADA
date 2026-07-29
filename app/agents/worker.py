@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 
 from pydantic import BaseModel, Field
 
@@ -9,6 +10,14 @@ from app.schemas.enums import RiskPolicy
 from app.tools.base import ToolRequest
 from app.tools.git import GitTool
 from app.tools.shell import ShellTool
+
+_SAFE_READ_ONLY_TOOLS = {"echo", "pytest", "rg", "ls", "cat", "sed"}
+_SAFE_SHELL_ALLOWLIST = _SAFE_READ_ONLY_TOOLS
+_MUTATING_TOOL_ARGS = {
+    "sed": {"--in-place"},
+    "pytest": {"--cache-clear", "--junitxml", "--basetemp", "--result-log"},
+}
+_PYTEST_MUTATING_PREFIXES = ("--junitxml=", "--basetemp=", "--result-log=")
 
 
 class WorkerResult(BaseModel):
@@ -55,13 +64,17 @@ class Worker:
                 check_name="command_required",
             )
         tool_name = self._tool_name(command)
-        if tool_name not in allowed_tools:
+        if not self._is_tool_allowed(tool_name, allowed_tools):
             return self._blocked(task_id, step_id, title, command, f"tool '{tool_name}' is not allowed")
 
-        if tool_name == "shell" and command[0] != "echo":
-            return self._blocked(task_id, step_id, title, command, "only shell echo is supported")
-        if tool_name == "git" and command != ["git", "status"]:
-            return self._blocked(task_id, step_id, title, command, "only git status is supported")
+        if not self._is_supported_safe_command(tool_name, command):
+            return self._blocked(
+                task_id,
+                step_id,
+                title,
+                command,
+                f"{' '.join(command)} is not supported as a safe read-only command",
+            )
 
         model_response = await self._prepare_with_model(
             task_id=task_id,
@@ -77,11 +90,7 @@ class Worker:
             risk_policy=risk_policy,
             approval_ref=approval_ref,
         )
-        adapter = (
-            GitTool(workspace=self.workspace)
-            if tool_name == "git"
-            else ShellTool(allowlist={"echo"}, workspace=self.workspace)
-        )
+        adapter = self._adapter_for_tool(tool_name)
         try:
             result = await adapter.execute(request)
         except Exception as exc:
@@ -143,7 +152,67 @@ class Worker:
     def _tool_name(self, command: list[str]) -> str:
         if command and command[0] == "git":
             return "git"
+        if command and command[0] in _SAFE_READ_ONLY_TOOLS:
+            return command[0]
         return "shell"
+
+    def _is_tool_allowed(self, tool_name: str, allowed_tools: list[str]) -> bool:
+        if tool_name in allowed_tools:
+            return True
+        return tool_name == "echo" and "shell" in allowed_tools
+
+    def _is_supported_safe_command(self, tool_name: str, command: list[str]) -> bool:
+        if tool_name == "git":
+            return GitTool(workspace=self.workspace).is_command_allowed(command)
+        if tool_name not in _SAFE_READ_ONLY_TOOLS:
+            return False
+        if self._has_mutating_arg(tool_name, command):
+            return False
+        return self._path_args_stay_in_workspace(command)
+
+    def _adapter_for_tool(self, tool_name: str):
+        if tool_name == "git":
+            return GitTool(workspace=self.workspace)
+        executable = shutil.which(tool_name)
+        trusted_paths = [Path(executable).parent] if executable else None
+        return ShellTool(
+            allowlist=_SAFE_SHELL_ALLOWLIST,
+            workspace=self.workspace,
+            trusted_paths=trusted_paths,
+        )
+
+    def _has_mutating_arg(self, tool_name: str, command: list[str]) -> bool:
+        blocked_args = _MUTATING_TOOL_ARGS.get(tool_name, set())
+        for arg in command[1:]:
+            if tool_name == "sed" and (arg == "-i" or arg.startswith("-i")):
+                return True
+            if tool_name == "pytest" and arg.startswith(_PYTEST_MUTATING_PREFIXES):
+                return True
+            if arg in blocked_args or any(arg.startswith(f"{blocked}=") for blocked in blocked_args):
+                return True
+        return False
+
+    def _path_args_stay_in_workspace(self, command: list[str]) -> bool:
+        skip_next = False
+        for index, arg in enumerate(command[1:], start=1):
+            if skip_next:
+                skip_next = False
+                continue
+            if command[0] == "sed" and index == 1 and (arg.startswith("s/") or arg.endswith("p")):
+                continue
+            if arg.startswith("-"):
+                if command[0] == "pytest" and arg in _MUTATING_TOOL_ARGS["pytest"]:
+                    skip_next = True
+                continue
+            if command[0] == "sed" and (arg.startswith("s/") or arg.endswith("p")):
+                continue
+            path = Path(arg)
+            candidate = path if path.is_absolute() else self.workspace / path
+            if path.parts and (candidate.exists() or path.is_absolute() or any(part == ".." for part in path.parts)):
+                resolved = candidate.resolve()
+                if resolved != self.workspace and not resolved.is_relative_to(self.workspace):
+                    return False
+        return True
 
     async def _prepare_with_model(
         self,

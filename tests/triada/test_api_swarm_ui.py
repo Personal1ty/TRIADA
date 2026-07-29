@@ -28,6 +28,24 @@ async def test_get_swarm_contract():
 
 
 @pytest.mark.asyncio
+async def test_save_and_load_runtime_swarm_contract_version():
+    async with _client() as client:
+        current = (await client.get("/v1/swarm/contract")).json()
+        current["contract_version"] = "local-test"
+        current["topology"]["chief_auditor"]["strict_mode"] = True
+
+        saved = await client.post("/v1/swarm/contract", json=current)
+        versions = await client.get("/v1/swarm/contracts")
+        loaded = await client.get("/v1/swarm/contract?version=local-test")
+
+    assert saved.status_code == 200
+    assert saved.json()["contract_version"] == "local-test"
+    assert loaded.status_code == 200
+    assert loaded.json()["topology"]["chief_auditor"]["strict_mode"] is True
+    assert "local-test" in versions.json()["versions"]
+
+
+@pytest.mark.asyncio
 async def test_get_task_route_graph():
     async with _client() as client:
         created = await client.post(

@@ -232,7 +232,11 @@ Core endpoints under `/v1`:
   Omit `api_key` to preserve the current token, or send `clear_api_key=true` to
   remove it.
 - `POST /v1/llm/test` checks the currently configured provider.
-- `GET /v1/swarm/contract` returns the active default swarm contract.
+- `GET /v1/swarm/contract` returns the active swarm contract. Optional
+  `version=<contract_version>` loads a saved runtime version.
+- `GET /v1/swarm/contracts` lists runtime contract versions.
+- `POST /v1/swarm/contract` validates and saves a runtime swarm contract
+  version for local configuration.
 - `GET /v1/tasks` lists recent tasks for dashboards and local operators.
   Optional `status=waiting_approval` filters the list for approval queues.
 - `POST /v1/tasks` creates a task.
@@ -241,6 +245,8 @@ Core endpoints under `/v1`:
   `event_type`, `agent_id`, and `trace_id` query parameters filter the task
   trace. Raw model reasoning payloads are not returned by default; the response
   exposes `raw_reasoning_refs` for sensitive audit lookup.
+- `POST /v1/tasks/{task_id}/raw-reasoning/{event_id}/reveal` returns raw
+  reasoning only when `acknowledge_sensitive=true` is provided.
 - `GET /v1/tasks/{task_id}/stream` streams Server-Sent Events.
 - `GET /v1/tasks/{task_id}/thinking-summary` returns public thinking summaries.
 - `GET /v1/tasks/{task_id}/swarm-graph` returns graph-ready route events.
@@ -255,11 +261,15 @@ Local dashboard:
 - The dashboard reads `/v1/llm/config`, `/v1/swarm/contract`,
   `/v1/tasks`, `/v1/tasks/{task_id}/events`,
   `/v1/tasks/{task_id}/swarm-graph`, and `/v1/tasks/{task_id}/thinking-summary`.
-- It can save/test the active LLM provider and shows contract routes, graph
-  edges, task runs, audit events, public thinking summaries, and a
+- It can save/test the active LLM provider, edit local swarm contract JSON,
+  show contract routes, graph edges, task runs, audit events, public thinking
+  summaries, raw reasoning refs with an explicit reveal checkbox, and a
   `waiting_approval` queue with approve actions. The selected task and event
   feed can auto-refresh while a run is active. Raw reasoning stays in sensitive
-  audit events and is not displayed by this UI.
+  audit events and is hidden until explicitly revealed.
+
+Safe read-only tools currently supported by the worker: `git status`, `echo`,
+`pytest`, `rg`, `ls`, `cat`, and `sed` without mutating flags such as `-i`.
 
 Example:
 

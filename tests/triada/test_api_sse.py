@@ -101,6 +101,36 @@ async def test_task_events_can_be_filtered_without_sensitive_payloads():
 
 
 @pytest.mark.asyncio
+async def test_raw_reasoning_reveal_requires_explicit_acknowledgement():
+    app = create_app(testing=True)
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            created = await client.post("/v1/tasks", json={"goal": "Inspect"})
+            task_id = created.json()["task_id"]
+            event = await app.state.event_repository.append_event(
+                event_type="model_reasoning_content_captured",
+                trace_id=created.json()["trace_id"],
+                task_id=task_id,
+                agent_id="orchestrator",
+                payload={"raw_reasoning_content": "private model reasoning"},
+            )
+
+            denied = await client.post(
+                f"/v1/tasks/{task_id}/raw-reasoning/{event.id}/reveal",
+                json={"acknowledge_sensitive": False},
+            )
+            revealed = await client.post(
+                f"/v1/tasks/{task_id}/raw-reasoning/{event.id}/reveal",
+                json={"acknowledge_sensitive": True, "requested_by": "operator"},
+            )
+
+    assert denied.status_code == 403
+    assert revealed.status_code == 200
+    assert revealed.json()["raw_reasoning_content"] == "private model reasoning"
+    assert revealed.json()["agent_id"] == "orchestrator"
+
+
+@pytest.mark.asyncio
 async def test_list_recent_tasks_returns_latest_tasks_first():
     async with _client() as client:
         first = await client.post("/v1/tasks", json={"goal": "First task", "allowed_tools": ["shell"]})
@@ -187,6 +217,35 @@ async def test_sse_last_event_id_must_belong_to_task_trace():
         )
 
     assert stream.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_sse_stream_strips_raw_reasoning_content_recursively():
+    app = create_app(testing=True)
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            created = await client.post("/v1/tasks", json={"goal": "Inspect"})
+            task_id = created.json()["task_id"]
+            first_id = (await client.get(f"/v1/tasks/{task_id}/events")).json()["events"][0]["id"]
+            await app.state.event_repository.append_event(
+                event_type="custom_debug_event",
+                trace_id=created.json()["trace_id"],
+                task_id=task_id,
+                agent_id="worker-1",
+                payload={
+                    "raw_reasoning_content": "private top-level",
+                    "nested": {"raw_reasoning_content": "private nested"},
+                },
+            )
+
+            stream = await client.get(
+                f"/v1/tasks/{task_id}/stream",
+                headers={"Last-Event-ID": first_id},
+            )
+
+    assert stream.status_code == 200
+    assert "raw_reasoning_content" not in stream.text
+    assert "private nested" not in stream.text
 
 
 @pytest.mark.asyncio

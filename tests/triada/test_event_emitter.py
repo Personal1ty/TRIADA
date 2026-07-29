@@ -206,7 +206,7 @@ def test_projection_redacts_raw_model_reasoning_from_public_events():
 
     public_response = events_to_public_response([event])
 
-    assert public_response[0]["payload"]["raw_reasoning_content"] == "[REDACTED]"
+    assert "raw_reasoning_content" not in public_response[0]["payload"]
     assert "raw private model reasoning" not in json.dumps(public_response)
 
 

@@ -425,6 +425,18 @@ class ExecutionEngine:
     def _command_for_step(self, step: PlanStep) -> list[str]:
         if "git" in step.allowed_tools:
             return ["git", "status"]
+        if "pytest" in step.allowed_tools:
+            return ["pytest", "-q"]
+        if "rg" in step.allowed_tools:
+            return ["rg", "--files"]
+        if "ls" in step.allowed_tools:
+            return ["ls"]
+        if "cat" in step.allowed_tools:
+            return ["cat", "README.md"]
+        if "sed" in step.allowed_tools:
+            return ["sed", "-n", "1,40p", "README.md"]
+        if "echo" in step.allowed_tools:
+            return ["echo", step.description]
         if "shell" in step.allowed_tools:
             return ["echo", step.description]
         return []

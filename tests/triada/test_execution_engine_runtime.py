@@ -181,6 +181,23 @@ async def test_execution_engine_blocks_and_emits_llm_unavailable_when_provider_f
 
 
 @pytest.mark.asyncio
+async def test_read_only_ls_runs_without_approval(tmp_path):
+    emitter = MemoryEmitter()
+    engine = ExecutionEngine(emitter=emitter, workspace=tmp_path)
+    task = make_task(goal="List workspace files", allowed_tools=["ls"])
+
+    status = await engine.run_once(task)
+
+    assert status == "completed"
+    event_types = [event["event_type"] for event in emitter.events]
+    assert "task_waiting_approval" not in event_types
+    tool_events = [event for event in emitter.events if event["event_type"] == "tool_execution_completed"]
+    assert tool_events
+    assert tool_events[0]["payload"]["tool"] == "shell"
+    assert tool_events[0]["payload"]["command"] == ["ls"]
+
+
+@pytest.mark.asyncio
 async def test_write_task_waits_for_approval_before_worker_execution(tmp_path):
     emitter = MemoryEmitter()
     service = TaskService(

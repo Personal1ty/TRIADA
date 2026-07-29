@@ -13,6 +13,7 @@ from app.api import router as api_router
 from app.audit.emitter import AuditEmitter
 from app.audit.repository import AuditEventRepository
 from app.config import get_settings
+from app.contracts.loader import load_default_swarm_contract
 from app.events.bus import InMemoryEventBus
 from app.llm.runtime_config import LLMConfigService
 from app.persistence.session import create_session_factory
@@ -61,6 +62,9 @@ def create_app(testing: bool = False) -> FastAPI:
     app.state.llm_config_service = llm_config_service
     app.state.execution_engine = execution_engine
     app.state.task_service = task_service
+    default_contract = load_default_swarm_contract()
+    app.state.swarm_contract_versions = {default_contract.contract_version: default_contract}
+    app.state.active_swarm_contract_version = default_contract.contract_version
     app.state.sse_idle_timeout_seconds = 0.1 if testing else 30.0
     app.state.testing_database_path = str(testing_database_path) if testing_database_path is not None else None
 

@@ -462,6 +462,15 @@
         <h2>Raw Reasoning</h2>
         <div class="panel-body">
           <p class="status" id="raw-reasoning-locked">Sensitive raw reasoning is locked. This UI shows public summaries and raw reasoning refs only; raw payload reveal requires an explicit sensitive-data endpoint.</p>
+          <label class="controls" for="raw-reasoning-ack">
+            <input id="raw-reasoning-ack" name="raw-reasoning-ack" type="checkbox">
+            <span>I understand this reveals sensitive raw model reasoning</span>
+          </label>
+          <p class="status" id="raw-reasoning-status">Load a task to inspect raw reasoning refs.</p>
+          <ul class="event-feed" id="raw-reasoning-refs">
+            <li class="status">No raw reasoning refs loaded.</li>
+          </ul>
+          <pre id="raw-reasoning-output" class="status"></pre>
         </div>
       </section>
     </div>
@@ -470,6 +479,14 @@
       <section id="contracts">
         <h2>Contracts</h2>
         <div class="panel-body">
+          <div class="inline-controls">
+            <select id="contract-version-select" name="contract-version-select" aria-label="Contract version"></select>
+            <button id="refresh-contract-versions" type="button">Refresh versions</button>
+            <button id="load-contract-version" type="button">Load version</button>
+            <button id="save-contract" type="button">Save contract</button>
+          </div>
+          <textarea id="contract-json" name="contract-json" spellcheck="false" placeholder="Swarm contract JSON"></textarea>
+          <p class="status" id="contract-status">Loading /v1/swarm/contract...</p>
           <div class="metric">
             <span>Worker auditor pairs</span>
             <strong id="pair-count">-</strong>
@@ -512,6 +529,12 @@
     const llmStatus = document.getElementById("llm-status");
     const pairCount = document.getElementById("pair-count");
     const routeMap = document.getElementById("route-map");
+    const contractVersionSelect = document.getElementById("contract-version-select");
+    const refreshContractVersionsButton = document.getElementById("refresh-contract-versions");
+    const loadContractVersionButton = document.getElementById("load-contract-version");
+    const saveContractButton = document.getElementById("save-contract");
+    const contractJson = document.getElementById("contract-json");
+    const contractStatus = document.getElementById("contract-status");
     const taskForm = document.getElementById("task-form");
     const taskInput = document.getElementById("task-id");
     const loadTaskButton = document.getElementById("load-task");
@@ -534,6 +557,10 @@
     const approvalQueue = document.getElementById("approval-queue");
     const approvalsStatus = document.getElementById("approvals-status");
     const refreshApprovalsButton = document.getElementById("refresh-approvals");
+    const rawReasoningAck = document.getElementById("raw-reasoning-ack");
+    const rawReasoningRefs = document.getElementById("raw-reasoning-refs");
+    const rawReasoningStatus = document.getElementById("raw-reasoning-status");
+    const rawReasoningOutput = document.getElementById("raw-reasoning-output");
     let currentTaskId = "";
     let eventPollTimer = null;
     const terminalStatuses = new Set(["completed", "blocked", "failed", "cancelled", "corrections_required"]);
@@ -657,6 +684,8 @@
       const pairs = Array.isArray(contract.worker_auditor_pairs) ? contract.worker_auditor_pairs : [];
       const routes = Array.isArray(contract.route_map) ? contract.route_map : [];
       pairCount.textContent = String(pairs.length);
+      contractJson.value = JSON.stringify(contract, null, 2);
+      contractStatus.textContent = `Loaded contract ${contract.contract_version || "unknown"}.`;
       routeMap.innerHTML = routes.map((route) => `
         <li class="route">
           <div>
@@ -753,6 +782,21 @@
           <small>${escapeHtml(event.created_at || "")}</small>
         </li>
       `).join("");
+      renderRawReasoningRefs(payload);
+    }
+
+    function renderRawReasoningRefs(payload) {
+      const refs = Array.isArray(payload.raw_reasoning_refs) ? payload.raw_reasoning_refs : [];
+      rawReasoningStatus.textContent = refs.length ? `${refs.length} raw reasoning ref${refs.length === 1 ? "" : "s"} available.` : "No raw reasoning refs are available for this task.";
+      rawReasoningRefs.innerHTML = refs.map((ref) => `
+        <li>
+          <div>
+            <span class="event-type">${escapeHtml(ref.event_id)}</span>
+            <button type="button" class="reveal-raw-reasoning" data-event-id="${escapeHtml(ref.event_id)}">Reveal</button>
+          </div>
+          <small>${escapeHtml(ref.agent_id || "agent")} sequence ${escapeHtml(ref.sequence ?? "")}</small>
+        </li>
+      `).join("") || '<li class="status">No raw reasoning refs loaded.</li>';
     }
 
     function renderRecentTasks(payload) {
@@ -797,7 +841,42 @@
       try {
         renderContract(await fetchJson(contractUrl));
       } catch (error) {
+        contractStatus.textContent = `Unable to load ${contractUrl}: ${error.message}`;
+        contractStatus.classList.add("error");
         routeMap.innerHTML = `<li class="status error">Unable to load ${contractUrl}: ${escapeHtml(error.message)}</li>`;
+      }
+    }
+
+    async function loadContractVersions() {
+      try {
+        const payload = await fetchJson("/v1/swarm/contracts");
+        const versions = Array.isArray(payload.versions) ? payload.versions : [];
+        contractVersionSelect.innerHTML = versions.map((version) => `
+          <option value="${escapeHtml(version)}"${version === payload.active_version ? " selected" : ""}>${escapeHtml(version)}</option>
+        `).join("");
+      } catch (error) {
+        contractStatus.textContent = `Unable to load contract versions: ${error.message}`;
+        contractStatus.classList.add("error");
+      }
+    }
+
+    async function loadSelectedContractVersion() {
+      const version = contractVersionSelect.value;
+      if (!version) {
+        return;
+      }
+      renderContract(await fetchJson(`/v1/swarm/contract?version=${encodeURIComponent(version)}`));
+    }
+
+    async function saveContract() {
+      contractStatus.classList.remove("error");
+      try {
+        const payload = JSON.parse(contractJson.value);
+        renderContract(await postJson("/v1/swarm/contract", payload));
+        await loadContractVersions();
+      } catch (error) {
+        contractStatus.textContent = `Unable to save contract: ${error.message}`;
+        contractStatus.classList.add("error");
       }
     }
 
@@ -831,6 +910,32 @@
         approvalsStatus.textContent = `Unable to approve task: ${error.message}`;
         approvalsStatus.classList.add("error");
       }
+    }
+
+    async function revealRawReasoning(eventId) {
+      rawReasoningStatus.classList.remove("error");
+      rawReasoningOutput.textContent = "";
+      if (!currentTaskId) {
+        rawReasoningStatus.textContent = "Load a task before revealing raw reasoning.";
+        rawReasoningStatus.classList.add("error");
+        return;
+      }
+      try {
+        const result = await postJson(
+          `/v1/tasks/${encodeURIComponent(currentTaskId)}/raw-reasoning/${encodeURIComponent(eventId)}/reveal`,
+          { acknowledge_sensitive: rawReasoningAck.checked, requested_by: "local-ui" }
+        );
+        rawReasoningStatus.textContent = `Revealed ${result.event_id} from ${result.agent_id || "agent"}.`;
+        rawReasoningOutput.textContent = result.raw_reasoning_content;
+      } catch (error) {
+        rawReasoningStatus.textContent = `Unable to reveal raw reasoning: ${error.message}`;
+        rawReasoningStatus.classList.add("error");
+      }
+    }
+
+    function clearRawReasoningReveal() {
+      rawReasoningAck.checked = false;
+      rawReasoningOutput.textContent = "";
     }
 
     async function loadEvents(taskId) {
@@ -886,6 +991,7 @@
 
     async function loadTask(taskId) {
       currentTaskId = taskId;
+      clearRawReasoningReveal();
       taskInput.value = taskId;
       runTaskButton.disabled = false;
       const graphUrl = `/v1/tasks/${encodeURIComponent(taskId)}/swarm-graph`;
@@ -1016,6 +1122,18 @@
       loadApprovalQueue();
     });
 
+    refreshContractVersionsButton.addEventListener("click", () => {
+      loadContractVersions();
+    });
+
+    loadContractVersionButton.addEventListener("click", () => {
+      loadSelectedContractVersion();
+    });
+
+    saveContractButton.addEventListener("click", () => {
+      saveContract();
+    });
+
     approvalQueue.addEventListener("click", (event) => {
       const approveButton = event.target.closest(".approve-task");
       if (approveButton?.dataset.taskId) {
@@ -1025,6 +1143,13 @@
       const taskButton = event.target.closest(".task-link");
       if (taskButton?.dataset.taskId) {
         loadTask(taskButton.dataset.taskId);
+      }
+    });
+
+    rawReasoningRefs.addEventListener("click", (event) => {
+      const revealButton = event.target.closest(".reveal-raw-reasoning");
+      if (revealButton?.dataset.eventId) {
+        revealRawReasoning(revealButton.dataset.eventId);
       }
     });
 
@@ -1046,6 +1171,7 @@
 
     loadLlmConfig();
     loadContract();
+    loadContractVersions();
     loadRecentTasks();
     loadApprovalQueue();
   </script>

@@ -87,3 +87,20 @@ class TaskActionResponse(BaseModel):
     trace_id: str
     status: str
     action: str
+
+
+class RawReasoningRevealRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    acknowledge_sensitive: bool = False
+    requested_by: str | None = Field(default=None, max_length=255)
+
+
+class RawReasoningRevealResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str
+    trace_id: str
+    event_id: str
+    agent_id: str | None
+    raw_reasoning_content: str
