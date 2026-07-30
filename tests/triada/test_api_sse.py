@@ -190,6 +190,36 @@ async def test_list_recent_tasks_returns_latest_tasks_first():
 
 
 @pytest.mark.asyncio
+async def test_tasks_survive_app_restart(tmp_path):
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'triada.db'}"
+
+    app = create_app(testing=True, database_url=database_url)
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            created = await client.post(
+                "/v1/tasks",
+                json={
+                    "goal": "Persist this task",
+                    "allowed_tools": ["echo"],
+                    "acceptance_criteria": ["task is visible after restart"],
+                },
+            )
+            task_id = created.json()["task_id"]
+
+    restarted = create_app(testing=True, database_url=database_url)
+    async with restarted.router.lifespan_context(restarted):
+        async with AsyncClient(transport=ASGITransport(app=restarted), base_url="http://test") as client:
+            fetched = await client.get(f"/v1/tasks/{task_id}")
+            listed = await client.get("/v1/tasks")
+
+    assert fetched.status_code == 200
+    assert fetched.json()["status"] == "created"
+    assert listed.status_code == 200
+    assert listed.json()["tasks"][0]["task_id"] == task_id
+    assert listed.json()["tasks"][0]["goal"] == "Persist this task"
+
+
+@pytest.mark.asyncio
 async def test_list_recent_tasks_can_filter_waiting_approval():
     async with _client() as client:
         waiting = await client.post(
@@ -333,6 +363,21 @@ async def test_mvp_read_endpoints_are_available():
     assert audit.json()["events"]
     assert artifacts.status_code == 200
     assert artifacts.json()["artifacts"] == []
+
+
+@pytest.mark.asyncio
+async def test_demo_templates_are_available_for_local_ui():
+    async with _client() as client:
+        response = await client.get("/v1/demo/templates")
+
+    assert response.status_code == 200
+    templates = response.json()["templates"]
+    template_ids = {template["id"] for template in templates}
+    assert {"git_status", "thinking_capture", "approval_gate"}.issubset(template_ids)
+    for template in templates:
+        assert template["goal"]
+        assert isinstance(template["allowed_tools"], list)
+        assert isinstance(template["acceptance_criteria"], list)
 
 
 @pytest.mark.asyncio

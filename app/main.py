@@ -18,6 +18,7 @@ from app.contracts.repository import SwarmContractRepository
 from app.events.bus import InMemoryEventBus
 from app.llm.runtime_config import LLMConfigService
 from app.persistence.session import create_session_factory
+from app.persistence.task_repository import TaskRepository
 from app.services.execution_engine import ExecutionEngine
 from app.services.task_service import TaskService
 
@@ -29,6 +30,7 @@ def create_app(testing: bool = False, database_url: str | None = None) -> FastAP
     session_factory = create_session_factory(database_url)
     event_repository = AuditEventRepository(session_factory)
     swarm_contract_repository = SwarmContractRepository(session_factory)
+    task_repository = TaskRepository(session_factory)
     event_bus = InMemoryEventBus()
     audit_emitter = AuditEmitter(event_repository, event_bus)
     llm_config_service = LLMConfigService(
@@ -41,7 +43,11 @@ def create_app(testing: bool = False, database_url: str | None = None) -> FastAP
         workspace=Path.cwd(),
         llm_config_service=llm_config_service,
     )
-    task_service = TaskService(emitter=audit_emitter, execution_engine=execution_engine)
+    task_service = TaskService(
+        repository=task_repository,
+        emitter=audit_emitter,
+        execution_engine=execution_engine,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -66,6 +72,7 @@ def create_app(testing: bool = False, database_url: str | None = None) -> FastAP
     app.state.session_factory = session_factory
     app.state.event_repository = event_repository
     app.state.swarm_contract_repository = swarm_contract_repository
+    app.state.task_repository = task_repository
     app.state.event_bus = event_bus
     app.state.audit_emitter = audit_emitter
     app.state.llm_config_service = llm_config_service

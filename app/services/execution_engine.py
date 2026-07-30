@@ -368,9 +368,10 @@ class ExecutionEngine:
         *,
         agent_id: str,
         agent_role: AgentRole,
-        delta: dict[str, Any],
+        delta: dict[str, Any] | str,
         model_message: dict[str, Any] | None = None,
     ) -> None:
+        delta = self._normalize_model_delta(delta)
         payload = {
             "schema_version": "1.0",
             "agent_id": agent_id,
@@ -390,6 +391,23 @@ class ExecutionEngine:
             "metadata": {"model_message": model_message or {}},
         }
         await self._emit(task, "thinking_summary_delta", payload, agent_id=agent_id)
+
+    def _normalize_model_delta(self, delta: dict[str, Any] | str) -> dict[str, Any]:
+        if isinstance(delta, dict):
+            return delta
+        if isinstance(delta, str) and delta.strip():
+            return {
+                "stage": "model",
+                "action": "complete_json",
+                "summary": delta.strip(),
+                "observations": [],
+                "input_refs": [],
+                "output_refs": [],
+                "next_step": None,
+                "progress_percent": None,
+                "confidence": None,
+            }
+        return {}
 
     async def _emit_model_reasoning_content(
         self,

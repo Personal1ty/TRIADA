@@ -206,6 +206,43 @@ async def test_openai_provider_rejects_non_json_without_leaking_api_key_or_cause
 
 
 @pytest.mark.asyncio
+async def test_openai_provider_extracts_json_object_from_wrapped_content():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                "<think>private planning text</think>\n"
+                                "```json\n"
+                                "{\"thinking_summary_delta\":{\"stage\":\"planning\",\"action\":\"draft\","
+                                "\"summary\":\"planned\",\"observations\":[],\"next_step\":\"execute\","
+                                "\"confidence\":0.8},\"answer\":{\"steps\":[{\"id\":\"step-1\","
+                                "\"description\":\"Use echo\",\"allowed_tools\":[\"echo\"]}]}}\n"
+                                "```"
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://llm.example.test",
+        api_key=None,
+        model="corp-coder",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await provider.complete_json("hello", schema_name="plan")
+
+    assert result["answer"]["steps"][0]["allowed_tools"] == ["echo"]
+    assert result["thinking_summary_delta"]["summary"] == "planned"
+
+
+@pytest.mark.asyncio
 async def test_openai_provider_omits_authorization_without_api_key():
     seen_request = None
 

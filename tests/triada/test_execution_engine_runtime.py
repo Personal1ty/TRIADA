@@ -10,6 +10,7 @@ from app.llm.codex_bridge import CodexBridgeProvider
 from app.llm.runtime_config import LLMConfigService, LLMProviderConfig
 from app.llm.openai_compatible import OpenAICompatibleProvider
 from app.llm.openai_responses import OpenAIResponsesProvider
+from app.schemas.enums import AgentRole
 from app.services.execution_engine import ExecutionEngine
 from app.services.task_service import TaskRecord, TaskService
 
@@ -92,6 +93,25 @@ def make_task(*, goal: str, allowed_tools: list[str] | None = None) -> TaskRecor
         allowed_tools=allowed_tools or ["shell"],
         acceptance_criteria=["task handled"],
     )
+
+
+@pytest.mark.asyncio
+async def test_execution_engine_normalizes_string_model_delta(tmp_path):
+    emitter = MemoryEmitter()
+    engine = ExecutionEngine(emitter=emitter, workspace=tmp_path)
+    task = make_task(goal="Echo")
+
+    await engine._emit_model_delta(
+        task,
+        agent_id="auditor-1",
+        agent_role=AgentRole.AUDITOR,
+        delta="Auditor reviewed the evidence and approved it.",
+    )
+
+    event = emitter.events[0]
+    assert event["event_type"] == "thinking_summary_delta"
+    assert event["payload"]["summary"] == "Auditor reviewed the evidence and approved it."
+    assert event["payload"]["stage"] == "model"
 
 
 def test_execution_engine_uses_openai_compatible_provider_from_settings(monkeypatch, tmp_path):

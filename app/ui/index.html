@@ -161,20 +161,27 @@
       margin-bottom: 10px;
     }
 
-    .pair-editor {
+    .pair-editor,
+    .route-map-editor {
       display: grid;
       gap: 8px;
       margin: 10px 0;
     }
 
-    .pair-row {
+    .pair-row,
+    .route-row {
       display: grid;
       grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(140px, 1fr) 92px 38px;
       gap: 8px;
       align-items: end;
     }
 
-    .pair-row button {
+    .route-row {
+      grid-template-columns: minmax(110px, 1fr) minmax(110px, 1fr) minmax(150px, 1.2fr) minmax(150px, 1.2fr) minmax(150px, 1.2fr) 38px;
+    }
+
+    .pair-row button,
+    .route-row button {
       width: 38px;
       padding: 0;
     }
@@ -348,6 +355,19 @@
       color: var(--warn);
     }
 
+    .validation-errors {
+      margin: 0 0 10px;
+      padding: 8px 10px;
+      border: 1px solid #f59e0b;
+      border-radius: 6px;
+      background: #fffbeb;
+      color: var(--warn);
+    }
+
+    .validation-errors:empty {
+      display: none;
+    }
+
     @media (max-width: 860px) {
       header,
       main {
@@ -379,11 +399,13 @@
       }
 
       .compact-grid,
-      .pair-row {
+      .pair-row,
+      .route-row {
         grid-template-columns: 1fr;
       }
 
-      .pair-row button {
+      .pair-row button,
+      .route-row button {
         width: 100%;
       }
     }
@@ -451,6 +473,13 @@
         <h2>Task Runner</h2>
         <div class="panel-body">
           <form class="form-grid" id="create-task-form">
+            <div class="field">
+              <label for="demo-template-select">Demo template</label>
+              <select id="demo-template-select" name="demo-template-select"></select>
+            </div>
+            <div class="button-row">
+              <button id="load-demo-template" type="button">Load template</button>
+            </div>
             <div class="field">
               <label for="task-goal">Goal</label>
               <textarea id="task-goal" name="task-goal" placeholder="Inspect repository status"></textarea>
@@ -547,6 +576,21 @@
             </div>
             <div class="compact-grid">
               <div class="field">
+                <label for="contract-author">Author</label>
+                <input id="contract-author" name="contract-author" type="text" autocomplete="off" placeholder="operator">
+              </div>
+              <div class="field">
+                <label for="contract-change-reason">Change reason</label>
+                <input id="contract-change-reason" name="contract-change-reason" type="text" autocomplete="off" placeholder="why this version changes">
+              </div>
+              <div class="field">
+                <label for="contract-notes">Notes</label>
+                <input id="contract-notes" name="contract-notes" type="text" autocomplete="off" placeholder="short operational note">
+              </div>
+            </div>
+            <ul class="validation-errors" id="contract-validation-errors"></ul>
+            <div class="compact-grid">
+              <div class="field">
                 <label for="chief-auditor-id">Chief auditor</label>
                 <input id="chief-auditor-id" name="chief-auditor-id" type="text" autocomplete="off" placeholder="chief-auditor">
               </div>
@@ -579,6 +623,13 @@
               <div class="button-row">
                 <button id="add-worker-pair" type="button">Add pair</button>
                 <button id="sync-contract-json" type="button">Sync JSON</button>
+              </div>
+            </div>
+            <div>
+              <label>Route map</label>
+              <div class="route-map-editor" id="route-map-editor"></div>
+              <div class="button-row">
+                <button id="add-route-map-entry" type="button">Add route</button>
               </div>
             </div>
           </div>
@@ -631,6 +682,10 @@
     const loadContractVersionButton = document.getElementById("load-contract-version");
     const saveContractButton = document.getElementById("save-contract");
     const contractVersionInput = document.getElementById("contract-version");
+    const contractAuthor = document.getElementById("contract-author");
+    const contractNotes = document.getElementById("contract-notes");
+    const contractChangeReason = document.getElementById("contract-change-reason");
+    const contractValidationErrors = document.getElementById("contract-validation-errors");
     const chiefAuditorId = document.getElementById("chief-auditor-id");
     const chiefAuditorStrict = document.getElementById("chief-auditor-strict");
     const scalingDefaultPairs = document.getElementById("scaling-default-pairs");
@@ -639,6 +694,8 @@
     const topologyMinPairs = document.getElementById("topology-min-pairs");
     const workerPairEditor = document.getElementById("worker-pair-editor");
     const addWorkerPairButton = document.getElementById("add-worker-pair");
+    const routeMapEditor = document.getElementById("route-map-editor");
+    const addRouteMapEntryButton = document.getElementById("add-route-map-entry");
     const syncContractJsonButton = document.getElementById("sync-contract-json");
     const contractJson = document.getElementById("contract-json");
     const contractStatus = document.getElementById("contract-status");
@@ -649,6 +706,8 @@
     const taskGoal = document.getElementById("task-goal");
     const taskTools = document.getElementById("task-tools");
     const taskCriteria = document.getElementById("task-criteria");
+    const demoTemplateSelect = document.getElementById("demo-template-select");
+    const loadDemoTemplateButton = document.getElementById("load-demo-template");
     const createTaskButton = document.getElementById("create-task");
     const createRunTaskButton = document.getElementById("create-run-task");
     const runTaskButton = document.getElementById("run-task");
@@ -673,6 +732,7 @@
     let eventPollTimer = null;
     let nextEventsCursor = null;
     let currentContract = null;
+    let demoTemplates = [];
     const terminalStatuses = new Set(["completed", "blocked", "failed", "cancelled", "corrections_required"]);
 
     function escapeHtml(value) {
@@ -819,8 +879,54 @@
       `).join("");
     }
 
+    function renderRouteEditor(routes) {
+      routeMapEditor.innerHTML = routes.map((route, index) => `
+        <div class="route-row" data-index="${index}">
+          <div class="field">
+            <label for="route-source-${index}">Source</label>
+            <input id="route-source-${index}" class="route-source" type="text" value="${escapeHtml(route.source || "")}">
+          </div>
+          <div class="field">
+            <label for="route-target-${index}">Target</label>
+            <input id="route-target-${index}" class="route-target" type="text" value="${escapeHtml(route.target || "")}">
+          </div>
+          <div class="field">
+            <label for="route-reason-${index}">Reason</label>
+            <input id="route-reason-${index}" class="route-reason" type="text" value="${escapeHtml(route.reason || "")}">
+          </div>
+          <div class="field">
+            <label for="route-input-${index}">Input contract</label>
+            <input id="route-input-${index}" class="route-input-contract" type="text" value="${escapeHtml(contractRef(route.input_contract))}" placeholder="name@version">
+          </div>
+          <div class="field">
+            <label for="route-output-${index}">Output contract</label>
+            <input id="route-output-${index}" class="route-output-contract" type="text" value="${escapeHtml(contractRef(route.output_contract))}" placeholder="name@version">
+          </div>
+          <button type="button" class="remove-route-map-entry" aria-label="Remove route">x</button>
+        </div>
+      `).join("");
+    }
+
+    function parseContractRef(value) {
+      const text = String(value || "").trim();
+      if (!text) {
+        return { name: "", version: "" };
+      }
+      const separator = text.lastIndexOf("@");
+      if (separator <= 0 || separator === text.length - 1) {
+        return { name: text, version: "1.0" };
+      }
+      return {
+        name: text.slice(0, separator),
+        version: text.slice(separator + 1)
+      };
+    }
+
     function renderContractForm(contract) {
       contractVersionInput.value = contract.contract_version || "";
+      contractAuthor.value = "";
+      contractNotes.value = "";
+      contractChangeReason.value = "";
       chiefAuditorId.value = contract.topology?.chief_auditor?.agent_id || "chief-auditor";
       chiefAuditorStrict.checked = Boolean(contract.topology?.chief_auditor?.strict_mode);
       scalingDefaultPairs.value = contract.swarm_scaling?.default_pairs ?? 3;
@@ -828,6 +934,8 @@
       scalingMaxPairs.value = contract.swarm_scaling?.max_pairs ?? 12;
       topologyMinPairs.value = contract.topology?.min_worker_auditor_pairs ?? 3;
       renderPairEditor(Array.isArray(contract.worker_auditor_pairs) ? contract.worker_auditor_pairs : []);
+      renderRouteEditor(Array.isArray(contract.route_map) ? contract.route_map : []);
+      renderContractValidation([]);
     }
 
     function pairsFromEditor() {
@@ -837,6 +945,24 @@
         capabilities: parseList(row.querySelector(".pair-capabilities").value),
         max_parallel_steps: toPositiveInteger(row.querySelector(".pair-parallel").value, 1)
       })).filter((pair) => pair.worker_id || pair.auditor_id);
+    }
+
+    function routesFromEditor() {
+      return Array.from(routeMapEditor.querySelectorAll(".route-row")).map((row) => ({
+        source: row.querySelector(".route-source").value.trim(),
+        target: row.querySelector(".route-target").value.trim(),
+        reason: row.querySelector(".route-reason").value.trim(),
+        input_contract: parseContractRef(row.querySelector(".route-input-contract").value),
+        output_contract: parseContractRef(row.querySelector(".route-output-contract").value)
+      })).filter((route) => route.source || route.target || route.reason);
+    }
+
+    function contractMetadataFromForm() {
+      return {
+        author: contractAuthor.value.trim(),
+        notes: contractNotes.value.trim(),
+        change_reason: contractChangeReason.value.trim()
+      };
     }
 
     function contractFromForm() {
@@ -853,7 +979,95 @@
       base.swarm_scaling.default_pairs = toPositiveInteger(scalingDefaultPairs.value, 3);
       base.swarm_scaling.min_pairs = toPositiveInteger(scalingMinPairs.value, 3);
       base.swarm_scaling.max_pairs = toPositiveInteger(scalingMaxPairs.value, 12);
+      base.route_map = routesFromEditor();
       return base;
+    }
+
+    function validateContractForm(payload) {
+      const errors = [];
+      const pairs = Array.isArray(payload.worker_auditor_pairs) ? payload.worker_auditor_pairs : [];
+      const routes = Array.isArray(payload.route_map) ? payload.route_map : [];
+      const scaling = payload.swarm_scaling || {};
+      const topology = payload.topology || {};
+      const requiredReasons = new Set([
+        "assign_step",
+        "submit_evidence",
+        "escalate_verdict",
+        "return_final_gate",
+        "deliver_human_packet"
+      ]);
+
+      if (!String(payload.contract_version || "").trim()) {
+        errors.push("Contract version is required.");
+      }
+      if (!String(topology.chief_auditor?.agent_id || "").trim()) {
+        errors.push("Chief auditor id is required.");
+      }
+      if (pairs.length < 3) {
+        errors.push("At least three worker-auditor pairs are required.");
+      }
+
+      const workerIds = new Set();
+      const auditorIds = new Set();
+      pairs.forEach((pair, index) => {
+        const number = index + 1;
+        if (!pair.worker_id) {
+          errors.push(`Pair ${number}: worker id is required.`);
+        }
+        if (!pair.auditor_id) {
+          errors.push(`Pair ${number}: auditor id is required.`);
+        }
+        if (pair.worker_id && pair.auditor_id && pair.worker_id === pair.auditor_id) {
+          errors.push(`Pair ${number}: worker and auditor must be different agents.`);
+        }
+        if (pair.worker_id && workerIds.has(pair.worker_id)) {
+          errors.push(`Worker ${pair.worker_id} is duplicated.`);
+        }
+        if (pair.auditor_id && auditorIds.has(pair.auditor_id)) {
+          errors.push(`Auditor ${pair.auditor_id} is duplicated.`);
+        }
+        workerIds.add(pair.worker_id);
+        auditorIds.add(pair.auditor_id);
+      });
+
+      if (scaling.min_pairs < 3) {
+        errors.push("Scaling minimum must be at least 3.");
+      }
+      if (scaling.default_pairs < scaling.min_pairs) {
+        errors.push("Scaling default must be greater than or equal to minimum.");
+      }
+      if (scaling.max_pairs < scaling.default_pairs) {
+        errors.push("Scaling maximum must be greater than or equal to default.");
+      }
+      if (topology.min_worker_auditor_pairs < 3) {
+        errors.push("Topology minimum must be at least 3.");
+      }
+
+      routes.forEach((route, index) => {
+        const number = index + 1;
+        if (!route.source || !route.target) {
+          errors.push(`Route ${number}: source and target are required.`);
+        }
+        if (!route.reason) {
+          errors.push(`Route ${number}: reason is required.`);
+        }
+        if (!route.input_contract?.name || !route.output_contract?.name) {
+          errors.push(`Route ${number}: input and output contracts are required.`);
+        }
+      });
+
+      const routeReasons = new Set(routes.map((route) => route.reason));
+      requiredReasons.forEach((reason) => {
+        if (!routeReasons.has(reason)) {
+          errors.push(`Route map must include ${reason}.`);
+        }
+      });
+      return errors;
+    }
+
+    function renderContractValidation(errors) {
+      contractValidationErrors.innerHTML = errors.map((error) => `<li>${escapeHtml(error)}</li>`).join("");
+      contractValidationErrors.classList.toggle("error", errors.length > 0);
     }
 
     function syncContractJsonFromForm() {
@@ -1092,12 +1306,50 @@
       contractStatus.classList.remove("error");
       try {
         const payload = contractFromForm();
-        renderContract(await postJson("/v1/swarm/contract", payload));
+        const validationErrors = validateContractForm(payload);
+        renderContractValidation(validationErrors);
+        if (validationErrors.length) {
+          contractStatus.textContent = "Fix contract validation errors before saving.";
+          contractStatus.classList.add("error");
+          return;
+        }
+        renderContract(await postJson("/v1/swarm/contract", {
+          ...payload,
+          __metadata: contractMetadataFromForm()
+        }));
         await loadContractVersions();
       } catch (error) {
         contractStatus.textContent = `Unable to save contract: ${error.message}`;
         contractStatus.classList.add("error");
       }
+    }
+
+    function renderDemoTemplates(payload) {
+      demoTemplates = Array.isArray(payload.templates) ? payload.templates : [];
+      demoTemplateSelect.innerHTML = demoTemplates.map((template) => `
+        <option value="${escapeHtml(template.id)}">${escapeHtml(template.name || template.id)}</option>
+      `).join("");
+    }
+
+    async function loadDemoTemplates() {
+      try {
+        renderDemoTemplates(await fetchJson("/v1/demo/templates"));
+      } catch (error) {
+        taskStatus.textContent = `Unable to load demo templates: ${error.message}`;
+        taskStatus.classList.add("error");
+      }
+    }
+
+    function applySelectedDemoTemplate() {
+      const template = demoTemplates.find((item) => item.id === demoTemplateSelect.value);
+      if (!template) {
+        return;
+      }
+      taskGoal.value = template.goal || "";
+      taskTools.value = Array.isArray(template.allowed_tools) ? template.allowed_tools.join(", ") : "";
+      taskCriteria.value = Array.isArray(template.acceptance_criteria) ? template.acceptance_criteria.join(", ") : "";
+      taskStatus.classList.remove("error");
+      taskStatus.textContent = `Loaded demo template: ${template.name || template.id}.`;
     }
 
     async function loadRecentTasks() {
@@ -1379,6 +1631,18 @@
       renderPairEditor(pairs);
     });
 
+    addRouteMapEntryButton.addEventListener("click", () => {
+      const routes = routesFromEditor();
+      routes.push({
+        source: "orchestrator",
+        target: "worker",
+        reason: "assign_step",
+        input_contract: { name: "task_assignment", version: "1.0" },
+        output_contract: { name: "worker_result", version: "1.0" }
+      });
+      renderRouteEditor(routes);
+    });
+
     syncContractJsonButton.addEventListener("click", () => {
       syncContractJsonFromForm();
     });
@@ -1391,6 +1655,20 @@
       const row = removeButton.closest(".pair-row");
       row?.remove();
       syncContractJsonFromForm();
+    });
+
+    routeMapEditor.addEventListener("click", (event) => {
+      const removeButton = event.target.closest(".remove-route-map-entry");
+      if (!removeButton) {
+        return;
+      }
+      const row = removeButton.closest(".route-row");
+      row?.remove();
+      syncContractJsonFromForm();
+    });
+
+    loadDemoTemplateButton.addEventListener("click", () => {
+      applySelectedDemoTemplate();
     });
 
     approvalQueue.addEventListener("click", (event) => {
@@ -1431,6 +1709,7 @@
     loadLlmConfig();
     loadContract();
     loadContractVersions();
+    loadDemoTemplates();
     loadRecentTasks();
     loadApprovalQueue();
   </script>

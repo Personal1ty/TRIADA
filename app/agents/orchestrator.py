@@ -89,9 +89,7 @@ class Orchestrator:
             output_contract=StepContract(required_checks=acceptance_criteria),
             risk_policy=risk_policy,
             requires_approval=requires_approval,
-            model_thinking_summary_delta=provider_response.get("thinking_summary_delta")
-            if isinstance(provider_response, dict)
-            else None,
+            model_thinking_summary_delta=self._model_summary_delta(provider_response),
             model_message=provider_response.get("model_message", {})
             if isinstance(provider_response, dict)
             else {},
@@ -109,6 +107,21 @@ class Orchestrator:
         except Exception as exc:
             raise LLMUnavailableError(str(exc)) from None
         return response if isinstance(response, dict) else {}
+
+    def _model_summary_delta(self, provider_response: dict[str, Any]) -> dict[str, Any] | None:
+        value = provider_response.get("thinking_summary_delta")
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str) and value.strip():
+            return {
+                "stage": "planning",
+                "action": "plan_task",
+                "summary": value.strip(),
+                "observations": [],
+                "next_step": "assign_worker",
+                "confidence": 0.6,
+            }
+        return None
 
     def _safe_allowed_tools(self, provider_tools: Any, allowed_tools: list[str]) -> list[str]:
         if not isinstance(provider_tools, list):

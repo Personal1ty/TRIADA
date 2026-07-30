@@ -70,6 +70,29 @@ async def test_saved_swarm_contract_versions_survive_app_restart(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_swarm_contract_versions_include_metadata():
+    async with _client() as client:
+        current = (await client.get("/v1/swarm/contract")).json()
+        current["contract_version"] = "metadata-test"
+        current["__metadata"] = {
+            "author": "operator",
+            "notes": "Test notes",
+            "change_reason": "Validate metadata storage",
+        }
+
+        saved = await client.post("/v1/swarm/contract", json=current)
+        versions = await client.get("/v1/swarm/contracts")
+
+    assert saved.status_code == 200
+    payload = versions.json()
+    details = {item["contract_version"]: item for item in payload["version_details"]}
+    assert details["metadata-test"]["metadata"]["author"] == "operator"
+    assert details["metadata-test"]["metadata"]["notes"] == "Test notes"
+    assert details["metadata-test"]["metadata"]["change_reason"] == "Validate metadata storage"
+    assert details["metadata-test"]["is_active"] is True
+
+
+@pytest.mark.asyncio
 async def test_get_task_route_graph():
     async with _client() as client:
         created = await client.post(
@@ -115,3 +138,29 @@ async def test_get_task_route_graph():
     assert nodes["chief_auditor"]["role"] == "chief_auditor"
     assert nodes["human"]["label"] == "Human"
     assert nodes["orchestrator"]["outgoing_count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_task_route_graph_survives_app_restart(tmp_path):
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'triada.db'}"
+
+    async with _client(database_url=database_url) as client:
+        created = await client.post(
+            "/v1/tasks",
+            json={
+                "goal": "inspect repository status",
+                "allowed_tools": ["git"],
+                "acceptance_criteria": ["return git status"],
+            },
+        )
+        task_id = created.json()["task_id"]
+        await client.post(f"/v1/tasks/{task_id}/run_once")
+
+    async with _client(database_url=database_url) as client:
+        task = await client.get(f"/v1/tasks/{task_id}")
+        graph = await client.get(f"/v1/tasks/{task_id}/swarm-graph")
+
+    assert task.status_code == 200
+    assert graph.status_code == 200
+    assert graph.json()["nodes"]
+    assert graph.json()["edges"]

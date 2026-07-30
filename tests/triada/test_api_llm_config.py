@@ -7,6 +7,17 @@ from httpx import ASGITransport, AsyncClient
 from app.main import create_app
 
 
+class RecordingProvider:
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+        self.schema_names: list[str] = []
+
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        self.prompts.append(prompt)
+        self.schema_names.append(schema_name)
+        return {"answer": {"ok": True}}
+
+
 @asynccontextmanager
 async def _client() -> AsyncIterator[AsyncClient]:
     app = create_app(testing=True)
@@ -160,3 +171,19 @@ async def test_llm_test_endpoint_reports_configured_provider_without_leaking_sec
     assert payload["provider"] == "openai-compatible"
     assert payload["model"] == "corp-coder"
     assert "sk-runtime-secret" not in str(payload)
+
+
+@pytest.mark.asyncio
+async def test_llm_test_endpoint_requests_json_connectivity_response():
+    app = create_app(testing=True)
+    provider = RecordingProvider()
+    async with app.router.lifespan_context(app):
+        app.state.execution_engine._build_llm_provider = lambda: provider
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/v1/llm/test")
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert provider.schema_names == ["plan"]
+    assert "Return only JSON" in provider.prompts[0]
+    assert '"answer"' in provider.prompts[0]

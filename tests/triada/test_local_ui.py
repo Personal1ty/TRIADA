@@ -47,6 +47,10 @@ async def test_get_local_swarm_ui():
     assert 'class="reveal-raw-reasoning"' in response.text
     assert 'id="contract-version-select"' in response.text
     assert 'id="contract-version"' in response.text
+    assert 'id="contract-author"' in response.text
+    assert 'id="contract-notes"' in response.text
+    assert 'id="contract-change-reason"' in response.text
+    assert 'id="contract-validation-errors"' in response.text
     assert 'id="chief-auditor-id"' in response.text
     assert 'id="chief-auditor-strict"' in response.text
     assert 'id="scaling-default-pairs"' in response.text
@@ -54,6 +58,8 @@ async def test_get_local_swarm_ui():
     assert 'id="scaling-max-pairs"' in response.text
     assert 'id="worker-pair-editor"' in response.text
     assert 'id="add-worker-pair"' in response.text
+    assert 'id="route-map-editor"' in response.text
+    assert 'id="add-route-map-entry"' in response.text
     assert 'id="sync-contract-json"' in response.text
     assert 'id="contract-json"' in response.text
     assert 'id="save-contract"' in response.text
@@ -61,6 +67,8 @@ async def test_get_local_swarm_ui():
     assert 'id="llm-config"' in response.text
     assert 'id="llm-clear-api-key"' in response.text
     assert 'id="create-task-form"' in response.text
+    assert 'id="demo-template-select"' in response.text
+    assert 'id="load-demo-template"' in response.text
     assert 'id="run-task"' in response.text
     assert 'id="event-feed"' in response.text
     assert 'id="event-auto-refresh"' in response.text
@@ -71,6 +79,7 @@ async def test_get_local_swarm_ui():
     assert '"waiting_approval"' not in response.text.partition("const terminalStatuses = new Set(")[2].partition(");")[0]
     assert "/v1/tasks" in response.text
     assert "/v1/tasks?status=waiting_approval" in response.text
+    assert "/v1/demo/templates" in response.text
     assert "/approve" in response.text
     assert "/raw-reasoning/" in response.text
     assert "/v1/swarm/contracts" in response.text
@@ -80,6 +89,8 @@ async def test_get_local_swarm_ui():
     assert 'id="events"' in runs_view
     load_task_body = response.text.partition("async function loadTask(taskId)")[2].partition("async function createTask")[0]
     assert "clearRawReasoningReveal();" in load_task_body
+    assert "validateContractForm" in response.text
+    assert "routesFromEditor" in response.text
 
 
 def test_local_swarm_ui_is_packaged():

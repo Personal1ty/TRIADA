@@ -62,6 +62,14 @@ class RecordingProvider:
         }
 
 
+class StringSummaryProvider:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        return {
+            "thinking_summary_delta": "Executed echo command to confirm FixMost corp-coder connected.",
+            "answer": {"status": "ready"},
+        }
+
+
 @pytest.mark.asyncio
 async def test_orchestrator_builds_plan_with_steps_and_required_checks():
     plan = await Orchestrator(FakeLLMProvider()).plan_task(
@@ -85,6 +93,21 @@ async def test_orchestrator_does_not_widen_provider_tools_beyond_allowlist():
 
     assert plan.steps[0].allowed_tools == ["git"]
     assert "shell" not in plan.steps[0].allowed_tools
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_normalizes_string_model_summary_delta():
+    plan = await Orchestrator(StringSummaryProvider()).plan_task(
+        goal="Check repository status",
+        allowed_tools=["git"],
+        acceptance_criteria=["git status was inspected"],
+    )
+
+    assert plan.model_thinking_summary_delta["summary"] == (
+        "Executed echo command to confirm FixMost corp-coder connected."
+    )
+    assert plan.model_thinking_summary_delta["stage"] == "planning"
+    assert plan.model_thinking_summary_delta["action"] == "plan_task"
 
 
 @pytest.mark.asyncio
@@ -280,6 +303,23 @@ async def test_worker_calls_model_and_returns_public_model_summary(tmp_path):
     assert provider.calls[0]["schema_name"] == "worker_result"
     assert result.model_thinking_summary_delta["summary"] == "Worker model prepared the step."
     assert result.model_message["has_reasoning_content"] is True
+
+
+@pytest.mark.asyncio
+async def test_worker_normalizes_string_model_summary_delta(tmp_path):
+    result = await Worker(worker_id="worker-1", workspace=tmp_path, llm=StringSummaryProvider()).run_step(
+        task_id="task-1",
+        step_id="step-1",
+        title="Echo current step",
+        allowed_tools=["echo"],
+        command=["echo", "hello"],
+    )
+
+    assert result.status == "succeeded"
+    assert result.model_thinking_summary_delta["summary"] == (
+        "Executed echo command to confirm FixMost corp-coder connected."
+    )
+    assert result.model_thinking_summary_delta["stage"] == "execution"
 
 
 def test_auditor_reports_unmentioned_tool_failure():

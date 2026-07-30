@@ -23,7 +23,7 @@ class OpenAICompatibleProvider(LLMProvider):
     async def complete_json(self, prompt: str, *, schema_name: str) -> dict[str, Any]:
         message = await self.complete_message(prompt, schema_name=schema_name)
         try:
-            parsed = json.loads(message["content"])
+            parsed = self._parse_json_object(message["content"])
         except json.JSONDecodeError as exc:
             raise RuntimeError(
                 f"OpenAI-compatible LLM returned non-JSON content: {self._redact(exc)}"
@@ -38,6 +38,42 @@ class OpenAICompatibleProvider(LLMProvider):
             }
             parsed["raw_reasoning_content"] = message["raw_reasoning_content"]
         return parsed
+
+    def _parse_json_object(self, content: str) -> Any:
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as first_error:
+            extracted = self._extract_first_json_object(content)
+            if extracted is None:
+                raise first_error
+            return json.loads(extracted)
+
+    def _extract_first_json_object(self, content: str) -> str | None:
+        start = content.find("{")
+        while start != -1:
+            depth = 0
+            in_string = False
+            escaped = False
+            for index in range(start, len(content)):
+                char = content[index]
+                if in_string:
+                    if escaped:
+                        escaped = False
+                    elif char == "\\":
+                        escaped = True
+                    elif char == '"':
+                        in_string = False
+                    continue
+                if char == '"':
+                    in_string = True
+                elif char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return content[start : index + 1]
+            start = content.find("{", start + 1)
+        return None
 
     async def complete_message(self, prompt: str, *, schema_name: str) -> dict[str, Any]:
         if not self.base_url:

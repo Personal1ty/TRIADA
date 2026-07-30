@@ -75,10 +75,7 @@ class TaskService:
 
     async def list_tasks(self, *, limit: int = 20, status: str | None = None) -> list[TaskRecord]:
         if self._repository is not None and hasattr(self._repository, "list_tasks"):
-            tasks = await self._repository.list_tasks(limit=limit)
-            if status is not None:
-                tasks = [task for task in tasks if task.status == status]
-            return tasks
+            return await self._repository.list_tasks(limit=limit, status=status)
         tasks = sorted(
             self._tasks.values(),
             key=lambda task: task.created_at,

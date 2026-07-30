@@ -41,19 +41,55 @@ async def get_swarm_contract(request: Request, version: str | None = Query(defau
 
 @router.get("/swarm/contracts")
 async def list_swarm_contract_versions(request: Request) -> dict:
-    active_version, versions = await request.app.state.swarm_contract_repository.list_versions()
+    active_version, versions, version_details = await request.app.state.swarm_contract_repository.list_versions()
     return {
         "active_version": active_version,
         "versions": versions,
+        "version_details": version_details,
     }
 
 
 @router.post("/swarm/contract")
 async def save_swarm_contract(payload: dict, request: Request) -> dict:
-    contract = SwarmContract.model_validate(payload)
-    await request.app.state.swarm_contract_repository.save_contract(contract, activate=True)
+    metadata = payload.get("__metadata") if isinstance(payload.get("__metadata"), dict) else {}
+    contract_payload = {key: value for key, value in payload.items() if key != "__metadata"}
+    contract = SwarmContract.model_validate(contract_payload)
+    await request.app.state.swarm_contract_repository.save_contract(contract, activate=True, metadata=metadata)
     request.app.state.execution_engine.set_swarm_contract(contract)
     return contract.model_dump(mode="json")
+
+
+@router.get("/demo/templates")
+async def list_demo_templates() -> dict:
+    return {
+        "templates": [
+            {
+                "id": "git_status",
+                "name": "Git status check",
+                "goal": "Inspect the TRIADA repository state with git status and summarize the result.",
+                "allowed_tools": ["git"],
+                "acceptance_criteria": ["git status was inspected", "result is ready for a human"],
+            },
+            {
+                "id": "thinking_capture",
+                "name": "Thinking capture smoke test",
+                "goal": "Use echo to produce a short TRIADA thinking capture demo message.",
+                "allowed_tools": ["echo"],
+                "acceptance_criteria": [
+                    "orchestrator public thinking summary is stored",
+                    "worker public thinking summary is stored",
+                    "audit events are visible in the UI",
+                ],
+            },
+            {
+                "id": "approval_gate",
+                "name": "Approval gate demo",
+                "goal": "Prepare a write action that must wait for approval before continuing.",
+                "allowed_tools": ["shell"],
+                "acceptance_criteria": ["task enters waiting_approval before any write action"],
+            },
+        ]
+    }
 
 
 @router.get("/llm/config", response_model=LLMConfigResponse)
@@ -92,7 +128,10 @@ async def test_llm_config(request: Request) -> dict:
     config = request.app.state.llm_config_service.current_config()
     provider = request.app.state.execution_engine._build_llm_provider()
     try:
-        await provider.complete_json("TRIADA provider connectivity test", schema_name="plan")
+        await provider.complete_json(
+            'TRIADA provider connectivity test. Return only JSON: {"answer":{"ok":true}}',
+            schema_name="plan",
+        )
     except Exception as exc:
         return {
             "ok": False,

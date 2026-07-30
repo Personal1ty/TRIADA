@@ -110,7 +110,7 @@ class Worker:
                 ],
                 errors=[str(exc)],
                 recommended_next_action="correct_and_retry",
-                model_thinking_summary_delta=model_response.get("thinking_summary_delta"),
+                model_thinking_summary_delta=self._model_summary_delta(model_response),
                 model_message=model_response.get("model_message", {}),
                 raw_reasoning_content=model_response.get("raw_reasoning_content"),
             )
@@ -144,10 +144,25 @@ class Worker:
             ],
             errors=[] if passed else [result.stderr or f"exit code {result.exit_code}"],
             recommended_next_action="audit_result" if passed else "correct_and_retry",
-            model_thinking_summary_delta=model_response.get("thinking_summary_delta"),
+            model_thinking_summary_delta=self._model_summary_delta(model_response),
             model_message=model_response.get("model_message", {}),
             raw_reasoning_content=model_response.get("raw_reasoning_content"),
         )
+
+    def _model_summary_delta(self, model_response: dict) -> dict | None:
+        value = model_response.get("thinking_summary_delta")
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str) and value.strip():
+            return {
+                "stage": "execution",
+                "action": "prepare_worker_step",
+                "summary": value.strip(),
+                "observations": [],
+                "next_step": "run_tool",
+                "confidence": None,
+            }
+        return None
 
     def _tool_name(self, command: list[str]) -> str:
         if command and command[0] == "git":
