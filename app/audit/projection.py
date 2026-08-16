@@ -104,6 +104,55 @@ def run_inspector_from_events(events: list[Any]) -> dict:
     }
 
 
+def quality_from_events(events: list[Any]) -> dict:
+    worker_steps = [
+        event for event in events
+        if event.event_type in {"worker_step_completed", "worker_step_failed", "worker_step_blocked"}
+    ]
+    evidence_events = [event for event in events if event.event_type == "tool_execution_completed"]
+    verdict_events = [event for event in events if event.event_type == "audit_verdict"]
+    passed_verdicts = [
+        event for event in verdict_events
+        if isinstance(event.payload, Mapping) and event.payload.get("verdict") == "pass"
+    ]
+    correction_events = [event for event in events if event.event_type == "correction_requested"]
+    replay_points = []
+    for event in events:
+        if event.event_type not in {"correction_requested", "audit_verdict"}:
+            continue
+        payload = event.payload if isinstance(event.payload, Mapping) else {}
+        if event.event_type == "audit_verdict" and payload.get("verdict") == "pass":
+            continue
+        replay_points.append(
+            {
+                "event_id": str(event.id),
+                "sequence": event.sequence,
+                "event_type": event.event_type,
+                "agent_id": event.agent_id,
+                "reason": payload.get("summary") or payload.get("required_corrections") or "review required",
+            }
+        )
+
+    evidence_coverage = (
+        min(len(worker_steps), len(evidence_events)) / len(worker_steps)
+        if worker_steps
+        else 0.0
+    )
+    audit_pass_rate = len(passed_verdicts) / len(verdict_events) if verdict_events else 0.0
+    return {
+        "metrics": {
+            "evidence_coverage": round(evidence_coverage, 4),
+            "audit_pass_rate": round(audit_pass_rate, 4),
+            "worker_step_count": len(worker_steps),
+            "evidence_count": len(evidence_events),
+            "audit_count": len(verdict_events),
+            "correction_count": len(correction_events),
+            "replay_point_count": len(replay_points),
+        },
+        "replay_points": replay_points,
+    }
+
+
 def _phase_for_event(event_type: str, current: str) -> str:
     phases = {
         "task_created": "created",

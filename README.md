@@ -258,6 +258,8 @@ Core endpoints under `/v1`:
   refs.
 - `GET /v1/tasks/{task_id}/inspector` returns the current phase, agent states,
   and aggregate route/tool/error metrics derived from the public audit trace.
+- `GET /v1/tasks/{task_id}/quality` returns evidence coverage, audit pass rate,
+  correction counts, and read-only replay points from the audit trace.
 - `GET /v1/tasks/{task_id}/audit` verifies and returns the audit trace.
 - `GET /v1/tasks/{task_id}/artifacts` returns artifact records.
 - `POST /v1/tasks/{task_id}/approve`, `/cancel`, `/resume`, and `/run_once`

@@ -12,6 +12,7 @@ from app.audit.projection import (
     event_to_sse,
     events_to_public_response,
     run_inspector_from_events,
+    quality_from_events,
     swarm_graph_from_events,
     thinking_deltas_from_events,
 )
@@ -420,6 +421,18 @@ async def get_task_inspector(task_id: UUID, request: Request) -> dict:
         "trace_id": str(task.trace_id),
         "status": task.status,
         "inspector": run_inspector_from_events(events),
+    }
+
+
+@router.get("/tasks/{task_id}/quality")
+async def get_task_quality(task_id: UUID, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    return {
+        "task_id": str(task.id),
+        "trace_id": str(task.trace_id),
+        "status": task.status,
+        "quality": quality_from_events(events),
     }
 
 

@@ -642,9 +642,13 @@
             <div class="observatory-card"><span class="muted">Status</span><strong id="observatory-status">No task selected</strong></div>
             <div class="observatory-card"><span class="muted">Agents / routes</span><strong id="observatory-agents">—</strong></div>
             <div class="observatory-card"><span class="muted">Audit events</span><strong id="observatory-events">—</strong></div>
+            <div class="observatory-card"><span class="muted">Evidence coverage</span><strong id="observatory-evidence">—</strong></div>
+            <div class="observatory-card"><span class="muted">Audit pass rate</span><strong id="observatory-pass-rate">—</strong></div>
+            <div class="observatory-card"><span class="muted">Corrections</span><strong id="observatory-corrections">—</strong></div>
           </div>
           <p class="status" id="observatory-inspector">Select a task to inspect agent states.</p>
           <ul class="observatory-timeline" id="observatory-timeline"><li>Select a task to inspect its lifecycle.</li></ul>
+          <ul class="event-feed" id="observatory-replay"><li class="status">No replay points.</li></ul>
         </div>
       </section>
 
@@ -928,6 +932,10 @@
     const observatoryAgents = document.getElementById("observatory-agents");
     const observatoryEvents = document.getElementById("observatory-events");
     const observatoryInspector = document.getElementById("observatory-inspector");
+    const observatoryEvidence = document.getElementById("observatory-evidence");
+    const observatoryPassRate = document.getElementById("observatory-pass-rate");
+    const observatoryCorrections = document.getElementById("observatory-corrections");
+    const observatoryReplay = document.getElementById("observatory-replay");
     const observatoryTimeline = document.getElementById("observatory-timeline");
     const recentTasks = document.getElementById("recent-tasks");
     const graphBody = document.getElementById("graph-body");
@@ -1476,20 +1484,27 @@
       renderRawReasoningRefs(payload);
     }
 
-    function renderRunObservatory(task, graph, eventsPayload, inspectorPayload) {
+    function renderRunObservatory(task, graph, eventsPayload, inspectorPayload, qualityPayload) {
       const summary = graph && graph.summary ? graph.summary : {};
       const events = eventsPayload && Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
       const inspector = inspectorPayload && inspectorPayload.inspector ? inspectorPayload.inspector : {};
       const agents = Array.isArray(inspector.agents) ? inspector.agents : [];
+      const quality = qualityPayload && qualityPayload.quality ? qualityPayload.quality : {};
+      const metrics = quality.metrics || {};
       observatoryStatus.textContent = task.status || "unknown";
       observatoryAgents.textContent = `${summary.node_count ?? 0} / ${summary.edge_count ?? 0}`;
       observatoryEvents.textContent = String(events.length);
+      observatoryEvidence.textContent = `${Math.round((metrics.evidence_coverage || 0) * 100)}%`;
+      observatoryPassRate.textContent = `${Math.round((metrics.audit_pass_rate || 0) * 100)}%`;
+      observatoryCorrections.textContent = String(metrics.correction_count || 0);
       observatoryInspector.textContent = agents.length
         ? `${inspector.phase || "unknown phase"}: ${agents.map((agent) => `${agent.agent_id}=${agent.status}`).join(" · ")}`
         : "No agent state is available yet.";
       const lifecycle = ["task_created", "planning_started", "worker_step_started", "audit_verdict", "chief_audit_verdict", "human_review_packet_created"];
       const present = new Set(events.map((event) => event.event_type));
       observatoryTimeline.innerHTML = lifecycle.map((eventType) => `<li>${present.has(eventType) ? "✓" : "○"} ${escapeHtml(eventType)}</li>`).join("");
+      const replayPoints = Array.isArray(quality.replay_points) ? quality.replay_points : [];
+      observatoryReplay.innerHTML = replayPoints.map((point) => `<li><span class="event-type">Replay point ${escapeHtml(point.sequence)}</span> ${escapeHtml(point.reason)}</li>`).join("") || '<li class="status">No replay points.</li>';
     }
 
     function renderRawReasoningRefs(payload) {
@@ -1786,15 +1801,16 @@
       try {
         const task = await fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}`);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
-        const [graph, thinking, inspector] = await Promise.all([
+        const [graph, thinking, inspector, quality] = await Promise.all([
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/swarm-graph`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/thinking-summary`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/inspector`)
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/inspector`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/quality`)
         ]);
         renderGraph(graph);
         renderThinking(thinking);
         const events = await loadEvents(currentTaskId);
-        renderRunObservatory(task, graph, events, inspector);
+        renderRunObservatory(task, graph, events, inspector, quality);
         if (terminalStatuses.has(task.status)) {
           stopEventPolling();
         }
@@ -1819,17 +1835,18 @@
       thinkingStatus.textContent = `Loading ${thinkingUrl}...`;
       thinkingList.innerHTML = "";
       try {
-        const [task, graph, thinking, inspector] = await Promise.all([
+        const [task, graph, thinking, inspector, quality] = await Promise.all([
           fetchJson(taskUrl),
           fetchJson(graphUrl),
           fetchJson(thinkingUrl),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/inspector`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/quality`),
         ]);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
         renderGraph(graph);
         renderThinking(thinking);
         const events = await loadEvents(taskId);
-        renderRunObservatory(task, graph, events, inspector);
+        renderRunObservatory(task, graph, events, inspector, quality);
         if (!terminalStatuses.has(task.status)) {
           startEventPolling();
         } else {
