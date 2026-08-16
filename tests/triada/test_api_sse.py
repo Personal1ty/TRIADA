@@ -37,6 +37,50 @@ async def test_create_task_and_list_events():
 
 
 @pytest.mark.asyncio
+async def test_replay_creates_new_trace_and_waits_for_approval():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Replay this task", "allowed_tools": ["echo"]})
+        task_id = created.json()["task_id"]
+        original_trace_id = created.json()["trace_id"]
+        events = await client.get(f"/v1/tasks/{task_id}/events")
+        event_id = events.json()["events"][0]["id"]
+
+        replay = await client.post(
+            f"/v1/tasks/{task_id}/replay",
+            json={"from_event_id": event_id, "requested_by": "operator", "reason": "retry with new evidence"},
+        )
+        replay_task_id = replay.json()["task_id"]
+        replay_events = await client.get(f"/v1/tasks/{replay_task_id}/events")
+        before_source_event_count = len(events.json()["events"])
+        approved = await client.post(f"/v1/tasks/{replay_task_id}/approve", json={"approved_by": "operator"})
+        rerun = await client.post(f"/v1/tasks/{replay_task_id}/run_once")
+        source_after = await client.get(f"/v1/tasks/{task_id}/events")
+
+    assert replay.status_code == 201
+    assert replay.json()["status"] == "waiting_approval"
+    assert replay.json()["trace_id"] != original_trace_id
+    assert approved.status_code == 200
+    assert rerun.status_code == 200
+    assert len(source_after.json()["events"]) == before_source_event_count
+    replay_event_types = {event["event_type"] for event in replay_events.json()["events"]}
+    assert replay_event_types == {"task_created", "replay_waiting_approval"}
+
+
+@pytest.mark.asyncio
+async def test_replay_rejects_event_from_another_trace():
+    async with _client() as client:
+        first = await client.post("/v1/tasks", json={"goal": "First"})
+        second = await client.post("/v1/tasks", json={"goal": "Second"})
+        first_event = (await client.get(f"/v1/tasks/{first.json()['task_id']}/events")).json()["events"][0]["id"]
+        response = await client.post(
+            f"/v1/tasks/{second.json()['task_id']}/replay",
+            json={"from_event_id": first_event},
+        )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_task_events_can_be_filtered_without_sensitive_payloads():
     app = create_app(testing=True)
     async with app.router.lifespan_context(app):

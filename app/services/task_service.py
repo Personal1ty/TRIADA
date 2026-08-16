@@ -30,7 +30,7 @@ class InvalidTaskTransition(ValueError):
 
 class TaskService:
     _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-        "created": {"running", "completed", "cancelled"},
+        "created": {"waiting_approval", "running", "completed", "cancelled"},
         "waiting_approval": {"approved", "running", "cancelled"},
         "approved": {"running", "cancelled"},
         "running": {
@@ -92,6 +92,49 @@ class TaskService:
         await self._save(task)
         await self._emit(task, "task_created", {"goal": goal, "status": task.status})
         return task
+
+    async def create_replay_task(
+        self,
+        task_id: UUID | str,
+        *,
+        from_event_id: UUID | str,
+        requested_by: str | None = None,
+        reason: str | None = None,
+    ) -> TaskRecord:
+        source = await self._require_task(task_id)
+        replay = await self.create_task(
+            goal=source.goal,
+            risk=source.risk,
+            constraints=source.constraints,
+            allowed_tools=source.allowed_tools,
+            acceptance_criteria=source.acceptance_criteria,
+            timeout_seconds=source.timeout_seconds,
+            retry_limit=source.retry_limit,
+            metadata={
+                "replay": {
+                    "parent_task_id": str(source.id),
+                    "parent_trace_id": str(source.trace_id),
+                    "from_event_id": str(from_event_id),
+                    "requested_by": requested_by,
+                    "reason": reason,
+                }
+            },
+        )
+        waiting = replace(replay, status="waiting_approval", updated_at=datetime.now(UTC))
+        await self._emit(
+            waiting,
+            "replay_waiting_approval",
+            {
+                "status": "waiting_approval",
+                "parent_task_id": str(source.id),
+                "parent_trace_id": str(source.trace_id),
+                "from_event_id": str(from_event_id),
+                "requested_by": requested_by,
+                "reason": reason,
+            },
+        )
+        await self._save(waiting)
+        return waiting
 
     async def get_task(self, task_id: UUID | str) -> TaskRecord | None:
         normalized_id = self._normalize_task_id(task_id)

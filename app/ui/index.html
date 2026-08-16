@@ -1504,7 +1504,12 @@
       const present = new Set(events.map((event) => event.event_type));
       observatoryTimeline.innerHTML = lifecycle.map((eventType) => `<li>${present.has(eventType) ? "✓" : "○"} ${escapeHtml(eventType)}</li>`).join("");
       const replayPoints = Array.isArray(quality.replay_points) ? quality.replay_points : [];
-      observatoryReplay.innerHTML = replayPoints.map((point) => `<li><span class="event-type">Replay point ${escapeHtml(point.sequence)}</span> ${escapeHtml(point.reason)}</li>`).join("") || '<li class="status">No replay points.</li>';
+      observatoryReplay.innerHTML = replayPoints.map((point) => `
+        <li>
+          <span class="event-type">Replay point ${escapeHtml(point.sequence)}</span> ${escapeHtml(point.reason)}
+          <button type="button" class="replay-task" data-event-id="${escapeHtml(point.event_id)}">Create replay</button>
+        </li>
+      `).join("") || '<li class="status">No replay points.</li>';
     }
 
     function renderRawReasoningRefs(payload) {
@@ -1608,6 +1613,24 @@
       } catch (error) {
         contractDiffStatus.textContent = `Unable to compare contracts: ${error.message}`;
         contractDiffStatus.classList.add("error");
+      }
+    }
+
+    async function requestReplay(eventId) {
+      if (!currentTaskId || !window.confirm("Create a new trace and send it to approval?")) {
+        return;
+      }
+      try {
+        const replay = await postJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/replay`, {
+          from_event_id: eventId,
+          requested_by: "ui-operator",
+          reason: "Replay requested from Run Observatory",
+        });
+        await loadTask(replay.task_id);
+        taskStatus.textContent = `Replay ${replay.task_id}: waiting for approval`;
+      } catch (error) {
+        observatoryInspector.textContent = `Unable to create replay: ${error.message}`;
+        observatoryInspector.classList.add("error");
       }
     }
 
@@ -2063,6 +2086,13 @@
       const button = event.target.closest(".task-link");
       if (button?.dataset.taskId) {
         loadTask(button.dataset.taskId);
+      }
+    });
+
+    observatoryReplay.addEventListener("click", (event) => {
+      const button = event.target.closest(".replay-task");
+      if (button?.dataset.eventId) {
+        requestReplay(button.dataset.eventId);
       }
     });
 

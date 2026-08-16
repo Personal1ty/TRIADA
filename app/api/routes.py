@@ -25,6 +25,7 @@ from app.schemas.tasks import (
     DemoRunRequest,
     RawReasoningRevealRequest,
     RawReasoningRevealResponse,
+    ReplayRequest,
     TaskActionResponse,
     TaskEventsResponse,
     TaskListResponse,
@@ -434,6 +435,24 @@ async def get_task_quality(task_id: UUID, request: Request) -> dict:
         "status": task.status,
         "quality": quality_from_events(events),
     }
+
+
+@router.post("/tasks/{task_id}/replay", response_model=TaskActionResponse, status_code=status.HTTP_201_CREATED)
+async def replay_task(task_id: UUID, payload: ReplayRequest, request: Request) -> TaskActionResponse:
+    source = await _get_task_or_404(task_id, request)
+    try:
+        event_id = UUID(payload.from_event_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid from_event_id") from exc
+    if not await _event_id_belongs_to_trace(request, source.trace_id, event_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="replay event not found for task")
+    replay = await request.app.state.task_service.create_replay_task(
+        source.id,
+        from_event_id=event_id,
+        requested_by=payload.requested_by,
+        reason=payload.reason,
+    )
+    return _task_action_response(replay, "replay_requested")
 
 
 @router.get("/tasks/{task_id}/audit")

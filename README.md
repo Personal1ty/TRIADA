@@ -260,6 +260,9 @@ Core endpoints under `/v1`:
   and aggregate route/tool/error metrics derived from the public audit trace.
 - `GET /v1/tasks/{task_id}/quality` returns evidence coverage, audit pass rate,
   correction counts, and read-only replay points from the audit trace.
+- `POST /v1/tasks/{task_id}/replay` creates a new task and trace from a valid
+  event checkpoint, starts it in `waiting_approval`, and never mutates the
+  source task history.
 - `GET /v1/tasks/{task_id}/audit` verifies and returns the audit trace.
 - `GET /v1/tasks/{task_id}/artifacts` returns artifact records.
 - `POST /v1/tasks/{task_id}/approve`, `/cancel`, `/resume`, and `/run_once`
