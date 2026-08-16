@@ -159,8 +159,11 @@ async def test_openai_provider_success_path_parses_json_and_sends_request():
     assert seen_request.headers["authorization"] == "Bearer sk-secret-token"
     body = json.loads(seen_request.content)
     assert body["model"] == "corp-coder"
-    assert body["messages"] == [{"role": "user", "content": "hello"}]
+    assert body["messages"][0]["role"] == "system"
+    assert "valid JSON object" in body["messages"][0]["content"]
+    assert body["messages"][1] == {"role": "user", "content": "hello"}
     assert body["stream"] is True
+    assert body["response_format"] == {"type": "json_object"}
 
 
 @pytest.mark.asyncio
@@ -184,7 +187,11 @@ async def test_openai_provider_http_error_does_not_leak_api_key_or_cause():
 
 @pytest.mark.asyncio
 async def test_openai_provider_rejects_non_json_without_leaking_api_key_or_cause():
+    calls = 0
+
     async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
         return httpx.Response(
             200,
             json={"choices": [{"message": {"content": "not json sk-secret-token"}}]},
@@ -203,6 +210,33 @@ async def test_openai_provider_rejects_non_json_without_leaking_api_key_or_cause
     assert "non-JSON" in str(exc.value)
     assert "sk-secret-token" not in str(exc.value)
     assert exc.value.__cause__ is None
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_repairs_non_json_response_once():
+    calls: list[str] = []
+    repaired_payload = {"thinking_summary_delta": {"summary": "repaired"}, "answer": {"ok": True}}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        calls.append(body["messages"][1]["content"])
+        content = "not json" if len(calls) == 1 else json.dumps(repaired_payload)
+        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://llm.example.test",
+        api_key=None,
+        model="corp-coder",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await provider.complete_json("hello", schema_name="plan")
+
+    assert result == repaired_payload
+    assert len(calls) == 2
+    assert "Repair the following TRIADA model output" in calls[1]
+    assert "not json" in calls[1]
 
 
 @pytest.mark.asyncio
@@ -240,6 +274,41 @@ async def test_openai_provider_extracts_json_object_from_wrapped_content():
 
     assert result["answer"]["steps"][0]["allowed_tools"] == ["echo"]
     assert result["thinking_summary_delta"]["summary"] == "planned"
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_prefers_triada_json_when_wrapped_text_contains_other_braces():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                "I considered {not: valid json} before the final object.\n"
+                                "{\"note\":\"not the contract\"}\n"
+                                "{\"thinking_summary_delta\":{\"summary\":\"valid\"},"
+                                "\"answer\":{\"steps\":[{\"id\":\"step-1\",\"description\":\"Use echo\","
+                                "\"allowed_tools\":[\"echo\"]}]}}"
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://llm.example.test",
+        api_key=None,
+        model="corp-coder",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await provider.complete_json("hello", schema_name="plan")
+
+    assert result["thinking_summary_delta"]["summary"] == "valid"
+    assert result["answer"]["steps"][0]["id"] == "step-1"
 
 
 @pytest.mark.asyncio
@@ -311,7 +380,48 @@ async def test_openai_provider_parses_streaming_lines_and_marks_reasoning_summar
     assert result["model_message"]["has_reasoning_content"] is True
     assert result["raw_reasoning_content"] == "private chain text should persist as sensitive data"
     assert seen_request is not None
-    assert json.loads(seen_request.content)["stream"] is True
+    request_body = json.loads(seen_request.content)
+    assert request_body["stream"] is True
+    assert request_body["response_format"] == {"type": "json_object"}
+    assert request_body["messages"][0]["role"] == "system"
+    assert "valid JSON object" in request_body["messages"][0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_enables_deepseek_thinking_mode():
+    seen_request = None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_request
+        seen_request = request
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            text="\n".join(
+                [
+                    'data: {"choices":[{"delta":{"reasoning_content":"deepseek hidden reasoning"}}]}',
+                    'data: {"choices":[{"delta":{"content":"{\\"answer\\":{\\"ok\\":true}}"}}]}',
+                    "data: [DONE]",
+                    "",
+                ]
+            ),
+        )
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://api.deepseek.com",
+        api_key="sk-deepseek",
+        model="deepseek-v4-pro",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await provider.complete_json("hello", schema_name="plan")
+
+    assert result["answer"] == {"ok": True}
+    assert result["raw_reasoning_content"] == "deepseek hidden reasoning"
+    assert seen_request is not None
+    request_body = json.loads(seen_request.content)
+    assert request_body["thinking"] == {"type": "enabled"}
+    assert request_body["reasoning_effort"] == "high"
 
 
 @pytest.mark.asyncio

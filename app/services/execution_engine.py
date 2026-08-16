@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from app.llm.openai_compatible import OpenAICompatibleProvider
 from app.llm.openai_responses import OpenAIResponsesProvider
 from app.llm.runtime_config import LLMConfigService
 from app.schemas.enums import AgentRole, AuditVerdictValue, DeltaSource
+from app.services.scheduler import BoundedStepScheduler
 
 
 class ExecutionEngine:
@@ -61,23 +63,27 @@ class ExecutionEngine:
             summary="Orchestrator started building a bounded task plan.",
             progress_percent=10,
         )
-        try:
-            plan = await self._orchestrator.plan_task(
-                task.goal,
-                task.allowed_tools,
-                task.acceptance_criteria,
-            )
-        except LLMUnavailableError as exc:
-            await self._emit(
-                task,
-                "llm_unavailable",
-                {
-                    "status": "blocked",
-                    "provider": type(self._orchestrator.llm).__name__,
-                    "reason": str(exc),
-                },
-            )
-            return "blocked"
+        plan = self._pending_plan(task) if self._is_approved(task) else None
+        if plan is not None:
+            await self._emit(task, "planning_reused", {"source": "pending_approved_plan"})
+        else:
+            try:
+                plan = await self._orchestrator.plan_task(
+                    task.goal,
+                    task.allowed_tools,
+                    task.acceptance_criteria,
+                )
+            except LLMUnavailableError as exc:
+                await self._emit(
+                    task,
+                    "llm_unavailable",
+                    {
+                        "status": "blocked",
+                        "provider": type(self._orchestrator.llm).__name__,
+                        "reason": str(exc),
+                    },
+                )
+                return "blocked"
         await self._emit_plan_created(task, plan)
         model_summaries: list[dict[str, Any]] = []
         if plan.model_thinking_summary_delta:
@@ -99,6 +105,7 @@ class ExecutionEngine:
             )
 
         if plan.requires_approval and not self._is_approved(task):
+            self._store_pending_plan(task, plan)
             await self._emit(
                 task,
                 "approval_required",
@@ -109,130 +116,76 @@ class ExecutionEngine:
                 },
             )
             return "waiting_approval"
+        self._clear_pending_plan(task)
 
-        worker = Worker(worker_id=self._worker_id, workspace=self._workspace, llm=self._llm)
         worker_results: list[WorkerResult] = []
         tool_records: list[ToolExecutionRecord] = []
         final_status = "completed"
+        verdicts = []
+        retry_limit = int(getattr(task, "retry_limit", 0) or 0)
+        attempt = 0
 
-        for step in plan.steps:
-            command = self._command_for_step(step)
-            await self._emit_route(
-                task,
-                source=AgentEndpoint.ORCHESTRATOR,
-                target=AgentEndpoint.WORKER,
-                reason="assign_step",
-                agent_id="orchestrator",
-            )
-            await self._emit(task, "worker_step_started", {"step_id": step.id, "title": step.title, "command": command})
-            await self._emit_delta(
-                task,
-                agent_id=self._worker_id,
-                agent_role=AgentRole.WORKER,
-                stage="execution",
-                action="run_step",
-                summary=f"Worker started step {step.id}.",
-                input_refs=[f"plan_step:{step.id}"],
-                progress_percent=40,
-            )
-            result = await worker.run_step(
-                task_id=str(task.id),
-                step_id=step.id,
-                title=step.title,
-                allowed_tools=step.allowed_tools,
-                command=command,
-                risk_policy=step.risk_policy,
-                approval_ref=self._approval_ref(task),
-            )
-            worker_results.append(result)
-            if result.model_thinking_summary_delta:
-                model_summaries.append(result.model_thinking_summary_delta)
-                await self._emit_model_delta(
-                    task,
-                    agent_id=self._worker_id,
-                    agent_role=AgentRole.WORKER,
-                    delta=result.model_thinking_summary_delta,
-                    model_message=result.model_message,
-                )
-            if result.raw_reasoning_content:
-                await self._emit_model_reasoning_content(
-                    task,
-                    agent_id=self._worker_id,
-                    agent_role=AgentRole.WORKER,
-                    schema_name="worker_result",
-                    raw_reasoning_content=result.raw_reasoning_content,
-                )
-            tool_records.extend(result.tool_results)
-            event_type = "worker_step_completed" if result.status == "succeeded" else f"worker_step_{result.status}"
-            await self._emit(task, event_type, result.model_dump(mode="json"))
-            for record in result.tool_results:
-                await self._emit(task, "tool_execution_completed", record.model_dump(mode="json"), agent_id=self._worker_id)
-            if result.status == "blocked":
+        while True:
+            attempt += 1
+            attempt_results = await self._run_plan_steps(task, plan, model_summaries)
+            worker_results.extend(attempt_results)
+            attempt_tool_records = [record for result in attempt_results for record in result.tool_results]
+            tool_records.extend(attempt_tool_records)
+
+            if any(result.status == "blocked" for result in attempt_results):
                 final_status = "blocked"
                 break
-            if result.status != "succeeded":
-                final_status = "failed"
+            final_status = "failed" if any(result.status != "succeeded" for result in attempt_results) else "completed"
+            if not attempt_tool_records:
                 break
 
-        has_worker_evidence = final_status != "blocked" and any(result.tool_results for result in worker_results)
-        if not has_worker_evidence:
+            verdicts = await self._audit_worker_results(task, attempt_results, model_summaries)
+            if final_status == "completed" and any(
+                verdict.verdict != AuditVerdictValue.PASS for _auditor_id, verdict in verdicts
+            ):
+                final_status = "corrections_required"
+            if final_status != "corrections_required" or attempt > retry_limit:
+                break
+            for auditor_id, verdict in verdicts:
+                if verdict.verdict != AuditVerdictValue.PASS:
+                    await self._emit_route(
+                        task,
+                        source=AgentEndpoint.ASSIGNED_AUDITOR,
+                        target=AgentEndpoint.WORKER,
+                        reason="request_correction",
+                        agent_id=auditor_id,
+                        source_agent_id=auditor_id,
+                        target_agent_id=self._worker_id_for_auditor(auditor_id),
+                    )
+                    await self._emit(
+                        task,
+                        "correction_requested",
+                        {
+                            "schema_version": "1.0",
+                            "attempt": attempt,
+                            "max_attempts": retry_limit + 1,
+                            "auditor_id": auditor_id,
+                            "summary": verdict.summary,
+                            "required_corrections": verdict.required_corrections,
+                        },
+                        agent_id=auditor_id,
+                    )
+            final_status = "retrying"
+
+        if final_status == "blocked" or not tool_records:
             return final_status
 
-        assigned_auditor_id = self._assigned_auditor_id_for_worker(self._worker_id)
-        await self._emit_route(
-            task,
-            source=AgentEndpoint.WORKER,
-            target=AgentEndpoint.ASSIGNED_AUDITOR,
-            reason="submit_evidence",
-            agent_id=self._worker_id,
-        )
-        (
-            verdict,
-            auditor_model_delta,
-            auditor_model_message,
-            auditor_raw_reasoning_content,
-        ) = await self._auditor.audit_tool_results_with_model(
-            tool_records,
-            "\n".join(result.summary for result in worker_results),
-            model_summaries,
-        )
-        if auditor_model_delta:
-            await self._emit_model_delta(
-                task,
-                agent_id=assigned_auditor_id,
-                agent_role=AgentRole.AUDITOR,
-                delta=auditor_model_delta,
-                model_message=auditor_model_message,
-            )
-        if auditor_raw_reasoning_content:
-            await self._emit_model_reasoning_content(
-                task,
-                agent_id=assigned_auditor_id,
-                agent_role=AgentRole.AUDITOR,
-                schema_name="audit_verdict",
-                raw_reasoning_content=auditor_raw_reasoning_content,
-            )
-        await self._emit_delta(
-            task,
-            agent_id=assigned_auditor_id,
-            agent_role=AgentRole.AUDITOR,
-            stage="audit",
-            action="audit_tool_results",
-            summary="Auditor evaluated worker evidence.",
-            progress_percent=90,
-        )
-        await self._emit(task, "audit_verdict", verdict.model_dump(mode="json"), agent_id=assigned_auditor_id)
-
-        if final_status == "completed" and verdict.verdict != AuditVerdictValue.PASS:
-            final_status = "corrections_required"
         chief_auditor_id = self._swarm_contract.topology.chief_auditor.agent_id
-        verdict_value = verdict.verdict.value
+        chief_verdict = self._chief_verdict_value(final_status, verdicts)
+        chief_summary = self._chief_verdict_summary(verdicts)
         await self._emit_route(
             task,
             source=AgentEndpoint.ASSIGNED_AUDITOR,
             target=AgentEndpoint.CHIEF_AUDITOR,
             reason="escalate_verdict",
-            agent_id=assigned_auditor_id,
+            agent_id=verdicts[-1][0] if verdicts else self._assigned_auditor_id_for_worker(self._worker_id),
+            source_agent_id=verdicts[-1][0] if verdicts else self._assigned_auditor_id_for_worker(self._worker_id),
+            target_agent_id=chief_auditor_id,
         )
         await self._emit(
             task,
@@ -240,9 +193,9 @@ class ExecutionEngine:
             {
                 "schema_version": "1.0",
                 "chief_auditor_id": chief_auditor_id,
-                "verdict": verdict_value,
+                "verdict": chief_verdict,
                 "source_verdict_refs": ["audit_verdict"],
-                "summary": verdict.summary,
+                "summary": chief_summary,
                 "agent_id": chief_auditor_id,
             },
             agent_id=chief_auditor_id,
@@ -253,6 +206,8 @@ class ExecutionEngine:
             target=AgentEndpoint.ORCHESTRATOR,
             reason="return_final_gate",
             agent_id=chief_auditor_id,
+            source_agent_id=chief_auditor_id,
+            target_agent_id="orchestrator",
         )
         await self._emit(
             task,
@@ -261,8 +216,8 @@ class ExecutionEngine:
                 "schema_version": "1.0",
                 "contract": {"name": "human_review_packet", "version": "1.0"},
                 "status": final_status,
-                "chief_auditor_verdict": verdict_value,
-                "summary": verdict.summary,
+                "chief_auditor_verdict": chief_verdict,
+                "summary": chief_summary,
                 "worker_result_count": len(worker_results),
                 "tool_result_count": len(tool_records),
                 "raw_reasoning_refs": [],
@@ -275,8 +230,170 @@ class ExecutionEngine:
             target=AgentEndpoint.HUMAN,
             reason="deliver_human_packet",
             agent_id="orchestrator",
+            source_agent_id="orchestrator",
+            target_agent_id="human",
         )
         return final_status
+
+    async def _run_plan_steps(
+        self,
+        task: Any,
+        plan: TaskPlan,
+        model_summaries: list[dict[str, Any]],
+    ) -> list[WorkerResult]:
+        jobs = [
+            (self._worker_id_for_step(index), step)
+            for index, step in enumerate(plan.steps)
+        ]
+        if not jobs:
+            return []
+
+        worker_limits = {
+            pair.worker_id: pair.max_parallel_steps
+            for pair in self._swarm_contract.worker_auditor_pairs
+        }
+        max_concurrency = max(1, sum(worker_limits.values()))
+        scheduler = BoundedStepScheduler(
+            max_concurrency=max_concurrency,
+            worker_limits=worker_limits,
+        )
+
+        async def run_job(job: tuple[str, PlanStep]) -> WorkerResult:
+            worker_id, step = job
+            return await self._run_worker_step(
+                task=task,
+                step=step,
+                worker_id=worker_id,
+                model_summaries=model_summaries,
+            )
+
+        return await scheduler.run(jobs, worker_key=lambda job: job[0], run=run_job)
+
+    async def _run_worker_step(
+        self,
+        *,
+        task: Any,
+        step: PlanStep,
+        worker_id: str,
+        model_summaries: list[dict[str, Any]],
+    ) -> WorkerResult:
+        worker = Worker(worker_id=worker_id, workspace=self._workspace, llm=self._llm)
+        command = self._command_for_step(step)
+        await self._emit_route(
+            task,
+            source=AgentEndpoint.ORCHESTRATOR,
+            target=AgentEndpoint.WORKER,
+            reason="assign_step",
+            agent_id="orchestrator",
+            source_agent_id="orchestrator",
+            target_agent_id=worker_id,
+        )
+        await self._emit(
+            task,
+            "worker_step_started",
+            {"step_id": step.id, "title": step.title, "command": command, "worker_id": worker_id},
+            agent_id=worker_id,
+        )
+        await self._emit_delta(
+            task,
+            agent_id=worker_id,
+            agent_role=AgentRole.WORKER,
+            stage="execution",
+            action="run_step",
+            summary=f"Worker started step {step.id}.",
+            input_refs=[f"plan_step:{step.id}"],
+            progress_percent=40,
+        )
+        result = await worker.run_step(
+            task_id=str(task.id),
+            step_id=step.id,
+            title=step.title,
+            allowed_tools=step.allowed_tools,
+            command=command,
+            risk_policy=step.risk_policy,
+            approval_ref=self._approval_ref(task),
+        )
+        if result.model_thinking_summary_delta:
+            model_summaries.append(result.model_thinking_summary_delta)
+            await self._emit_model_delta(
+                task,
+                agent_id=worker_id,
+                agent_role=AgentRole.WORKER,
+                delta=result.model_thinking_summary_delta,
+                model_message=result.model_message,
+            )
+        if result.raw_reasoning_content:
+            await self._emit_model_reasoning_content(
+                task,
+                agent_id=worker_id,
+                agent_role=AgentRole.WORKER,
+                schema_name="worker_result",
+                raw_reasoning_content=result.raw_reasoning_content,
+            )
+        event_type = "worker_step_completed" if result.status == "succeeded" else f"worker_step_{result.status}"
+        await self._emit(task, event_type, result.model_dump(mode="json"), agent_id=worker_id)
+        for record in result.tool_results:
+            await self._emit(task, "tool_execution_completed", record.model_dump(mode="json"), agent_id=worker_id)
+        return result
+
+    async def _audit_worker_results(
+        self,
+        task: Any,
+        worker_results: list[WorkerResult],
+        model_summaries: list[dict[str, Any]],
+    ):
+        verdicts = []
+        for result in worker_results:
+            if not result.tool_results:
+                continue
+            assigned_auditor_id = self._assigned_auditor_id_for_worker(result.worker_id)
+            await self._emit_route(
+                task,
+                source=AgentEndpoint.WORKER,
+                target=AgentEndpoint.ASSIGNED_AUDITOR,
+                reason="submit_evidence",
+                agent_id=result.worker_id,
+                source_agent_id=result.worker_id,
+                target_agent_id=assigned_auditor_id,
+            )
+            (
+                verdict,
+                auditor_model_delta,
+                auditor_model_message,
+                auditor_raw_reasoning_content,
+            ) = await self._auditor.audit_tool_results_with_model(
+                result.tool_results,
+                result.summary,
+                model_summaries,
+            )
+            if auditor_model_delta:
+                await self._emit_model_delta(
+                    task,
+                    agent_id=assigned_auditor_id,
+                    agent_role=AgentRole.AUDITOR,
+                    delta=auditor_model_delta,
+                    model_message=auditor_model_message,
+                )
+            if auditor_raw_reasoning_content:
+                await self._emit_model_reasoning_content(
+                    task,
+                    agent_id=assigned_auditor_id,
+                    agent_role=AgentRole.AUDITOR,
+                    schema_name="audit_verdict",
+                    raw_reasoning_content=auditor_raw_reasoning_content,
+                )
+            await self._emit_delta(
+                task,
+                agent_id=assigned_auditor_id,
+                agent_role=AgentRole.AUDITOR,
+                stage="audit",
+                action="audit_tool_results",
+                summary="Auditor evaluated worker evidence.",
+                progress_percent=90,
+            )
+            await self._emit(task, "audit_verdict", verdict.model_dump(mode="json"), agent_id=assigned_auditor_id)
+            verdicts.append((assigned_auditor_id, verdict))
+        return verdicts
 
     async def _emit_plan_created(self, task: Any, plan: TaskPlan) -> None:
         await self._emit(
@@ -328,6 +445,8 @@ class ExecutionEngine:
         target: AgentEndpoint,
         reason: str,
         agent_id: str,
+        source_agent_id: str | None = None,
+        target_agent_id: str | None = None,
     ) -> None:
         route = self._route_for(source=source, target=target, reason=reason)
         await self._emit(
@@ -340,6 +459,8 @@ class ExecutionEngine:
                 "reason": route.reason,
                 "input_contract": route.input_contract.ref,
                 "output_contract": route.output_contract.ref,
+                "source_agent_id": source_agent_id or route.source.value,
+                "target_agent_id": target_agent_id or route.target.value,
             },
             agent_id=agent_id,
         )
@@ -361,6 +482,34 @@ class ExecutionEngine:
             if pair.worker_id == worker_id:
                 return pair.auditor_id
         raise LookupError(f"assigned auditor not found for worker: {worker_id}")
+
+    def _worker_id_for_auditor(self, auditor_id: str) -> str:
+        for pair in self._swarm_contract.worker_auditor_pairs:
+            if pair.auditor_id == auditor_id:
+                return pair.worker_id
+        raise LookupError(f"assigned worker not found for auditor: {auditor_id}")
+
+    def _worker_id_for_step(self, step_index: int) -> str:
+        pairs = self._swarm_contract.worker_auditor_pairs
+        if not pairs:
+            return self._worker_id
+        return pairs[step_index % len(pairs)].worker_id
+
+    def _chief_verdict_value(self, final_status: str, verdicts) -> str:
+        if final_status == "completed" and verdicts:
+            return AuditVerdictValue.PASS.value
+        if verdicts:
+            return verdicts[-1][1].verdict.value
+        if final_status == "failed":
+            return AuditVerdictValue.FAIL.value
+        if final_status == "blocked":
+            return AuditVerdictValue.BLOCKED.value
+        return final_status
+
+    def _chief_verdict_summary(self, verdicts) -> str:
+        if verdicts:
+            return verdicts[-1][1].summary
+        return "No audit verdict was produced."
 
     async def _emit_model_delta(
         self,
@@ -444,6 +593,8 @@ class ExecutionEngine:
         )
 
     def _command_for_step(self, step: PlanStep) -> list[str]:
+        if step.command:
+            return list(step.command)
         if "git" in step.allowed_tools:
             return ["git", "status"]
         if "pytest" in step.allowed_tools:
@@ -456,6 +607,12 @@ class ExecutionEngine:
             return ["cat", "README.md"]
         if "sed" in step.allowed_tools:
             return ["sed", "-n", "1,40p", "README.md"]
+        if "write_file" in step.allowed_tools:
+            return ["write_file", "triada-demo-output.txt", f"{step.description}\n"]
+        if "mkdir" in step.allowed_tools:
+            return ["mkdir", "-p", "triada-demo-output"]
+        if "touch" in step.allowed_tools:
+            return ["touch", "triada-demo-output.txt"]
         if "echo" in step.allowed_tools:
             return ["echo", step.description]
         if "shell" in step.allowed_tools:
@@ -505,3 +662,19 @@ class ExecutionEngine:
         if not approval.get("approved"):
             return None
         return str(approval.get("approved_by") or "approved")
+
+    def _pending_plan(self, task: Any) -> TaskPlan | None:
+        pending = getattr(task, "metadata", {}).get("pending_plan")
+        if not isinstance(pending, dict):
+            return None
+        return TaskPlan.model_validate(pending)
+
+    def _store_pending_plan(self, task: Any, plan: TaskPlan) -> None:
+        metadata = getattr(task, "metadata", None)
+        if isinstance(metadata, dict):
+            metadata["pending_plan"] = plan.model_dump(mode="json")
+
+    def _clear_pending_plan(self, task: Any) -> None:
+        metadata = getattr(task, "metadata", None)
+        if isinstance(metadata, dict):
+            metadata.pop("pending_plan", None)

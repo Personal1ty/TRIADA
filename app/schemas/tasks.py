@@ -83,6 +83,12 @@ class ApprovalRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=2_000)
 
 
+class DemoRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    template_id: str = Field(min_length=1, max_length=255)
+
+
 class TaskActionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

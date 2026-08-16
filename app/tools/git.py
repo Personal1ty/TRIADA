@@ -4,11 +4,13 @@ from pathlib import Path
 
 from app.tools.base import ToolRequest, ToolResult
 from app.tools.shell import ShellTool
+from app.schemas.enums import RiskPolicy
 
 
 class GitTool:
     tool_name = "git"
-    _ALLOWED = {"status", "diff", "log"}
+    _READ_ONLY = {"status", "diff", "log"}
+    _WRITE = {"add", "commit", "push"}
     _BLOCKED_FLAGS = {"--no-index", "--ext-diff", "--external-diff", "-c"}
     _BLOCKED_VALUE_OPTIONS = {
         "--output",
@@ -26,19 +28,37 @@ class GitTool:
             timeout_seconds=timeout_seconds,
         )
 
-    def is_command_allowed(self, command: list[str]) -> bool:
+    def is_command_allowed(
+        self,
+        command: list[str],
+        *,
+        risk_policy: RiskPolicy = RiskPolicy.READ_ONLY,
+        approval_ref: str | None = None,
+    ) -> bool:
         if len(command) < 2 or command[0] != "git":
             return False
         if self._is_blocked_arg(command[1]):
             return False
-        if command[1] not in self._ALLOWED:
+        if command[1] in self._READ_ONLY:
+            if risk_policy != RiskPolicy.READ_ONLY:
+                return False
+            if any(self._is_blocked_arg(arg) for arg in command[2:]):
+                return False
+            return self._path_operands_stay_in_workspace(command)
+        if command[1] not in self._WRITE:
             return False
         if any(self._is_blocked_arg(arg) for arg in command[2:]):
             return False
-        return self._path_operands_stay_in_workspace(command)
+        if risk_policy not in {RiskPolicy.HIGH_RISK_WRITE, RiskPolicy.DESTRUCTIVE} or not approval_ref:
+            return False
+        return self._is_write_command_shape_allowed(command) and self._path_operands_stay_in_workspace(command)
 
     def validate_input(self, request: ToolRequest) -> None:
-        if not self.is_command_allowed(request.command):
+        if not self.is_command_allowed(
+            request.command,
+            risk_policy=request.risk_policy,
+            approval_ref=request.approval_ref,
+        ):
             raise PermissionError(f"git command '{' '.join(request.command)}' is not allowlisted")
         self.shell.validate_input(request)
 
@@ -67,9 +87,30 @@ class GitTool:
         for arg in command[2:]:
             if arg.startswith("-"):
                 continue
+            if command[1] == "commit" and command[2:4] == ["-m", arg]:
+                continue
+            if command[1] == "push" and arg in {"origin", "main", "master"}:
+                continue
+            if command[1] == "push" and arg.replace("-", "").replace("_", "").replace("/", "").isalnum():
+                continue
             path = Path(arg)
             if path.is_absolute() or any(part == ".." for part in path.parts):
                 resolved = path.resolve() if path.is_absolute() else (self.workspace / path).resolve()
                 if resolved != self.workspace and not resolved.is_relative_to(self.workspace):
                     return False
         return True
+
+    def _is_write_command_shape_allowed(self, command: list[str]) -> bool:
+        subcommand = command[1]
+        if subcommand == "add":
+            return len(command) >= 3 and all(not arg.startswith("-") for arg in command[2:])
+        if subcommand == "commit":
+            return len(command) == 4 and command[2] == "-m" and bool(command[3].strip())
+        if subcommand == "push":
+            return (
+                len(command) == 4
+                and command[2] == "origin"
+                and bool(command[3].strip())
+                and not command[3].startswith("-")
+            )
+        return False

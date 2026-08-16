@@ -1,14 +1,16 @@
 # TRIADA Architecture
 
-TRIADA is an MVP control loop for delegated DevOps work. It separates planning,
-execution, and verification into explicit roles and records public, redacted
-evidence in an append-only audit stream.
+TRIADA is a domain-agnostic control loop for delegated swarm work. It separates
+planning, bounded execution, and verification into explicit roles and records
+public, redacted evidence in an append-only audit stream.
 
 ```mermaid
 flowchart TD
     Client[Client or CLI] --> API[FastAPI app.main:create_app]
     API --> Orchestrator[Orchestrator]
     Orchestrator --> Worker[Worker]
+    Orchestrator --> Scheduler[Bounded Scheduler]
+    Scheduler --> Worker
     Worker --> Tools[Tool Adapters]
     Tools --> Worker
     Worker --> Auditor[Auditor]
@@ -23,7 +25,9 @@ flowchart TD
 
 - Orchestrator turns a goal into a bounded plan with allowed tools and
   acceptance criteria.
-- Worker executes approved steps through tool adapters and emits progress,
+- Scheduler enforces global and per-worker concurrency limits from the active
+  swarm contract.
+- Worker executes approved steps through domain tool adapters and emits progress,
   heartbeat, artifact, and tool-result evidence.
 - Auditor compares claims with tool results and required artifacts, then returns
   `pass`, `corrections_required`, `blocked`, or `fail`.

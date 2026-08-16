@@ -128,6 +128,7 @@ class TaskService:
         await self._emit(running, "task_started", {"status": "running"})
         await self._save(running)
         final_status = await self._execution_engine.run_once(running)
+        await self._persist_runtime_metadata(running)
         final_event_type = {
             "blocked": "task_blocked",
             "corrections_required": "task_corrections_required",
@@ -174,6 +175,12 @@ class TaskService:
             await self._repository.save_task(deepcopy(task))
             return
         self._tasks[task.id] = deepcopy(task)
+
+    async def _persist_runtime_metadata(self, runtime_task: TaskRecord) -> None:
+        current = await self._require_task(runtime_task.id)
+        if current.metadata == runtime_task.metadata:
+            return
+        await self._save(replace(current, metadata=deepcopy(runtime_task.metadata), updated_at=datetime.now(UTC)))
 
     async def _emit(self, task: TaskRecord, event_type: str, payload: dict[str, Any]) -> None:
         if self._emitter is None:

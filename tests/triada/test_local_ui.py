@@ -28,6 +28,9 @@ async def test_get_local_swarm_ui():
     assert "/v1/llm/config" in response.text
     assert "/v1/llm/test" in response.text
     assert 'id="graph"' in response.text
+    assert 'id="run-observatory"' in response.text
+    assert 'id="observatory-timeline"' in response.text
+    assert "renderRunObservatory" in response.text
     assert 'id="graph-summary"' in response.text
     assert 'id="graph-route-list"' in response.text
     assert 'class="graph-node-meta"' in response.text
@@ -62,6 +65,15 @@ async def test_get_local_swarm_ui():
     assert 'id="add-route-map-entry"' in response.text
     assert 'id="sync-contract-json"' in response.text
     assert 'id="contract-json"' in response.text
+    assert 'id="contract-bodies"' in response.text
+    assert 'class="contract-body-card"' in response.text
+    assert 'class="contracts-layout"' in response.text
+    assert 'class="contract-editor-column"' in response.text
+    assert 'class="contract-inspector-column"' in response.text
+    assert "@media (min-width: 1280px)" in response.text
+    assert "max-width: 100%;" in response.text
+    assert "width: min(440px, 48vw)" not in response.text
+    assert "renderContractBodies" in response.text
     assert 'id="save-contract"' in response.text
     assert 'id="refresh-contract-versions"' in response.text
     assert 'id="llm-config"' in response.text
@@ -69,6 +81,7 @@ async def test_get_local_swarm_ui():
     assert 'id="create-task-form"' in response.text
     assert 'id="demo-template-select"' in response.text
     assert 'id="load-demo-template"' in response.text
+    assert 'id="run-demo-flow"' in response.text
     assert 'id="run-task"' in response.text
     assert 'id="event-feed"' in response.text
     assert 'id="event-auto-refresh"' in response.text
@@ -80,8 +93,11 @@ async def test_get_local_swarm_ui():
     assert "/v1/tasks" in response.text
     assert "/v1/tasks?status=waiting_approval" in response.text
     assert "/v1/demo/templates" in response.text
+    assert "/v1/demo/run" in response.text
     assert "/approve" in response.text
     assert "/raw-reasoning/" in response.text
+    assert 'window.location.protocol === "file:"' in response.text
+    assert "http://127.0.0.1:8000/ui" in response.text
     assert "/v1/swarm/contracts" in response.text
     assert "/run_once" in response.text
     runs_view = response.text.partition('id="runs-view"')[2].partition('id="thinking-view"')[0]
@@ -91,6 +107,9 @@ async def test_get_local_swarm_ui():
     assert "clearRawReasoningReveal();" in load_task_body
     assert "validateContractForm" in response.text
     assert "routesFromEditor" in response.text
+    assert "runSelectedDemoFlow" in response.text
+    assert "graph-lane-label" in response.text
+    assert "node-worker" in response.text
 
 
 def test_local_swarm_ui_is_packaged():

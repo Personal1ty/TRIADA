@@ -30,14 +30,14 @@ def swarm_graph_from_events(events: list[Any]) -> dict:
         if event.event_type != "swarm_route_selected":
             continue
         payload = event.payload if isinstance(event.payload, Mapping) else {}
-        source = payload.get("source")
-        target = payload.get("target")
+        source = payload.get("source_agent_id") or payload.get("source")
+        target = payload.get("target_agent_id") or payload.get("target")
         if not source or not target:
             continue
         source_id = str(source)
         target_id = str(target)
-        nodes.setdefault(source_id, _graph_node(source_id))
-        nodes.setdefault(target_id, _graph_node(target_id))
+        nodes.setdefault(source_id, _graph_node(source_id, endpoint_role=str(payload.get("source") or source_id)))
+        nodes.setdefault(target_id, _graph_node(target_id, endpoint_role=str(payload.get("target") or target_id)))
         nodes[source_id]["outgoing_count"] += 1
         nodes[source_id]["last_sequence"] = event.sequence
         nodes[target_id]["incoming_count"] += 1
@@ -52,6 +52,8 @@ def swarm_graph_from_events(events: list[Any]) -> dict:
                 "id": str(event.id),
                 "source": source_id,
                 "target": target_id,
+                "source_endpoint": _to_json_safe(payload.get("source")),
+                "target_endpoint": _to_json_safe(payload.get("target")),
                 "reason": reason,
                 "label": f"{event.sequence}. {reason}",
                 "status": "selected",
@@ -73,16 +75,49 @@ def swarm_graph_from_events(events: list[Any]) -> dict:
     }
 
 
-def _graph_node(node_id: str) -> dict:
+def _graph_node(node_id: str, *, endpoint_role: str | None = None) -> dict:
+    role = _agent_role(node_id, endpoint_role)
+    pair_id = _pair_id(node_id) if role in {"worker", "auditor"} else None
     return {
         "id": node_id,
-        "label": node_id.replace("_", " ").title(),
-        "role": node_id,
+        "label": _agent_label(node_id, role),
+        "role": role,
+        "endpoint_role": endpoint_role or role,
+        "pair_id": pair_id,
         "incoming_count": 0,
         "outgoing_count": 0,
         "first_sequence": None,
         "last_sequence": None,
     }
+
+
+def _agent_role(node_id: str, endpoint_role: str | None) -> str:
+    if node_id.startswith("worker-"):
+        return "worker"
+    if node_id.startswith("auditor-"):
+        return "auditor"
+    if endpoint_role == "assigned_auditor":
+        return "auditor"
+    if endpoint_role == "chief_auditor":
+        return "chief_auditor"
+    return endpoint_role or node_id
+
+
+def _pair_id(node_id: str) -> str | None:
+    suffix = node_id.removeprefix("worker-").removeprefix("auditor-")
+    if not suffix or suffix == node_id:
+        return None
+    return f"worker-{suffix}:auditor-{suffix}"
+
+
+def _agent_label(node_id: str, role: str) -> str:
+    if role == "worker" and node_id.startswith("worker-"):
+        return f"Worker {node_id.removeprefix('worker-')}"
+    if role == "auditor" and node_id.startswith("auditor-"):
+        return f"Auditor {node_id.removeprefix('auditor-')}"
+    if role == "chief_auditor":
+        return "Chief Auditor"
+    return node_id.replace("_", " ").title()
 
 
 def _event_to_public_dict(event: Any) -> dict:

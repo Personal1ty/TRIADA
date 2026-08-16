@@ -85,6 +85,134 @@ class AgentSummaryLLM:
         }
 
 
+class MultiStepLLM:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        if schema_name == "plan":
+            return {
+                "answer": {
+                    "steps": [
+                        {
+                            "id": "step-1",
+                            "title": "List files",
+                            "description": "List repository files",
+                            "allowed_tools": ["ls"],
+                            "command": ["ls"],
+                        },
+                        {
+                            "id": "step-2",
+                            "title": "Read README",
+                            "description": "Read the README header",
+                            "allowed_tools": ["sed"],
+                            "command": ["sed", "-n", "1,5p", "README.md"],
+                        },
+                    ]
+                }
+            }
+        if schema_name == "worker_result":
+            return {"answer": {"status": "ready"}}
+        if schema_name == "audit_verdict":
+            return {"answer": {"approved": True}}
+        return {}
+
+
+class WriteFileLLM:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        if schema_name == "plan":
+            return {
+                "answer": {
+                    "steps": [
+                        {
+                            "id": "step-1",
+                            "title": "Write marker",
+                            "description": "Write an approved marker file",
+                            "allowed_tools": ["write_file"],
+                            "command": ["write_file", "triada-marker.txt", "approved marker\n"],
+                        }
+                    ]
+                }
+            }
+        if schema_name == "worker_result":
+            return {"answer": {"status": "ready"}}
+        if schema_name == "audit_verdict":
+            return {"answer": {"approved": True}}
+        return {}
+
+
+class WriteFileThenUnavailableLLM:
+    def __init__(self) -> None:
+        self.plan_calls = 0
+
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        if schema_name == "plan":
+            self.plan_calls += 1
+            if self.plan_calls > 1:
+                raise RuntimeError("planner should not be called after approval")
+            return {
+                "answer": {
+                    "steps": [
+                        {
+                            "id": "step-1",
+                            "title": "Write marker",
+                            "description": "Write an approved marker file",
+                            "allowed_tools": ["write_file"],
+                            "command": ["write_file", "triada-marker.txt", "approved marker\n"],
+                        }
+                    ]
+                }
+            }
+        if schema_name == "worker_result":
+            return {"answer": {"status": "ready"}}
+        if schema_name == "audit_verdict":
+            return {"answer": {"approved": True}}
+        return {}
+
+
+class PatchFileLLM:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        if schema_name == "plan":
+            return {
+                "answer": {
+                    "steps": [
+                        {
+                            "id": "step-1",
+                            "title": "Patch README",
+                            "description": "Patch an existing file after approval",
+                            "allowed_tools": ["apply_patch"],
+                            "command": ["apply_patch", "README.md", "old heading", "new heading"],
+                        }
+                    ]
+                }
+            }
+        if schema_name == "worker_result":
+            return {"answer": {"status": "ready"}}
+        if schema_name == "audit_verdict":
+            return {"answer": {"approved": True}}
+        return {}
+
+
+class ShellWriteLLM:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        if schema_name == "plan":
+            return {
+                "answer": {
+                    "steps": [
+                        {
+                            "id": "step-1",
+                            "title": "Create output directory",
+                            "description": "Create an approved workspace directory",
+                            "allowed_tools": ["mkdir"],
+                            "command": ["mkdir", "-p", "triada-output"],
+                        }
+                    ]
+                }
+            }
+        if schema_name == "worker_result":
+            return {"answer": {"status": "ready"}}
+        if schema_name == "audit_verdict":
+            return {"answer": {"approved": True}}
+        return {}
+
+
 def make_task(*, goal: str, allowed_tools: list[str] | None = None) -> TaskRecord:
     return TaskRecord(
         id=uuid4(),
@@ -218,6 +346,30 @@ async def test_read_only_ls_runs_without_approval(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_execution_engine_runs_multiple_model_planned_steps(tmp_path):
+    (tmp_path / "README.md").write_text("# TRIADA\n\nLocal framework\n", encoding="utf-8")
+    emitter = MemoryEmitter()
+    llm = MultiStepLLM()
+    engine = ExecutionEngine(
+        emitter=emitter,
+        workspace=tmp_path,
+        orchestrator=Orchestrator(llm),
+    )
+    engine._auditor.llm = llm
+    task = make_task(goal="Inspect repository structure", allowed_tools=["ls", "sed"])
+
+    status = await engine.run_once(task)
+
+    assert status == "completed"
+    tool_events = [event for event in emitter.events if event["event_type"] == "tool_execution_completed"]
+    assert [event["payload"]["command"] for event in tool_events] == [
+        ["ls"],
+        ["sed", "-n", "1,5p", "README.md"],
+    ]
+    assert [event["payload"]["exit_code"] for event in tool_events] == [0, 0]
+
+
+@pytest.mark.asyncio
 async def test_write_task_waits_for_approval_before_worker_execution(tmp_path):
     emitter = MemoryEmitter()
     service = TaskService(
@@ -260,6 +412,125 @@ async def test_approved_write_task_can_continue_to_worker(tmp_path):
     event_types = [event["event_type"] for event in emitter.events]
     assert "task_approved" in event_types
     assert "worker_step_completed" in event_types
+
+
+@pytest.mark.asyncio
+async def test_approved_write_file_step_changes_workspace_file(tmp_path):
+    emitter = MemoryEmitter()
+    llm = WriteFileLLM()
+    service = TaskService(
+        emitter=emitter,
+        execution_engine=ExecutionEngine(
+            emitter=emitter,
+            workspace=tmp_path,
+            orchestrator=Orchestrator(llm),
+        ),
+    )
+    service._execution_engine._auditor.llm = llm
+    task = await service.create_task(
+        goal="write approved marker file",
+        allowed_tools=["write_file"],
+        acceptance_criteria=["marker file exists after approval"],
+    )
+
+    waiting = await service.run_task_once(task.id)
+    await service.approve_task(task.id, approved_by="operator")
+    completed = await service.run_task_once(task.id)
+
+    assert waiting.status == "waiting_approval"
+    assert completed.status == "completed"
+    assert (tmp_path / "triada-marker.txt").read_text(encoding="utf-8") == "approved marker\n"
+    tool_events = [event for event in emitter.events if event["event_type"] == "tool_execution_completed"]
+    assert tool_events[-1]["payload"]["tool"] == "write_file"
+    assert tool_events[-1]["payload"]["command"] == ["write_file", "triada-marker.txt", "approved marker\n"]
+
+
+@pytest.mark.asyncio
+async def test_approved_write_task_reuses_pending_plan_without_replanning(tmp_path):
+    emitter = MemoryEmitter()
+    llm = WriteFileThenUnavailableLLM()
+    service = TaskService(
+        emitter=emitter,
+        execution_engine=ExecutionEngine(
+            emitter=emitter,
+            workspace=tmp_path,
+            orchestrator=Orchestrator(llm),
+        ),
+    )
+    service._execution_engine._auditor.llm = llm
+    task = await service.create_task(
+        goal="write approved marker file",
+        allowed_tools=["write_file"],
+        acceptance_criteria=["marker file exists after approval"],
+    )
+
+    waiting = await service.run_task_once(task.id)
+    await service.approve_task(task.id, approved_by="operator")
+    completed = await service.run_task_once(task.id)
+
+    assert waiting.status == "waiting_approval"
+    assert completed.status == "completed"
+    assert llm.plan_calls == 1
+    assert (tmp_path / "triada-marker.txt").read_text(encoding="utf-8") == "approved marker\n"
+
+
+@pytest.mark.asyncio
+async def test_approved_apply_patch_step_changes_existing_workspace_file(tmp_path):
+    (tmp_path / "README.md").write_text("old heading\nbody\n", encoding="utf-8")
+    emitter = MemoryEmitter()
+    llm = PatchFileLLM()
+    service = TaskService(
+        emitter=emitter,
+        execution_engine=ExecutionEngine(
+            emitter=emitter,
+            workspace=tmp_path,
+            orchestrator=Orchestrator(llm),
+        ),
+    )
+    service._execution_engine._auditor.llm = llm
+    task = await service.create_task(
+        goal="write approved patch to README",
+        allowed_tools=["apply_patch"],
+        acceptance_criteria=["README heading is patched"],
+    )
+
+    waiting = await service.run_task_once(task.id)
+    await service.approve_task(task.id, approved_by="operator")
+    completed = await service.run_task_once(task.id)
+
+    assert waiting.status == "waiting_approval"
+    assert completed.status == "completed"
+    assert (tmp_path / "README.md").read_text(encoding="utf-8") == "new heading\nbody\n"
+    tool_events = [event for event in emitter.events if event["event_type"] == "tool_execution_completed"]
+    assert tool_events[-1]["payload"]["tool"] == "apply_patch"
+
+
+@pytest.mark.asyncio
+async def test_approved_shell_write_command_can_run_after_approval(tmp_path):
+    emitter = MemoryEmitter()
+    llm = ShellWriteLLM()
+    service = TaskService(
+        emitter=emitter,
+        execution_engine=ExecutionEngine(
+            emitter=emitter,
+            workspace=tmp_path,
+            orchestrator=Orchestrator(llm),
+        ),
+    )
+    service._execution_engine._auditor.llm = llm
+    task = await service.create_task(
+        goal="write approved output directory",
+        allowed_tools=["mkdir"],
+        acceptance_criteria=["directory exists"],
+    )
+
+    waiting = await service.run_task_once(task.id)
+    await service.approve_task(task.id, approved_by="operator")
+    completed = await service.run_task_once(task.id)
+
+    assert waiting.status == "waiting_approval"
+    assert completed.status == "completed"
+    assert (tmp_path / "triada-output").is_dir()
 
 
 @pytest.mark.asyncio

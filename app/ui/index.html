@@ -80,6 +80,43 @@
       gap: 16px;
     }
 
+    .observatory-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .observatory-card {
+      min-width: 0;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #f8fafc;
+    }
+
+    .observatory-card strong {
+      display: block;
+      margin-top: 3px;
+      font-size: 16px;
+    }
+
+    .observatory-timeline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 12px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .observatory-timeline li {
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #e2e8f0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
     .tabs {
       display: flex;
       flex-wrap: wrap;
@@ -109,6 +146,17 @@
       gap: 8px;
     }
 
+    #task-form {
+      flex: 1;
+      justify-content: flex-end;
+      min-width: 0;
+    }
+
+    #task-id {
+      flex: 1;
+      max-width: 760px;
+    }
+
     label {
       color: var(--muted);
       font-size: 13px;
@@ -118,8 +166,9 @@
     input,
     select,
     textarea {
-      width: min(440px, 48vw);
-      min-width: 220px;
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
       padding: 6px 10px;
       border: 1px solid #b8c1cc;
       border-radius: 6px;
@@ -171,19 +220,74 @@
     .pair-row,
     .route-row {
       display: grid;
-      grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(140px, 1fr) 92px 38px;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 92px 38px;
       gap: 8px;
       align-items: end;
     }
 
     .route-row {
-      grid-template-columns: minmax(110px, 1fr) minmax(110px, 1fr) minmax(150px, 1.2fr) minmax(150px, 1.2fr) minmax(150px, 1.2fr) 38px;
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.1fr) 38px;
     }
 
     .pair-row button,
     .route-row button {
       width: 38px;
       padding: 0;
+    }
+
+    .contract-bodies {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .contract-body-card {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    .contract-body-card h3 {
+      margin: 0;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+      background: #f8fafc;
+    }
+
+    .contract-body-card pre {
+      margin: 0;
+      max-height: 260px;
+      overflow: auto;
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .contracts-layout {
+      display: grid;
+      gap: 14px;
+    }
+
+    .contract-editor-column,
+    .contract-inspector-column {
+      min-width: 0;
+      display: grid;
+      align-content: start;
+      gap: 12px;
+    }
+
+    #contract-json {
+      width: 100%;
+      min-height: 320px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
     }
 
     .button-row {
@@ -283,13 +387,24 @@
       display: block;
       width: 100%;
       min-width: 720px;
-      height: 360px;
     }
 
     .node rect {
       fill: #ffffff;
       stroke: #8ca0b3;
       stroke-width: 1.2;
+    }
+
+    .node-worker rect {
+      stroke: #0f766e;
+    }
+
+    .node-auditor rect {
+      stroke: #ea580c;
+    }
+
+    .node-chief_auditor rect {
+      stroke: #7c3aed;
     }
 
     .node text {
@@ -301,6 +416,7 @@
     }
 
     .edge {
+      fill: none;
       stroke: #64748b;
       stroke-width: 1.5;
       marker-end: url(#arrow);
@@ -309,6 +425,18 @@
     .edge-label {
       fill: #435266;
       font-size: 11px;
+      text-anchor: middle;
+    }
+
+    .graph-lane {
+      stroke: #e2e8f0;
+      stroke-dasharray: 4 6;
+    }
+
+    .graph-lane-label {
+      fill: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
       text-anchor: middle;
     }
 
@@ -390,6 +518,10 @@
         flex-direction: column;
       }
 
+      #task-form {
+        justify-content: stretch;
+      }
+
       input,
       select,
       textarea,
@@ -407,6 +539,40 @@
       .pair-row button,
       .route-row button {
         width: 100%;
+      }
+    }
+
+    @media (min-width: 1280px) {
+      main {
+        grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+        max-width: 1840px;
+        margin: 0 auto;
+      }
+
+      #contracts-view {
+        grid-column: 1 / -1;
+      }
+
+      .contracts-layout {
+        grid-template-columns: minmax(620px, 1.05fr) minmax(520px, 0.95fr);
+        align-items: start;
+      }
+
+      #contract-form {
+        gap: 12px;
+      }
+
+      #contract-json {
+        min-height: 520px;
+      }
+
+      .contract-bodies {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 0;
+      }
+
+      .contract-body-card pre {
+        max-height: 330px;
       }
     }
   </style>
@@ -469,6 +635,18 @@
         </div>
       </section>
 
+      <section id="run-observatory">
+        <h2>Run Observatory</h2>
+        <div class="panel-body">
+          <div class="observatory-grid">
+            <div class="observatory-card"><span class="muted">Status</span><strong id="observatory-status">No task selected</strong></div>
+            <div class="observatory-card"><span class="muted">Agents / routes</span><strong id="observatory-agents">—</strong></div>
+            <div class="observatory-card"><span class="muted">Audit events</span><strong id="observatory-events">—</strong></div>
+          </div>
+          <ul class="observatory-timeline" id="observatory-timeline"><li>Select a task to inspect its lifecycle.</li></ul>
+        </div>
+      </section>
+
       <section id="task-runner">
         <h2>Task Runner</h2>
         <div class="panel-body">
@@ -479,6 +657,7 @@
             </div>
             <div class="button-row">
               <button id="load-demo-template" type="button">Load template</button>
+              <button id="run-demo-flow" type="button">Run demo flow</button>
             </div>
             <div class="field">
               <label for="task-goal">Goal</label>
@@ -569,79 +748,91 @@
             <button id="load-contract-version" type="button">Load version</button>
             <button id="save-contract" type="button">Save contract</button>
           </div>
-          <div class="form-grid" id="contract-form">
-            <div class="field">
-              <label for="contract-version">Contract version</label>
-              <input id="contract-version" name="contract-version" type="text" autocomplete="off" placeholder="local-v1">
+          <div class="contracts-layout">
+            <div class="contract-editor-column">
+              <div class="form-grid" id="contract-form">
+                <div class="field">
+                  <label for="contract-version">Contract version</label>
+                  <input id="contract-version" name="contract-version" type="text" autocomplete="off" placeholder="local-v1">
+                </div>
+                <div class="compact-grid">
+                  <div class="field">
+                    <label for="contract-author">Author</label>
+                    <input id="contract-author" name="contract-author" type="text" autocomplete="off" placeholder="operator">
+                  </div>
+                  <div class="field">
+                    <label for="contract-change-reason">Change reason</label>
+                    <input id="contract-change-reason" name="contract-change-reason" type="text" autocomplete="off" placeholder="why this version changes">
+                  </div>
+                  <div class="field">
+                    <label for="contract-notes">Notes</label>
+                    <input id="contract-notes" name="contract-notes" type="text" autocomplete="off" placeholder="short operational note">
+                  </div>
+                </div>
+                <ul class="validation-errors" id="contract-validation-errors"></ul>
+                <div class="compact-grid">
+                  <div class="field">
+                    <label for="chief-auditor-id">Chief auditor</label>
+                    <input id="chief-auditor-id" name="chief-auditor-id" type="text" autocomplete="off" placeholder="chief-auditor">
+                  </div>
+                  <label class="controls" for="chief-auditor-strict">
+                    <input id="chief-auditor-strict" name="chief-auditor-strict" type="checkbox">
+                    <span>Strict mode</span>
+                  </label>
+                  <div class="field">
+                    <label for="scaling-default-pairs">Default pairs</label>
+                    <input id="scaling-default-pairs" name="scaling-default-pairs" type="number" min="3" step="1">
+                  </div>
+                </div>
+                <div class="compact-grid">
+                  <div class="field">
+                    <label for="scaling-min-pairs">Minimum pairs</label>
+                    <input id="scaling-min-pairs" name="scaling-min-pairs" type="number" min="3" step="1">
+                  </div>
+                  <div class="field">
+                    <label for="scaling-max-pairs">Maximum pairs</label>
+                    <input id="scaling-max-pairs" name="scaling-max-pairs" type="number" min="3" step="1">
+                  </div>
+                  <div class="field">
+                    <label for="topology-min-pairs">Topology minimum</label>
+                    <input id="topology-min-pairs" name="topology-min-pairs" type="number" min="3" step="1">
+                  </div>
+                </div>
+                <div>
+                  <label>Worker-auditor pairs</label>
+                  <div class="pair-editor" id="worker-pair-editor"></div>
+                  <div class="button-row">
+                    <button id="add-worker-pair" type="button">Add pair</button>
+                    <button id="sync-contract-json" type="button">Sync JSON</button>
+                  </div>
+                </div>
+                <div>
+                  <label>Route map</label>
+                  <div class="route-map-editor" id="route-map-editor"></div>
+                  <div class="button-row">
+                    <button id="add-route-map-entry" type="button">Add route</button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="compact-grid">
-              <div class="field">
-                <label for="contract-author">Author</label>
-                <input id="contract-author" name="contract-author" type="text" autocomplete="off" placeholder="operator">
+            <div class="contract-inspector-column">
+              <textarea id="contract-json" name="contract-json" spellcheck="false" placeholder="Swarm contract JSON"></textarea>
+              <p class="status" id="contract-status">Loading /v1/swarm/contract...</p>
+              <div class="contract-bodies" id="contract-bodies" aria-label="Contract bodies">
+                <div class="contract-body-card">
+                  <h3>Contract Bodies</h3>
+                  <pre>Loading /v1/swarm/contract...</pre>
+                </div>
               </div>
-              <div class="field">
-                <label for="contract-change-reason">Change reason</label>
-                <input id="contract-change-reason" name="contract-change-reason" type="text" autocomplete="off" placeholder="why this version changes">
+              <div class="metric">
+                <span>Worker auditor pairs</span>
+                <strong id="pair-count">-</strong>
               </div>
-              <div class="field">
-                <label for="contract-notes">Notes</label>
-                <input id="contract-notes" name="contract-notes" type="text" autocomplete="off" placeholder="short operational note">
-              </div>
-            </div>
-            <ul class="validation-errors" id="contract-validation-errors"></ul>
-            <div class="compact-grid">
-              <div class="field">
-                <label for="chief-auditor-id">Chief auditor</label>
-                <input id="chief-auditor-id" name="chief-auditor-id" type="text" autocomplete="off" placeholder="chief-auditor">
-              </div>
-              <label class="controls" for="chief-auditor-strict">
-                <input id="chief-auditor-strict" name="chief-auditor-strict" type="checkbox">
-                <span>Strict mode</span>
-              </label>
-              <div class="field">
-                <label for="scaling-default-pairs">Default pairs</label>
-                <input id="scaling-default-pairs" name="scaling-default-pairs" type="number" min="3" step="1">
-              </div>
-            </div>
-            <div class="compact-grid">
-              <div class="field">
-                <label for="scaling-min-pairs">Minimum pairs</label>
-                <input id="scaling-min-pairs" name="scaling-min-pairs" type="number" min="3" step="1">
-              </div>
-              <div class="field">
-                <label for="scaling-max-pairs">Maximum pairs</label>
-                <input id="scaling-max-pairs" name="scaling-max-pairs" type="number" min="3" step="1">
-              </div>
-              <div class="field">
-                <label for="topology-min-pairs">Topology minimum</label>
-                <input id="topology-min-pairs" name="topology-min-pairs" type="number" min="3" step="1">
-              </div>
-            </div>
-            <div>
-              <label>Worker-auditor pairs</label>
-              <div class="pair-editor" id="worker-pair-editor"></div>
-              <div class="button-row">
-                <button id="add-worker-pair" type="button">Add pair</button>
-                <button id="sync-contract-json" type="button">Sync JSON</button>
-              </div>
-            </div>
-            <div>
-              <label>Route map</label>
-              <div class="route-map-editor" id="route-map-editor"></div>
-              <div class="button-row">
-                <button id="add-route-map-entry" type="button">Add route</button>
-              </div>
+              <ul id="route-map">
+                <li class="status">Loading /v1/swarm/contract...</li>
+              </ul>
             </div>
           </div>
-          <textarea id="contract-json" name="contract-json" spellcheck="false" placeholder="Swarm contract JSON"></textarea>
-          <p class="status" id="contract-status">Loading /v1/swarm/contract...</p>
-          <div class="metric">
-            <span>Worker auditor pairs</span>
-            <strong id="pair-count">-</strong>
-          </div>
-          <ul id="route-map">
-            <li class="status">Loading /v1/swarm/contract...</li>
-          </ul>
         </div>
       </section>
     </div>
@@ -661,6 +852,10 @@
   </main>
 
   <script>
+    if (window.location.protocol === "file:") {
+      window.location.replace("http://127.0.0.1:8000/ui");
+    }
+
     const llmConfigUrl = "/v1/llm/config";
     const llmTestUrl = "/v1/llm/test";
     const contractUrl = "/v1/swarm/contract";
@@ -698,6 +893,7 @@
     const addRouteMapEntryButton = document.getElementById("add-route-map-entry");
     const syncContractJsonButton = document.getElementById("sync-contract-json");
     const contractJson = document.getElementById("contract-json");
+    const contractBodies = document.getElementById("contract-bodies");
     const contractStatus = document.getElementById("contract-status");
     const taskForm = document.getElementById("task-form");
     const taskInput = document.getElementById("task-id");
@@ -708,10 +904,15 @@
     const taskCriteria = document.getElementById("task-criteria");
     const demoTemplateSelect = document.getElementById("demo-template-select");
     const loadDemoTemplateButton = document.getElementById("load-demo-template");
+    const runDemoFlowButton = document.getElementById("run-demo-flow");
     const createTaskButton = document.getElementById("create-task");
     const createRunTaskButton = document.getElementById("create-run-task");
     const runTaskButton = document.getElementById("run-task");
     const taskStatus = document.getElementById("task-status");
+    const observatoryStatus = document.getElementById("observatory-status");
+    const observatoryAgents = document.getElementById("observatory-agents");
+    const observatoryEvents = document.getElementById("observatory-events");
+    const observatoryTimeline = document.getElementById("observatory-timeline");
     const recentTasks = document.getElementById("recent-tasks");
     const graphBody = document.getElementById("graph-body");
     const thinkingStatus = document.getElementById("thinking-status");
@@ -1082,6 +1283,24 @@
       }
     }
 
+    function renderContractBodies(contract) {
+      const sections = [
+        ["Topology", contract.topology],
+        ["Worker-Auditor Pairs", contract.worker_auditor_pairs],
+        ["Swarm Scaling", contract.swarm_scaling],
+        ["Route Map", contract.route_map],
+        ["Task Weight Rules", contract.task_weight_rules],
+        ["Upgrade Policy", contract.upgrade_policy],
+        ["Human Output Contract", contract.human_output_contract]
+      ];
+      contractBodies.innerHTML = sections.map(([title, body]) => `
+        <article class="contract-body-card">
+          <h3>${escapeHtml(title)}</h3>
+          <pre>${escapeHtml(JSON.stringify(body ?? null, null, 2))}</pre>
+        </article>
+      `).join("");
+    }
+
     function renderContract(contract) {
       currentContract = contract;
       const pairs = Array.isArray(contract.worker_auditor_pairs) ? contract.worker_auditor_pairs : [];
@@ -1089,6 +1308,7 @@
       pairCount.textContent = String(pairs.length);
       contractJson.value = JSON.stringify(contract, null, 2);
       renderContractForm(contract);
+      renderContractBodies(contract);
       contractStatus.textContent = `Loaded contract ${contract.contract_version || "unknown"}.`;
       routeMap.innerHTML = routes.map((route) => `
         <li class="route">
@@ -1114,16 +1334,35 @@
         return;
       }
 
-      const width = Math.max(720, nodes.length * 150);
-      const height = 360;
-      const y = 170;
-      const positions = new Map(nodes.map((node, index) => [
-        node.id,
-        {
-          x: 80 + index * ((width - 160) / Math.max(1, nodes.length - 1)),
-          y
-        }
-      ]));
+      const roleOrder = ["orchestrator", "worker", "auditor", "chief_auditor", "human"];
+      const roleLabels = {
+        orchestrator: "Orchestrator",
+        worker: "Workers",
+        auditor: "Auditors",
+        chief_auditor: "Chief Auditor",
+        human: "Human"
+      };
+      const grouped = roleOrder.map((role) => nodes.filter((node) => node.role === role));
+      const laneWidth = 190;
+      const width = Math.max(920, roleOrder.length * laneWidth);
+      const maxLaneNodes = Math.max(...grouped.map((items) => items.length), 1);
+      const height = Math.max(360, 140 + maxLaneNodes * 92);
+      const positions = new Map();
+      grouped.forEach((items, roleIndex) => {
+        const x = 90 + roleIndex * laneWidth;
+        const startY = Math.max(120, (height - (items.length - 1) * 92) / 2);
+        items.forEach((node, index) => {
+          positions.set(node.id, { x, y: startY + index * 92 });
+        });
+      });
+
+      const lanes = roleOrder.map((role, index) => {
+        const x = 90 + index * laneWidth;
+        return `
+          <text class="graph-lane-label" x="${x}" y="32">${escapeHtml(roleLabels[role] || role)}</text>
+          <line class="graph-lane" x1="${x}" y1="48" x2="${x}" y2="${height - 24}"></line>
+        `;
+      }).join("");
 
       const edgeMarkup = edges.map((edge, index) => {
         const source = positions.get(edge.source);
@@ -1134,8 +1373,9 @@
         const offset = (index % 3 - 1) * 18;
         const labelX = (source.x + target.x) / 2;
         const labelY = (source.y + target.y) / 2 - 18 + offset;
+        const midpointX = (source.x + target.x) / 2;
         return `
-          <line class="edge" x1="${source.x}" y1="${source.y - 32 + offset}" x2="${target.x}" y2="${target.y - 32 + offset}"></line>
+          <path class="edge" d="M ${source.x + 56} ${source.y + offset} C ${midpointX} ${source.y + offset}, ${midpointX} ${target.y + offset}, ${target.x - 56} ${target.y + offset}"></path>
           <text class="edge-label" x="${labelX}" y="${labelY}">${escapeHtml(edge.reason)}</text>
         `;
       }).join("");
@@ -1143,9 +1383,9 @@
       const nodeMarkup = nodes.map((node) => {
         const position = positions.get(node.id);
         const label = node.label || node.id;
-        const meta = `${node.incoming_count || 0} in / ${node.outgoing_count || 0} out`;
+        const meta = node.pair_id || `${node.incoming_count || 0} in / ${node.outgoing_count || 0} out`;
         return `
-          <g class="node">
+          <g class="node node-${escapeHtml(node.role || "agent")}">
             <rect x="${position.x - 55}" y="${position.y - 22}" width="110" height="44" rx="7"></rect>
             <text x="${position.x}" y="${position.y - 6}">${escapeHtml(label)}</text>
             <text class="graph-node-meta" x="${position.x}" y="${position.y + 10}">${escapeHtml(meta)}</text>
@@ -1162,18 +1402,19 @@
             <span class="muted">to</span>
             <code>${escapeHtml(edge.target)}</code>
           </div>
-          <small>${escapeHtml(edge.input_contract)} -> ${escapeHtml(edge.output_contract)} · ${escapeHtml(edge.status || "selected")}</small>
+          <small>${escapeHtml(edge.source_endpoint || "agent")} -> ${escapeHtml(edge.target_endpoint || "agent")} · ${escapeHtml(edge.input_contract)} -> ${escapeHtml(edge.output_contract)} · ${escapeHtml(edge.status || "selected")}</small>
         </li>
       `).join("");
 
       graphBody.innerHTML = `
         <p class="graph-summary" id="graph-summary">${escapeHtml(summary.node_count ?? nodes.length)} agents, ${escapeHtml(summary.edge_count ?? edges.length)} selected route${edges.length === 1 ? "" : "s"}.</p>
-        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Task swarm route graph">
+        <svg viewBox="0 0 ${width} ${height}" style="height: ${height}px" role="img" aria-label="Task swarm route graph">
           <defs>
             <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
               <path d="M 0 0 L 8 4 L 0 8 z" fill="#64748b"></path>
             </marker>
           </defs>
+          ${lanes}
           ${edgeMarkup}
           ${nodeMarkup}
         </svg>
@@ -1217,6 +1458,17 @@
         eventFeed.innerHTML = markup;
       }
       renderRawReasoningRefs(payload);
+    }
+
+    function renderRunObservatory(task, graph, eventsPayload) {
+      const summary = graph && graph.summary ? graph.summary : {};
+      const events = eventsPayload && Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
+      observatoryStatus.textContent = task.status || "unknown";
+      observatoryAgents.textContent = `${summary.node_count ?? 0} / ${summary.edge_count ?? 0}`;
+      observatoryEvents.textContent = String(events.length);
+      const lifecycle = ["task_created", "planning_started", "worker_step_started", "audit_verdict", "chief_audit_verdict", "human_review_packet_created"];
+      const present = new Set(events.map((event) => event.event_type));
+      observatoryTimeline.innerHTML = lifecycle.map((eventType) => `<li>${present.has(eventType) ? "✓" : "○"} ${escapeHtml(eventType)}</li>`).join("");
     }
 
     function renderRawReasoningRefs(payload) {
@@ -1352,6 +1604,40 @@
       taskStatus.textContent = `Loaded demo template: ${template.name || template.id}.`;
     }
 
+    async function runSelectedDemoFlow() {
+      const templateId = demoTemplateSelect.value;
+      if (!templateId) {
+        taskStatus.textContent = "Select a demo template first.";
+        taskStatus.classList.add("error");
+        return;
+      }
+      runDemoFlowButton.disabled = true;
+      taskStatus.classList.remove("error");
+      taskStatus.textContent = `Running demo flow ${templateId}...`;
+      try {
+        const result = await postJson("/v1/demo/run", { template_id: templateId });
+        currentTaskId = result.task.task_id;
+        taskInput.value = currentTaskId;
+        runTaskButton.disabled = false;
+        taskStatus.textContent = `Demo flow ${templateId}: ${result.task.status} (${result.actions.join(" -> ")})`;
+        renderGraph(result.graph || {});
+        renderThinking(result.thinking || { deltas: [] });
+        renderEvents(result.events || { events: [] });
+        renderRawReasoningRefs(result.events || { raw_reasoning_refs: [] });
+        await Promise.all([loadRecentTasks(), loadApprovalQueue()]);
+        if (!terminalStatuses.has(result.task.status)) {
+          startEventPolling();
+        } else {
+          stopEventPolling();
+        }
+      } catch (error) {
+        taskStatus.textContent = `Unable to run demo flow: ${error.message}`;
+        taskStatus.classList.add("error");
+      } finally {
+        runDemoFlowButton.disabled = false;
+      }
+    }
+
     async function loadRecentTasks() {
       try {
         renderRecentTasks(await fetchJson("/v1/tasks"));
@@ -1416,13 +1702,13 @@
         if (options.after_event_id) {
           params.set("after_event_id", options.after_event_id);
         }
-        renderEvents(
-          await fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/events?${params.toString()}`),
-          { append: Boolean(options.append) }
-        );
+        const payload = await fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/events?${params.toString()}`);
+        renderEvents(payload, { append: Boolean(options.append) });
+        return payload;
       } catch (error) {
         eventsStatus.textContent = `Unable to load events: ${error.message}`;
         eventsStatus.classList.add("error");
+        return { events: [] };
       }
     }
 
@@ -1456,7 +1742,8 @@
         ]);
         renderGraph(graph);
         renderThinking(thinking);
-        await loadEvents(currentTaskId);
+        const events = await loadEvents(currentTaskId);
+        renderRunObservatory(task, graph, events);
         if (terminalStatuses.has(task.status)) {
           stopEventPolling();
         }
@@ -1485,7 +1772,8 @@
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
         renderGraph(graph);
         renderThinking(thinking);
-        await loadEvents(taskId);
+        const events = await loadEvents(taskId);
+        renderRunObservatory(task, graph, events);
         if (!terminalStatuses.has(task.status)) {
           startEventPolling();
         } else {
@@ -1669,6 +1957,10 @@
 
     loadDemoTemplateButton.addEventListener("click", () => {
       applySelectedDemoTemplate();
+    });
+
+    runDemoFlowButton.addEventListener("click", () => {
+      runSelectedDemoFlow();
     });
 
     approvalQueue.addEventListener("click", (event) => {

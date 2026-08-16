@@ -133,11 +133,20 @@ async def test_get_task_route_graph():
     nodes = {node["id"]: node for node in payload["nodes"]}
     assert nodes["orchestrator"]["role"] == "orchestrator"
     assert nodes["orchestrator"]["label"] == "Orchestrator"
-    assert nodes["worker"]["role"] == "worker"
-    assert nodes["assigned_auditor"]["label"] == "Assigned Auditor"
-    assert nodes["chief_auditor"]["role"] == "chief_auditor"
+    assert nodes["worker-1"]["role"] == "worker"
+    assert nodes["worker-1"]["pair_id"] == "worker-1:auditor-1"
+    assert nodes["auditor-1"]["role"] == "auditor"
+    assert nodes["auditor-1"]["pair_id"] == "worker-1:auditor-1"
+    assert nodes["chief-auditor"]["role"] == "chief_auditor"
     assert nodes["human"]["label"] == "Human"
     assert nodes["orchestrator"]["outgoing_count"] >= 1
+
+    assigned_edge = next(edge for edge in payload["edges"] if edge["reason"] == "assign_step")
+    audit_edge = next(edge for edge in payload["edges"] if edge["reason"] == "submit_evidence")
+    assert assigned_edge["source"] == "orchestrator"
+    assert assigned_edge["target"] == "worker-1"
+    assert audit_edge["source"] == "worker-1"
+    assert audit_edge["target"] == "auditor-1"
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ import textwrap
 import pytest
 
 from app.schemas.enums import RiskPolicy
+from app.tools.apply_patch import ApplyPatchTool
 from app.tools.base import ToolRequest, ensure_risk_allowed
 from app.tools.docker import DockerTool
 from app.tools.filesystem import FileSystemTool
@@ -182,6 +183,14 @@ async def test_filesystem_tool_redacts_and_caps_read_output(tmp_path):
 def test_safe_adapters_block_mutating_commands(tmp_path):
     assert GitTool(workspace=tmp_path).is_command_allowed(["git", "status"]) is True
     assert GitTool(workspace=tmp_path).is_command_allowed(["git", "commit"]) is False
+    assert (
+        GitTool(workspace=tmp_path).is_command_allowed(
+            ["git", "commit", "-m", "checkpoint"],
+            risk_policy=RiskPolicy.HIGH_RISK_WRITE,
+            approval_ref="operator",
+        )
+        is True
+    )
     assert KubernetesReadOnlyTool(workspace=tmp_path).is_command_allowed(["kubectl", "get", "pods"]) is True
     assert KubernetesReadOnlyTool(workspace=tmp_path).is_command_allowed(["kubectl", "delete", "pod", "x"]) is False
     assert DockerTool(workspace=tmp_path).is_command_allowed(["docker", "ps"]) is True
@@ -196,3 +205,66 @@ def test_git_tool_blocks_execution_overrides(tmp_path):
     assert tool.is_command_allowed(["git", "-c", "core.pager=cat", "status"]) is False
     assert tool.is_command_allowed(["git", "log", "--output=/tmp/outside-file"]) is False
     assert tool.is_command_allowed(["git", "log", "--pathspec-from-file=/tmp/outside-file"]) is False
+
+
+def test_git_tool_requires_approval_for_write_commands(tmp_path):
+    tool = GitTool(workspace=tmp_path)
+
+    assert tool.is_command_allowed(["git", "add", "README.md"]) is False
+    assert (
+        tool.is_command_allowed(
+            ["git", "add", "README.md"],
+            risk_policy=RiskPolicy.HIGH_RISK_WRITE,
+            approval_ref="operator",
+        )
+        is True
+    )
+    assert (
+        tool.is_command_allowed(
+            ["git", "push", "origin", "main"],
+            risk_policy=RiskPolicy.HIGH_RISK_WRITE,
+            approval_ref="operator",
+        )
+        is True
+    )
+    assert (
+        tool.is_command_allowed(
+            ["git", "add", "../outside.txt"],
+            risk_policy=RiskPolicy.HIGH_RISK_WRITE,
+            approval_ref="operator",
+        )
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_apply_patch_tool_replaces_existing_file_text_after_approval(tmp_path):
+    target = tmp_path / "README.md"
+    target.write_text("old heading\nbody\n", encoding="utf-8")
+    tool = ApplyPatchTool(workspace=tmp_path)
+
+    result = await tool.execute(
+        ToolRequest(
+            command=["apply_patch", "README.md", "old heading", "new heading"],
+            risk_policy=RiskPolicy.HIGH_RISK_WRITE,
+            approval_ref="operator",
+        )
+    )
+
+    assert result.tool == "apply_patch"
+    assert result.exit_code == 0
+    assert target.read_text(encoding="utf-8") == "new heading\nbody\n"
+
+
+@pytest.mark.asyncio
+async def test_apply_patch_tool_rejects_patch_without_approval(tmp_path):
+    (tmp_path / "README.md").write_text("old\n", encoding="utf-8")
+    tool = ApplyPatchTool(workspace=tmp_path)
+
+    with pytest.raises(PermissionError):
+        await tool.execute(
+            ToolRequest(
+                command=["apply_patch", "README.md", "old", "new"],
+                risk_policy=RiskPolicy.HIGH_RISK_WRITE,
+            )
+        )

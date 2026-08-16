@@ -6,7 +6,7 @@ from app.agents.orchestrator import Orchestrator
 from app.events.models import AuditVerdict
 from app.schemas.enums import AuditVerdictValue
 from app.services.execution_engine import ExecutionEngine
-from tests.triada.test_execution_engine_runtime import MemoryEmitter, make_task
+from tests.triada.test_execution_engine_runtime import MemoryEmitter, MultiStepLLM, make_task
 
 
 class CorrectionsRequiredAuditor:
@@ -22,6 +22,41 @@ class CorrectionsRequiredAuditor:
             AuditVerdict(
                 verdict=AuditVerdictValue.CORRECTIONS_REQUIRED,
                 summary="Corrections are required.",
+            ),
+            None,
+            {},
+            None,
+        )
+
+
+class CorrectionsThenPassAuditor:
+    llm = None
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def audit_tool_results_with_model(
+        self,
+        tool_results,
+        worker_summary,
+        model_summaries=None,
+    ):
+        self.calls += 1
+        if self.calls == 1:
+            return (
+                AuditVerdict(
+                    verdict=AuditVerdictValue.CORRECTIONS_REQUIRED,
+                    summary="Retry with corrected evidence.",
+                    required_corrections=["rerun worker step"],
+                ),
+                None,
+                {},
+                None,
+            )
+        return (
+            AuditVerdict(
+                verdict=AuditVerdictValue.PASS,
+                summary="Correction passed.",
             ),
             None,
             {},
@@ -275,3 +310,57 @@ async def test_execution_engine_routes_corrections_required_verdict_to_human_pac
     )
     assert human_packet["payload"]["status"] == "corrections_required"
     assert human_packet["payload"]["chief_auditor_verdict"] == "corrections_required"
+
+
+@pytest.mark.asyncio
+async def test_execution_engine_retries_after_auditor_requests_correction(tmp_path):
+    emitter = MemoryEmitter()
+    auditor = CorrectionsThenPassAuditor()
+    engine = ExecutionEngine(
+        emitter=emitter,
+        workspace=tmp_path,
+        auditor=auditor,
+    )
+    task = make_task(goal="Echo repository status", allowed_tools=["shell"])
+    task.retry_limit = 1
+
+    status = await engine.run_once(task)
+
+    assert status == "completed"
+    assert auditor.calls == 2
+    event_types = [event["event_type"] for event in emitter.events]
+    assert "correction_requested" in event_types
+    worker_completed = [
+        event for event in emitter.events if event["event_type"] == "worker_step_completed"
+    ]
+    assert len(worker_completed) == 2
+    route_reasons = [
+        event["payload"]["reason"]
+        for event in emitter.events
+        if event["event_type"] == "swarm_route_selected"
+    ]
+    assert "request_correction" in route_reasons
+
+
+@pytest.mark.asyncio
+async def test_execution_engine_distributes_steps_across_worker_auditor_pairs(tmp_path):
+    (tmp_path / "README.md").write_text("# TRIADA\n\nLocal framework\n", encoding="utf-8")
+    emitter = MemoryEmitter()
+    llm = MultiStepLLM()
+    engine = ExecutionEngine(
+        emitter=emitter,
+        workspace=tmp_path,
+        orchestrator=Orchestrator(llm),
+    )
+    engine._auditor.llm = llm
+    task = make_task(goal="Inspect repository structure", allowed_tools=["ls", "sed"])
+
+    status = await engine.run_once(task)
+
+    assert status == "completed"
+    tool_events = [
+        event for event in emitter.events if event["event_type"] == "tool_execution_completed"
+    ]
+    assert [event["agent_id"] for event in tool_events] == ["worker-1", "worker-2"]
+    audit_events = [event for event in emitter.events if event["event_type"] == "audit_verdict"]
+    assert [event["agent_id"] for event in audit_events] == ["auditor-1", "auditor-2"]

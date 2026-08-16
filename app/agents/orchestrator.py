@@ -17,6 +17,7 @@ class PlanStep(BaseModel):
     title: str
     description: str
     allowed_tools: list[str] = Field(default_factory=list)
+    command: list[str] = Field(default_factory=list)
     risk_policy: RiskPolicy = RiskPolicy.READ_ONLY
     requires_approval: bool = False
     output_contract: StepContract = Field(default_factory=StepContract)
@@ -59,10 +60,11 @@ class Orchestrator:
             provider_steps = []
         steps = [
             PlanStep(
-                id=step.get("id") or f"step-{index}",
-                title=step.get("title") or step.get("description") or f"Step {index}",
-                description=step.get("description") or step.get("title") or goal,
+                id=self._safe_text(step.get("id"), f"step-{index}"),
+                title=self._safe_text(step.get("title") or step.get("description"), f"Step {index}"),
+                description=self._safe_text(step.get("description") or step.get("title"), goal),
                 allowed_tools=self._safe_allowed_tools(step.get("allowed_tools"), allowed_tools),
+                command=self._safe_command(step.get("command"), allowed_tools),
                 risk_policy=risk_policy,
                 requires_approval=requires_approval,
                 output_contract=StepContract(required_checks=acceptance_criteria),
@@ -77,6 +79,7 @@ class Orchestrator:
                     title="Execute requested task",
                     description=goal,
                     allowed_tools=allowed_tools,
+                    command=[],
                     risk_policy=risk_policy,
                     requires_approval=requires_approval,
                     output_contract=StepContract(required_checks=acceptance_criteria),
@@ -101,7 +104,18 @@ class Orchestrator:
     async def _provider_response(self, goal: str, allowed_tools: list[str]) -> dict[str, Any]:
         if self.llm is None or not hasattr(self.llm, "complete_json"):
             return {}
-        prompt = f"Goal: {goal}\nAllowed tools: {', '.join(allowed_tools)}"
+        prompt = "\n".join(
+            [
+                f"Goal: {goal}",
+                f"Allowed tools: {', '.join(allowed_tools)}",
+                "Return JSON with answer.steps.",
+                "Each step must include id, title, description, allowed_tools, and command.",
+                "command must be an argv array using only allowed tools.",
+                "For write_file use: [\"write_file\", \"relative/path\", \"file content\"].",
+                "For apply_patch use: [\"apply_patch\", \"relative/path\", \"old text\", \"new text\"].",
+                "Never use absolute paths or '..' in command arguments.",
+            ]
+        )
         try:
             response = await self.llm.complete_json(prompt, schema_name="plan")
         except Exception as exc:
@@ -129,6 +143,27 @@ class Orchestrator:
         allowed = set(allowed_tools)
         intersection = [tool for tool in provider_tools if isinstance(tool, str) and tool in allowed]
         return intersection or list(allowed_tools)
+
+    def _safe_text(self, value: Any, fallback: str) -> str:
+        if value is None:
+            return fallback
+        text = str(value).strip()
+        return text or fallback
+
+    def _safe_command(self, provider_command: Any, allowed_tools: list[str]) -> list[str]:
+        if not isinstance(provider_command, list) or not provider_command:
+            return []
+        command = [str(part) for part in provider_command]
+        tool_name = command[0]
+        if tool_name == "git":
+            requested_tool = "git"
+        elif tool_name in {"echo", "pytest", "rg", "ls", "cat", "sed", "write_file", "apply_patch", "mkdir", "touch"}:
+            requested_tool = tool_name
+        else:
+            requested_tool = "shell"
+        if requested_tool not in set(allowed_tools):
+            return []
+        return command
 
     def _classify_risk(self, goal: str) -> RiskPolicy:
         normalized = goal.lower()

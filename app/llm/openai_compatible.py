@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Any
 
 import httpx
@@ -22,15 +23,31 @@ class OpenAICompatibleProvider(LLMProvider):
 
     async def complete_json(self, prompt: str, *, schema_name: str) -> dict[str, Any]:
         message = await self.complete_message(prompt, schema_name=schema_name)
+        initial_raw_reasoning = message.get("raw_reasoning_content")
         try:
-            parsed = self._parse_json_object(message["content"])
+            parsed = self._parse_message_json(message)
         except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                f"OpenAI-compatible LLM returned non-JSON content: {self._redact(exc)}"
-            ) from None
+            message = await self.complete_message(
+                self._repair_prompt(
+                    original_prompt=prompt,
+                    bad_content=str(message.get("content", "")),
+                    schema_name=schema_name,
+                    error=str(exc),
+                ),
+                schema_name=schema_name,
+            )
+            try:
+                parsed = self._parse_message_json(message)
+            except json.JSONDecodeError as repair_exc:
+                raise RuntimeError(
+                    f"OpenAI-compatible LLM returned non-JSON content: {self._redact(repair_exc)}"
+                ) from None
 
         if not isinstance(parsed, dict):
             raise RuntimeError("OpenAI-compatible LLM returned JSON that is not an object")
+        if initial_raw_reasoning and not message.get("raw_reasoning_content"):
+            message["raw_reasoning_content"] = initial_raw_reasoning
+            message["has_reasoning_content"] = True
         if message["has_reasoning_content"]:
             parsed["model_message"] = {
                 "has_reasoning_content": True,
@@ -39,16 +56,52 @@ class OpenAICompatibleProvider(LLMProvider):
             parsed["raw_reasoning_content"] = message["raw_reasoning_content"]
         return parsed
 
+    def _parse_message_json(self, message: dict[str, Any]) -> Any:
+        return self._parse_json_object(str(message.get("content", "")))
+
+    def _repair_prompt(self, *, original_prompt: str, bad_content: str, schema_name: str, error: str) -> str:
+        return "\n".join(
+            [
+                "Repair the following TRIADA model output into one valid JSON object.",
+                f"Schema name: {schema_name}",
+                f"JSON parse error: {error}",
+                "Return only JSON. Do not include markdown or prose.",
+                "The JSON object must preserve TRIADA fields such as thinking_summary_delta and answer when present.",
+                "Original user prompt:",
+                original_prompt,
+                "Bad model output:",
+                bad_content,
+            ]
+        )
+
     def _parse_json_object(self, content: str) -> Any:
         try:
             return json.loads(content)
         except json.JSONDecodeError as first_error:
-            extracted = self._extract_first_json_object(content)
-            if extracted is None:
-                raise first_error
-            return json.loads(extracted)
+            for extracted in self._json_object_candidates(content):
+                try:
+                    parsed = json.loads(extracted)
+                except json.JSONDecodeError:
+                    continue
+                if self._looks_like_triada_response(parsed):
+                    return parsed
+            for extracted in self._json_object_candidates(content):
+                try:
+                    return json.loads(extracted)
+                except json.JSONDecodeError:
+                    continue
+            raise first_error
 
-    def _extract_first_json_object(self, content: str) -> str | None:
+    def _json_object_candidates(self, content: str) -> list[str]:
+        candidates = [
+            match.group(1).strip()
+            for match in re.finditer(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
+        ]
+        candidates.extend(self._extract_balanced_json_objects(content))
+        return candidates
+
+    def _extract_balanced_json_objects(self, content: str) -> list[str]:
+        candidates: list[str] = []
         start = content.find("{")
         while start != -1:
             depth = 0
@@ -71,9 +124,18 @@ class OpenAICompatibleProvider(LLMProvider):
                 elif char == "}":
                     depth -= 1
                     if depth == 0:
-                        return content[start : index + 1]
+                        candidates.append(content[start : index + 1])
+                        break
             start = content.find("{", start + 1)
-        return None
+        return candidates
+
+    def _looks_like_triada_response(self, value: Any) -> bool:
+        return isinstance(value, dict) and (
+            "answer" in value
+            or "thinking_summary_delta" in value
+            or "model_message" in value
+            or "raw_reasoning_content" in value
+        )
 
     async def complete_message(self, prompt: str, *, schema_name: str) -> dict[str, Any]:
         if not self.base_url:
@@ -86,9 +148,22 @@ class OpenAICompatibleProvider(LLMProvider):
 
         payload = {
             "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a TRIADA agent endpoint. Return only one valid JSON object. "
+                        "Do not wrap it in markdown. Do not include prose outside JSON."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
             "stream": True,
+            "response_format": {"type": "json_object"},
         }
+        if self._is_deepseek_thinking_endpoint():
+            payload["thinking"] = {"type": "enabled"}
+            payload["reasoning_effort"] = "high"
 
         try:
             async with httpx.AsyncClient(transport=self.transport, timeout=30.0) as client:
@@ -240,6 +315,11 @@ class OpenAICompatibleProvider(LLMProvider):
                 if isinstance(value, dict) and value.get("reasoning_content"):
                     parts.append(str(value["reasoning_content"]))
         return "".join(parts)
+
+    def _is_deepseek_thinking_endpoint(self) -> bool:
+        base_url = (self.base_url or "").lower()
+        model = self.model.lower()
+        return "api.deepseek.com" in base_url or model.startswith("deepseek-")
 
     def _redact(self, value: object) -> str:
         message = str(value)

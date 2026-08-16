@@ -1,9 +1,10 @@
 # TRIADA
 
-TRIADA is an auditable DevOps task runner MVP built around three roles:
-Orchestrator, Worker, and Auditor. The current codebase exposes a FastAPI API,
-a small CLI, append-only audit events, redaction, safe tool adapter contracts,
-and deterministic fake LLM behavior for local development.
+TRIADA is an auditable, domain-agnostic swarm runtime built around three roles:
+Orchestrator, Worker, and Auditor. It can coordinate research, analysis,
+design, and tool-backed execution while preserving explicit contracts,
+append-only audit events, redaction, and deterministic fake LLM behavior for
+local development.
 
 ## How It Works
 
@@ -50,11 +51,9 @@ Orchestrator
       |
       v
 Worker
-- executes only the approved step
-- currently minimal tools:
-  git status
-  echo
-- records tool_execution_completed
+- executes only the approved step through a bounded scheduler
+- uses explicitly allowed domain tools and records evidence
+- the repository includes minimal local adapters such as echo and git status
       |
       v
 Auditor
@@ -84,9 +83,9 @@ TRIADA
 │   ├── llm/             # Fake, OpenAI-compatible, and OpenAI Responses providers
 │   ├── persistence/     # SQLAlchemy models and async session factory
 │   ├── schemas/         # API/task/enumeration schemas
-│   ├── services/        # Task service, heartbeat, long-running supervision
+│   ├── services/        # Task service, scheduler, heartbeat, supervision
 │   ├── ui/              # Local swarm dashboard HTML
-│   └── tools/           # Safe DevOps tool adapters
+│   └── tools/           # Explicitly allowed tool adapters
 ├── alembic/             # Database migrations
 ├── tests/triada/        # TRIADA unit and integration tests
 ├── docs/superpowers/    # Design specs and implementation plans

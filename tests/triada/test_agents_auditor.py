@@ -42,6 +42,23 @@ class ProviderWithShellStep:
         }
 
 
+class ProviderWithNumericStepId:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        return {
+            "answer": {
+                "steps": [
+                    {
+                        "id": 1,
+                        "title": "Inspect files",
+                        "description": "Find repository files",
+                        "allowed_tools": ["rg"],
+                        "command": ["rg", "--files"],
+                    }
+                ]
+            }
+        }
+
+
 class RecordingProvider:
     def __init__(self) -> None:
         self.calls = []
@@ -93,6 +110,18 @@ async def test_orchestrator_does_not_widen_provider_tools_beyond_allowlist():
 
     assert plan.steps[0].allowed_tools == ["git"]
     assert "shell" not in plan.steps[0].allowed_tools
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_normalizes_numeric_provider_step_id():
+    plan = await Orchestrator(ProviderWithNumericStepId()).plan_task(
+        goal="Inspect repository",
+        allowed_tools=["rg"],
+        acceptance_criteria=["files were inspected"],
+    )
+
+    assert plan.steps[0].id == "1"
+    assert plan.steps[0].command == ["rg", "--files"]
 
 
 @pytest.mark.asyncio
@@ -320,6 +349,23 @@ async def test_worker_normalizes_string_model_summary_delta(tmp_path):
         "Executed echo command to confirm FixMost corp-coder connected."
     )
     assert result.model_thinking_summary_delta["stage"] == "execution"
+
+
+@pytest.mark.asyncio
+async def test_worker_blocks_write_file_outside_workspace(tmp_path):
+    result = await Worker(worker_id="worker-1", workspace=tmp_path).run_step(
+        task_id="task-1",
+        step_id="step-1",
+        title="Write outside workspace",
+        allowed_tools=["write_file"],
+        command=["write_file", "../outside.txt", "unsafe"],
+        risk_policy="high_risk_write",
+        approval_ref="operator",
+    )
+
+    assert result.status == "blocked"
+    assert "not supported as a safe read-only command" in result.errors[0]
+    assert not (tmp_path.parent / "outside.txt").exists()
 
 
 def test_auditor_reports_unmentioned_tool_failure():

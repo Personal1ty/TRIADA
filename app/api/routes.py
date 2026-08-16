@@ -20,6 +20,7 @@ from app.schemas.llm import LLMConfigRequest, LLMConfigResponse, LLMTestResponse
 from app.schemas.tasks import (
     ApprovalRequest,
     CreateTaskRequest,
+    DemoRunRequest,
     RawReasoningRevealRequest,
     RawReasoningRevealResponse,
     TaskActionResponse,
@@ -61,14 +62,79 @@ async def save_swarm_contract(payload: dict, request: Request) -> dict:
 
 @router.get("/demo/templates")
 async def list_demo_templates() -> dict:
+    return {"templates": _demo_templates()}
+
+
+@router.post("/demo/run")
+async def run_demo_template(payload: DemoRunRequest, request: Request) -> dict:
+    templates = {template["id"]: template for template in _demo_templates()}
+    template = templates.get(payload.template_id)
+    if template is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="demo template not found")
+
+    task = await request.app.state.task_service.create_task(
+        goal=template["goal"],
+        allowed_tools=template["allowed_tools"],
+        acceptance_criteria=template["acceptance_criteria"],
+        metadata={"demo_template_id": template["id"], "demo_template_name": template["name"]},
+    )
+    actions = ["created"]
+    task = await request.app.state.task_service.run_task_once(task.id)
+    actions.append("run_once")
+    if task.status == "waiting_approval":
+        task = await request.app.state.task_service.approve_task(task.id, approved_by="demo-flow")
+        actions.append("approve")
+        task = await request.app.state.task_service.run_task_once(task.id)
+        actions.append("run_once")
+
+    events = await request.app.state.event_repository.list_events(task.trace_id)
     return {
-        "templates": [
+        "template_id": template["id"],
+        "task": _task_response(task).model_dump(mode="json"),
+        "actions": actions,
+        "graph": swarm_graph_from_events(events),
+        "thinking": {
+            "task_id": str(task.id),
+            "trace_id": str(task.trace_id),
+            "deltas": thinking_deltas_from_events(events),
+        },
+        "events": {
+            "task_id": str(task.id),
+            "trace_id": str(task.trace_id),
+            "limit": len(events),
+            "next_cursor": None,
+            "has_more": False,
+            "raw_reasoning_refs": _raw_reasoning_refs(events),
+            "events": _events_without_raw_reasoning(events),
+        },
+    }
+
+
+def _demo_templates() -> list[dict]:
+    return [
             {
                 "id": "git_status",
                 "name": "Git status check",
                 "goal": "Inspect the TRIADA repository state with git status and summarize the result.",
                 "allowed_tools": ["git"],
                 "acceptance_criteria": ["git status was inspected", "result is ready for a human"],
+            },
+            {
+                "id": "repo_health_review",
+                "name": "Repository health review",
+                "goal": (
+                    "Inspect TRIADA repository health using only these safe read-only commands: "
+                    "git status; rg --files app/services app/agents; sed -n 1,40p README.md. "
+                    "Then summarize what git state, ExecutionEngine/Worker source locations, and the README "
+                    "introduction say about the current framework state."
+                ),
+                "allowed_tools": ["git", "rg", "sed"],
+                "acceptance_criteria": [
+                    "git status was checked",
+                    "ExecutionEngine and Worker files were located",
+                    "README introduction was inspected",
+                    "summary is ready for a human reviewer",
+                ],
             },
             {
                 "id": "thinking_capture",
@@ -88,8 +154,20 @@ async def list_demo_templates() -> dict:
                 "allowed_tools": ["shell"],
                 "acceptance_criteria": ["task enters waiting_approval before any write action"],
             },
+            {
+                "id": "write_file_approval",
+                "name": "Approved file write",
+                "goal": (
+                    "Create a local file named triada-demo-output.txt with a short summary that says "
+                    "TRIADA executed an approved write step."
+                ),
+                "allowed_tools": ["write_file"],
+                "acceptance_criteria": [
+                    "task waits for approval before writing",
+                    "triada-demo-output.txt exists after approval and second run",
+                ],
+            },
         ]
-    }
 
 
 @router.get("/llm/config", response_model=LLMConfigResponse)

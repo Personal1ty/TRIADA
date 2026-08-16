@@ -220,6 +220,44 @@ async def test_tasks_survive_app_restart(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_pending_approval_plan_survives_app_restart(tmp_path):
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'triada.db'}"
+
+    app = create_app(testing=True, database_url=database_url)
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            created = await client.post(
+                "/v1/tasks",
+                json={
+                    "goal": "write approved marker",
+                    "allowed_tools": ["write_file"],
+                    "acceptance_criteria": ["file is written only after approval"],
+                },
+            )
+            task_id = created.json()["task_id"]
+            first_run = await client.post(f"/v1/tasks/{task_id}/run_once")
+
+    assert first_run.status_code == 200
+    assert first_run.json()["status"] == "waiting_approval"
+
+    restarted = create_app(testing=True, database_url=database_url)
+    async with restarted.router.lifespan_context(restarted):
+        async with AsyncClient(transport=ASGITransport(app=restarted), base_url="http://test") as client:
+            waiting = await client.get("/v1/tasks?status=waiting_approval")
+            approved = await client.post(f"/v1/tasks/{task_id}/approve", json={"approved_by": "operator"})
+            completed = await client.post(f"/v1/tasks/{task_id}/run_once")
+            events = (await client.get(f"/v1/tasks/{task_id}/events")).json()["events"]
+
+    assert waiting.status_code == 200
+    assert waiting.json()["tasks"][0]["task_id"] == task_id
+    assert approved.status_code == 200
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"
+    event_types = [event["event_type"] for event in events]
+    assert "planning_reused" in event_types
+
+
+@pytest.mark.asyncio
 async def test_list_recent_tasks_can_filter_waiting_approval():
     async with _client() as client:
         waiting = await client.post(
@@ -373,11 +411,32 @@ async def test_demo_templates_are_available_for_local_ui():
     assert response.status_code == 200
     templates = response.json()["templates"]
     template_ids = {template["id"] for template in templates}
-    assert {"git_status", "thinking_capture", "approval_gate"}.issubset(template_ids)
+    assert {"git_status", "repo_health_review", "thinking_capture", "approval_gate"}.issubset(template_ids)
+    repo_health = next(template for template in templates if template["id"] == "repo_health_review")
+    assert repo_health["allowed_tools"] == ["git", "rg", "sed"]
     for template in templates:
         assert template["goal"]
         assert isinstance(template["allowed_tools"], list)
         assert isinstance(template["acceptance_criteria"], list)
+
+
+@pytest.mark.asyncio
+async def test_demo_run_executes_template_and_returns_observability_payload():
+    async with _client() as client:
+        response = await client.post("/v1/demo/run", json={"template_id": "git_status"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["template_id"] == "git_status"
+    assert payload["task"]["status"] == "completed"
+    assert payload["actions"] == ["created", "run_once"]
+    assert payload["thinking"]["deltas"]
+    assert payload["graph"]["nodes"]
+    assert payload["graph"]["edges"]
+    assert payload["events"]["events"]
+    event_types = [event["event_type"] for event in payload["events"]["events"]]
+    assert "tool_execution_completed" in event_types
+    assert all("raw_reasoning_content" not in str(event["payload"]) for event in payload["events"]["events"])
 
 
 @pytest.mark.asyncio

@@ -7,12 +7,16 @@ from pydantic import BaseModel, Field
 
 from app.events.models import ArtifactRecord, ToolExecutionRecord, ValidationResultRecord
 from app.schemas.enums import RiskPolicy
+from app.tools.apply_patch import ApplyPatchTool
 from app.tools.base import ToolRequest
 from app.tools.git import GitTool
 from app.tools.shell import ShellTool
+from app.tools.write_file import WriteFileTool
 
 _SAFE_READ_ONLY_TOOLS = {"echo", "pytest", "rg", "ls", "cat", "sed"}
-_SAFE_SHELL_ALLOWLIST = _SAFE_READ_ONLY_TOOLS
+_WRITE_TOOLS = {"write_file", "apply_patch"}
+_WRITE_SHELL_TOOLS = {"mkdir", "touch"}
+_SAFE_SHELL_ALLOWLIST = _SAFE_READ_ONLY_TOOLS | _WRITE_SHELL_TOOLS
 _MUTATING_TOOL_ARGS = {
     "sed": {"--in-place"},
     "pytest": {"--cache-clear", "--junitxml", "--basetemp", "--result-log"},
@@ -67,7 +71,7 @@ class Worker:
         if not self._is_tool_allowed(tool_name, allowed_tools):
             return self._blocked(task_id, step_id, title, command, f"tool '{tool_name}' is not allowed")
 
-        if not self._is_supported_safe_command(tool_name, command):
+        if not self._is_supported_safe_command(tool_name, command, risk_policy, approval_ref):
             return self._blocked(
                 task_id,
                 step_id,
@@ -167,7 +171,7 @@ class Worker:
     def _tool_name(self, command: list[str]) -> str:
         if command and command[0] == "git":
             return "git"
-        if command and command[0] in _SAFE_READ_ONLY_TOOLS:
+        if command and command[0] in _SAFE_READ_ONLY_TOOLS | _WRITE_TOOLS | _WRITE_SHELL_TOOLS:
             return command[0]
         return "shell"
 
@@ -176,9 +180,23 @@ class Worker:
             return True
         return tool_name == "echo" and "shell" in allowed_tools
 
-    def _is_supported_safe_command(self, tool_name: str, command: list[str]) -> bool:
+    def _is_supported_safe_command(
+        self,
+        tool_name: str,
+        command: list[str],
+        risk_policy: RiskPolicy,
+        approval_ref: str | None,
+    ) -> bool:
         if tool_name == "git":
-            return GitTool(workspace=self.workspace).is_command_allowed(command)
+            return GitTool(workspace=self.workspace).is_command_allowed(
+                command,
+                risk_policy=risk_policy,
+                approval_ref=approval_ref,
+            )
+        if tool_name in _WRITE_TOOLS:
+            return self._write_command_stays_in_workspace(command)
+        if tool_name in _WRITE_SHELL_TOOLS:
+            return self._write_shell_command_stays_in_workspace(command)
         if tool_name not in _SAFE_READ_ONLY_TOOLS:
             return False
         if self._has_mutating_arg(tool_name, command):
@@ -188,6 +206,10 @@ class Worker:
     def _adapter_for_tool(self, tool_name: str):
         if tool_name == "git":
             return GitTool(workspace=self.workspace)
+        if tool_name == "apply_patch":
+            return ApplyPatchTool(workspace=self.workspace)
+        if tool_name == "write_file":
+            return WriteFileTool(workspace=self.workspace)
         executable = shutil.which(tool_name)
         trusted_paths = [Path(executable).parent] if executable else None
         return ShellTool(
@@ -206,6 +228,37 @@ class Worker:
             if arg in blocked_args or any(arg.startswith(f"{blocked}=") for blocked in blocked_args):
                 return True
         return False
+
+    def _write_command_stays_in_workspace(self, command: list[str]) -> bool:
+        if command[0] == "write_file" and len(command) != 3:
+            return False
+        if command[0] == "apply_patch" and len(command) != 4:
+            return False
+        if command[0] not in _WRITE_TOOLS:
+            return False
+        return self._relative_path_stays_in_workspace(command[1])
+
+    def _write_shell_command_stays_in_workspace(self, command: list[str]) -> bool:
+        if not command or command[0] not in _WRITE_SHELL_TOOLS:
+            return False
+        if command[0] == "mkdir":
+            path_args = [arg for arg in command[1:] if arg != "-p"]
+            if len(path_args) != len(command[1:]) - command[1:].count("-p"):
+                return False
+            return bool(path_args) and all(self._relative_path_stays_in_workspace(arg) for arg in path_args)
+        if command[0] == "touch":
+            return len(command) >= 2 and all(
+                not arg.startswith("-") and self._relative_path_stays_in_workspace(arg)
+                for arg in command[1:]
+            )
+        return False
+
+    def _relative_path_stays_in_workspace(self, raw_path: str) -> bool:
+        path = Path(raw_path)
+        if path.is_absolute() or any(part == ".." for part in path.parts):
+            return False
+        candidate = (self.workspace / path).resolve()
+        return candidate != self.workspace and candidate.is_relative_to(self.workspace)
 
     def _path_args_stay_in_workspace(self, command: list[str]) -> bool:
         skip_next = False
