@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from app.audit.projection import (
     event_to_sse,
     events_to_public_response,
+    run_inspector_from_events,
     swarm_graph_from_events,
     thinking_deltas_from_events,
 )
@@ -28,6 +29,7 @@ from app.schemas.tasks import (
     TaskListResponse,
     TaskResponse,
 )
+from app.services.task_service import InvalidTaskTransition
 
 router = APIRouter(prefix="/v1")
 
@@ -385,6 +387,18 @@ async def get_task_swarm_graph(task_id: UUID, request: Request) -> dict:
     return swarm_graph_from_events(events)
 
 
+@router.get("/tasks/{task_id}/inspector")
+async def get_task_inspector(task_id: UUID, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    return {
+        "task_id": str(task.id),
+        "trace_id": str(task.trace_id),
+        "status": task.status,
+        "inspector": run_inspector_from_events(events),
+    }
+
+
 @router.get("/tasks/{task_id}/audit")
 async def get_task_audit(task_id: UUID, request: Request) -> dict:
     task = await _get_task_or_404(task_id, request)
@@ -414,6 +428,8 @@ async def cancel_task(task_id: UUID, request: Request) -> TaskActionResponse:
         task = await request.app.state.task_service.cancel_task(task_id)
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="task not found") from exc
+    except InvalidTaskTransition as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return _task_action_response(task, "cancel")
 
 
@@ -424,11 +440,15 @@ async def approve_task(task_id: UUID, payload: ApprovalRequest, request: Request
             task = await request.app.state.task_service.cancel_task(task_id, reason=payload.reason)
         except KeyError as exc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="task not found") from exc
+        except InvalidTaskTransition as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
         return _task_action_response(task, "reject")
     try:
         task = await request.app.state.task_service.approve_task(task_id, approved_by=payload.approved_by)
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="task not found") from exc
+    except InvalidTaskTransition as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return _task_action_response(task, "approve")
 
 
@@ -438,6 +458,8 @@ async def resume_task(task_id: UUID, request: Request) -> TaskActionResponse:
         task = await request.app.state.task_service.resume_task(task_id)
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="task not found") from exc
+    except InvalidTaskTransition as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return _task_action_response(task, "resume")
 
 
@@ -447,6 +469,8 @@ async def run_task_once(task_id: UUID, request: Request) -> TaskActionResponse:
         task = await request.app.state.task_service.run_task_once(task_id)
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="task not found") from exc
+    except InvalidTaskTransition as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return _task_action_response(task, "run_once")
 
 

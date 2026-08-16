@@ -75,6 +75,65 @@ def swarm_graph_from_events(events: list[Any]) -> dict:
     }
 
 
+def run_inspector_from_events(events: list[Any]) -> dict:
+    agents: dict[str, dict[str, Any]] = {}
+    phase = "created"
+    error_events = {"worker_step_failed", "worker_step_blocked", "llm_unavailable", "task_failed"}
+    for event in events:
+        payload = event.payload if isinstance(event.payload, Mapping) else {}
+        agent_id = event.agent_id or payload.get("agent_id")
+        if agent_id:
+            agent = agents.setdefault(
+                str(agent_id),
+                {"agent_id": str(agent_id), "role": payload.get("agent_role"), "status": "pending", "last_event": None},
+            )
+            agent["role"] = agent["role"] or payload.get("agent_role")
+            agent["last_event"] = event.event_type
+            agent["status"] = _agent_status_for_event(event.event_type)
+        phase = _phase_for_event(event.event_type, phase)
+
+    return {
+        "phase": phase,
+        "metrics": {
+            "event_count": len(events),
+            "route_count": sum(event.event_type == "swarm_route_selected" for event in events),
+            "tool_count": sum(event.event_type == "tool_execution_completed" for event in events),
+            "error_count": sum(event.event_type in error_events for event in events),
+        },
+        "agents": list(agents.values()),
+    }
+
+
+def _phase_for_event(event_type: str, current: str) -> str:
+    phases = {
+        "task_created": "created",
+        "task_started": "planning",
+        "planning_started": "planning",
+        "worker_step_started": "execution",
+        "worker_step_completed": "execution",
+        "worker_step_failed": "execution",
+        "worker_step_blocked": "execution",
+        "audit_verdict": "audit",
+        "chief_audit_verdict": "final_gate",
+        "human_review_packet_created": "human_review",
+        "task_completed": "completed",
+        "task_failed": "failed",
+        "task_blocked": "blocked",
+        "task_waiting_approval": "waiting_approval",
+    }
+    return phases.get(event_type, current)
+
+
+def _agent_status_for_event(event_type: str) -> str:
+    if event_type in {"worker_step_completed", "audit_verdict", "chief_audit_verdict"}:
+        return "completed"
+    if event_type in {"worker_step_failed", "worker_step_blocked", "llm_unavailable"}:
+        return "blocked"
+    if event_type in {"human_review_packet_created"}:
+        return "waiting"
+    return "running"
+
+
 def _graph_node(node_id: str, *, endpoint_role: str | None = None) -> dict:
     role = _agent_role(node_id, endpoint_role)
     pair_id = _pair_id(node_id) if role in {"worker", "auditor"} else None

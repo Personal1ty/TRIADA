@@ -150,6 +150,30 @@ async def test_get_task_route_graph():
 
 
 @pytest.mark.asyncio
+async def test_get_task_inspector_returns_phase_metrics_and_agent_states():
+    async with _client() as client:
+        created = await client.post(
+            "/v1/tasks",
+            json={"goal": "inspect repository status", "allowed_tools": ["git"]},
+        )
+        task_id = created.json()["task_id"]
+        await client.post(f"/v1/tasks/{task_id}/run_once")
+        response = await client.get(f"/v1/tasks/{task_id}/inspector")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "completed"
+    assert payload["inspector"]["phase"] == "completed"
+    assert payload["inspector"]["metrics"]["route_count"] == 5
+    assert {agent["agent_id"] for agent in payload["inspector"]["agents"]} >= {
+        "orchestrator",
+        "worker-1",
+        "auditor-1",
+        "chief-auditor",
+    }
+
+
+@pytest.mark.asyncio
 async def test_task_route_graph_survives_app_restart(tmp_path):
     database_url = f"sqlite+aiosqlite:///{tmp_path / 'triada.db'}"
 

@@ -24,7 +24,34 @@ class TaskRecord:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+class InvalidTaskTransition(ValueError):
+    pass
+
+
 class TaskService:
+    _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+        "created": {"running", "completed", "cancelled"},
+        "waiting_approval": {"approved", "running", "cancelled"},
+        "approved": {"running", "cancelled"},
+        "running": {
+            "waiting_approval",
+            "corrections_required",
+            "retrying",
+            "blocked",
+            "completed",
+            "failed",
+            "cancelled",
+            "timed_out",
+        },
+        "corrections_required": {"running", "cancelled"},
+        "retrying": {"running", "cancelled", "failed", "completed"},
+        "blocked": {"cancelled"},
+        "failed": {"cancelled"},
+        "completed": set(),
+        "cancelled": set(),
+        "timed_out": {"cancelled"},
+    }
+
     def __init__(
         self,
         *,
@@ -95,6 +122,7 @@ class TaskService:
 
     async def approve_task(self, task_id: UUID | str, *, approved_by: str | None = None) -> TaskRecord:
         task = await self._require_task(task_id)
+        self._ensure_transition(task.status, "approved")
         metadata = deepcopy(task.metadata)
         metadata["approval"] = {
             "approved": True,
@@ -124,6 +152,7 @@ class TaskService:
             )
 
         task = await self._require_task(task_id)
+        self._ensure_transition(task.status, "running")
         running = replace(task, status="running", updated_at=datetime.now(UTC))
         await self._emit(running, "task_started", {"status": "running"})
         await self._save(running)
@@ -159,6 +188,7 @@ class TaskService:
         payload: dict[str, Any],
     ) -> TaskRecord:
         task = await self._require_task(task_id)
+        self._ensure_transition(task.status, status)
         updated = replace(task, status=status, updated_at=datetime.now(UTC))
         await self._emit(updated, event_type, payload)
         await self._save(updated)
@@ -198,3 +228,8 @@ class TaskService:
         if isinstance(task_id, UUID):
             return task_id
         return UUID(str(task_id))
+
+    @classmethod
+    def _ensure_transition(cls, current: str, target: str) -> None:
+        if target not in cls._ALLOWED_TRANSITIONS.get(current, set()):
+            raise InvalidTaskTransition(f"invalid task transition: {current} -> {target}")

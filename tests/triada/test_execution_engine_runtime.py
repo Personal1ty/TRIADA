@@ -12,7 +12,7 @@ from app.llm.openai_compatible import OpenAICompatibleProvider
 from app.llm.openai_responses import OpenAIResponsesProvider
 from app.schemas.enums import AgentRole
 from app.services.execution_engine import ExecutionEngine
-from app.services.task_service import TaskRecord, TaskService
+from app.services.task_service import InvalidTaskTransition, TaskRecord, TaskService
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +28,16 @@ class MemoryEmitter:
 
     async def emit(self, **kwargs):
         self.events.append(kwargs)
+
+
+@pytest.mark.asyncio
+async def test_task_service_rejects_invalid_terminal_transition():
+    service = TaskService()
+    task = await service.create_task(goal="State machine test")
+    await service.mark_task_completed_without_execution(task.id)
+
+    with pytest.raises(InvalidTaskTransition, match="completed -> completed"):
+        await service.run_task_once(task.id)
 
 
 class UnavailableLLM:

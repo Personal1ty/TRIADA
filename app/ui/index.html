@@ -643,6 +643,7 @@
             <div class="observatory-card"><span class="muted">Agents / routes</span><strong id="observatory-agents">—</strong></div>
             <div class="observatory-card"><span class="muted">Audit events</span><strong id="observatory-events">—</strong></div>
           </div>
+          <p class="status" id="observatory-inspector">Select a task to inspect agent states.</p>
           <ul class="observatory-timeline" id="observatory-timeline"><li>Select a task to inspect its lifecycle.</li></ul>
         </div>
       </section>
@@ -912,6 +913,7 @@
     const observatoryStatus = document.getElementById("observatory-status");
     const observatoryAgents = document.getElementById("observatory-agents");
     const observatoryEvents = document.getElementById("observatory-events");
+    const observatoryInspector = document.getElementById("observatory-inspector");
     const observatoryTimeline = document.getElementById("observatory-timeline");
     const recentTasks = document.getElementById("recent-tasks");
     const graphBody = document.getElementById("graph-body");
@@ -1460,12 +1462,17 @@
       renderRawReasoningRefs(payload);
     }
 
-    function renderRunObservatory(task, graph, eventsPayload) {
+    function renderRunObservatory(task, graph, eventsPayload, inspectorPayload) {
       const summary = graph && graph.summary ? graph.summary : {};
       const events = eventsPayload && Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
+      const inspector = inspectorPayload && inspectorPayload.inspector ? inspectorPayload.inspector : {};
+      const agents = Array.isArray(inspector.agents) ? inspector.agents : [];
       observatoryStatus.textContent = task.status || "unknown";
       observatoryAgents.textContent = `${summary.node_count ?? 0} / ${summary.edge_count ?? 0}`;
       observatoryEvents.textContent = String(events.length);
+      observatoryInspector.textContent = agents.length
+        ? `${inspector.phase || "unknown phase"}: ${agents.map((agent) => `${agent.agent_id}=${agent.status}`).join(" · ")}`
+        : "No agent state is available yet.";
       const lifecycle = ["task_created", "planning_started", "worker_step_started", "audit_verdict", "chief_audit_verdict", "human_review_packet_created"];
       const present = new Set(events.map((event) => event.event_type));
       observatoryTimeline.innerHTML = lifecycle.map((eventType) => `<li>${present.has(eventType) ? "✓" : "○"} ${escapeHtml(eventType)}</li>`).join("");
@@ -1736,14 +1743,15 @@
       try {
         const task = await fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}`);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
-        const [graph, thinking] = await Promise.all([
+        const [graph, thinking, inspector] = await Promise.all([
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/swarm-graph`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/thinking-summary`)
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/thinking-summary`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/inspector`)
         ]);
         renderGraph(graph);
         renderThinking(thinking);
         const events = await loadEvents(currentTaskId);
-        renderRunObservatory(task, graph, events);
+        renderRunObservatory(task, graph, events, inspector);
         if (terminalStatuses.has(task.status)) {
           stopEventPolling();
         }
@@ -1768,12 +1776,17 @@
       thinkingStatus.textContent = `Loading ${thinkingUrl}...`;
       thinkingList.innerHTML = "";
       try {
-        const [task, graph, thinking] = await Promise.all([fetchJson(taskUrl), fetchJson(graphUrl), fetchJson(thinkingUrl)]);
+        const [task, graph, thinking, inspector] = await Promise.all([
+          fetchJson(taskUrl),
+          fetchJson(graphUrl),
+          fetchJson(thinkingUrl),
+          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/inspector`),
+        ]);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
         renderGraph(graph);
         renderThinking(thinking);
         const events = await loadEvents(taskId);
-        renderRunObservatory(task, graph, events);
+        renderRunObservatory(task, graph, events, inspector);
         if (!terminalStatuses.has(task.status)) {
           startEventPolling();
         } else {
