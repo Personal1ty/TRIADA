@@ -93,6 +93,35 @@ async def test_swarm_contract_versions_include_metadata():
 
 
 @pytest.mark.asyncio
+async def test_contract_diff_returns_changed_paths_between_versions():
+    async with _client() as client:
+        current = (await client.get("/v1/swarm/contract")).json()
+        first = dict(current)
+        first["contract_version"] = "diff-before"
+        await client.post("/v1/swarm/contract", json=first)
+
+        second = dict(current)
+        second["contract_version"] = "diff-after"
+        second["topology"] = dict(current["topology"])
+        second["topology"]["chief_auditor"] = dict(current["topology"]["chief_auditor"])
+        second["topology"]["chief_auditor"]["strict_mode"] = True
+        await client.post("/v1/swarm/contract", json=second)
+        response = await client.get(
+            "/v1/swarm/contract/diff?from_version=diff-before&to_version=diff-after"
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["from_version"] == "diff-before"
+    assert payload["to_version"] == "diff-after"
+    assert {
+        change["path"] for change in payload["changes"]
+    } == {"topology.chief_auditor.strict_mode"}
+    assert payload["changes"][0]["before"] is False
+    assert payload["changes"][0]["after"] is True
+
+
+@pytest.mark.asyncio
 async def test_get_task_route_graph():
     async with _client() as client:
         created = await client.post(

@@ -236,6 +236,8 @@ Core endpoints under `/v1`:
   `version=<contract_version>` loads a saved version.
 - `GET /v1/swarm/contracts` lists database-backed contract versions and the
   active version.
+- `GET /v1/swarm/contract/diff?from_version=...&to_version=...` returns changed
+  contract paths without treating the version label itself as a behavioral change.
 - `POST /v1/swarm/contract` validates, saves, activates, and applies a swarm
   contract version for local configuration.
 - `GET /v1/tasks` lists recent tasks for dashboards and local operators.
@@ -254,6 +256,8 @@ Core endpoints under `/v1`:
 - `GET /v1/tasks/{task_id}/swarm-graph` returns graph-ready route events with
   route summary, node roles/counts, edge labels, selected status, and contract
   refs.
+- `GET /v1/tasks/{task_id}/inspector` returns the current phase, agent states,
+  and aggregate route/tool/error metrics derived from the public audit trace.
 - `GET /v1/tasks/{task_id}/audit` verifies and returns the audit trace.
 - `GET /v1/tasks/{task_id}/artifacts` returns artifact records.
 - `POST /v1/tasks/{task_id}/approve`, `/cancel`, `/resume`, and `/run_once`

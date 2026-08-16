@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, status
@@ -50,6 +50,30 @@ async def list_swarm_contract_versions(request: Request) -> dict:
         "versions": versions,
         "version_details": version_details,
     }
+
+
+@router.get("/swarm/contract/diff")
+async def diff_swarm_contract_versions(
+    request: Request,
+    from_version: str = Query(min_length=1, max_length=64),
+    to_version: str = Query(min_length=1, max_length=64),
+) -> dict:
+    from_contract = await request.app.state.swarm_contract_repository.get_contract(from_version)
+    to_contract = await request.app.state.swarm_contract_repository.get_contract(to_version)
+    if from_contract is None or to_contract is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="swarm contract version not found")
+    changes: list[dict] = []
+    before_payload = from_contract.model_dump(mode="json")
+    after_payload = to_contract.model_dump(mode="json")
+    before_payload.pop("contract_version", None)
+    after_payload.pop("contract_version", None)
+    _collect_contract_changes(
+        before_payload,
+        after_payload,
+        path="",
+        changes=changes,
+    )
+    return {"from_version": from_version, "to_version": to_version, "changes": changes}
 
 
 @router.post("/swarm/contract")
@@ -488,6 +512,21 @@ async def _event_id_belongs_to_trace(request: Request, trace_id: UUID, event_id:
 
 def _task_response(task) -> TaskResponse:
     return TaskResponse(task_id=str(task.id), trace_id=str(task.trace_id), status=task.status)
+
+
+def _collect_contract_changes(before, after, *, path: str, changes: list[dict]) -> None:
+    if isinstance(before, Mapping) and isinstance(after, Mapping):
+        for key in sorted(set(before) | set(after)):
+            child_path = f"{path}.{key}" if path else str(key)
+            if key not in before:
+                changes.append({"path": child_path, "before": None, "after": after[key]})
+            elif key not in after:
+                changes.append({"path": child_path, "before": before[key], "after": None})
+            else:
+                _collect_contract_changes(before[key], after[key], path=child_path, changes=changes)
+        return
+    if before != after:
+        changes.append({"path": path, "before": before, "after": after})
 
 
 def _task_summary_response(task) -> dict:
