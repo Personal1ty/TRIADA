@@ -59,3 +59,7 @@ TRIADA owns task identity, contracts, audit events, redaction, human gates, and
 operator-facing state. An external graph runtime such as LangGraph may be used
 inside a bounded adapter for long-running or nested workflows, but it must not
 become a second source of truth for TRIADA tasks and audit history.
+
+The first adapter spike is intentionally dependency-free. It maps a TRIADA
+checkpoint to a LangGraph-compatible `{thread_id, checkpoint_id}` config; an
+actual LangGraph runtime can be plugged in later behind this boundary.

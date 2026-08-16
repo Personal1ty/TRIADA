@@ -153,6 +153,46 @@ def quality_from_events(events: list[Any]) -> dict:
     }
 
 
+def checkpoints_from_events(events: list[Any]) -> list[dict]:
+    checkpoint_events = {
+        "task_created",
+        "planning_completed",
+        "worker_step_completed",
+        "worker_step_failed",
+        "worker_step_blocked",
+        "audit_verdict",
+        "chief_audit_verdict",
+        "human_review_packet_created",
+        "correction_requested",
+        "replay_waiting_approval",
+        "task_completed",
+        "task_failed",
+        "task_blocked",
+        "task_waiting_approval",
+    }
+    terminal_phases = {"completed", "failed", "blocked"}
+    checkpoints = []
+    phase = "created"
+    for event in events:
+        if event.event_type not in checkpoint_events:
+            continue
+        phase = _phase_for_event(event.event_type, phase)
+        checkpoints.append(
+            {
+                "event_id": str(event.id),
+                "sequence": event.sequence,
+                "phase": phase,
+                "status": phase,
+                "resumable": phase not in terminal_phases,
+                "state_refs": {
+                    "task_id": str(event.task_id),
+                    "trace_id": str(event.trace_id),
+                },
+            }
+        )
+    return checkpoints
+
+
 def _phase_for_event(event_type: str, current: str) -> str:
     phases = {
         "task_created": "created",

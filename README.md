@@ -260,9 +260,14 @@ Core endpoints under `/v1`:
   and aggregate route/tool/error metrics derived from the public audit trace.
 - `GET /v1/tasks/{task_id}/quality` returns evidence coverage, audit pass rate,
   correction counts, and read-only replay points from the audit trace.
+- `GET /v1/tasks/{task_id}/checkpoints` returns safe event-backed checkpoint
+  refs with phase, sequence, and resumable/terminal state.
 - `POST /v1/tasks/{task_id}/replay` creates a new task and trace from a valid
   event checkpoint, starts it in `waiting_approval`, and never mutates the
   source task history.
+- `app/runtime/graph_adapter.py` is an optional, dependency-free LangGraph
+  boundary: it translates TRIADA checkpoint refs into `thread_id` and
+  `checkpoint_id` configuration without moving persistence ownership.
 - `GET /v1/tasks/{task_id}/audit` verifies and returns the audit trace.
 - `GET /v1/tasks/{task_id}/artifacts` returns artifact records.
 - `POST /v1/tasks/{task_id}/approve`, `/cancel`, `/resume`, and `/run_once`

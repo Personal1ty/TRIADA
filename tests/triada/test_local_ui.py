@@ -34,9 +34,12 @@ async def test_get_local_swarm_ui():
     assert 'id="observatory-evidence"' in response.text
     assert 'id="observatory-pass-rate"' in response.text
     assert 'id="observatory-replay"' in response.text
+    assert 'id="observatory-checkpoints"' in response.text
+    assert 'id="observatory-checkpoint-list"' in response.text
     assert 'class="replay-task"' in response.text
     assert "/replay" in response.text
     assert "/v1/tasks/${encodeURIComponent(currentTaskId)}/quality" in response.text
+    assert "/v1/tasks/${encodeURIComponent(currentTaskId)}/checkpoints" in response.text
     assert "/v1/tasks/${encodeURIComponent(currentTaskId)}/inspector" in response.text
     assert "renderRunObservatory" in response.text
     assert 'id="graph-summary"' in response.text
