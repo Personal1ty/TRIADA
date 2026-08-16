@@ -51,6 +51,10 @@ async def test_get_local_swarm_ui():
     assert 'id="raw-reasoning-refs"' in response.text
     assert 'class="reveal-raw-reasoning"' in response.text
     assert 'id="contract-version-select"' in response.text
+    assert 'id="contract-diff-from"' in response.text
+    assert 'id="contract-diff-to"' in response.text
+    assert 'id="compare-contracts"' in response.text
+    assert "contract/diff?from_version=" in response.text
     assert 'id="contract-version"' in response.text
     assert 'id="contract-author"' in response.text
     assert 'id="contract-notes"' in response.text

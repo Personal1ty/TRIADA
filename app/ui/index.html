@@ -749,6 +749,15 @@
             <button id="load-contract-version" type="button">Load version</button>
             <button id="save-contract" type="button">Save contract</button>
           </div>
+          <div class="inline-controls">
+            <label for="contract-diff-from">Compare</label>
+            <select id="contract-diff-from" name="contract-diff-from" aria-label="Contract diff from"></select>
+            <span class="muted">to</span>
+            <select id="contract-diff-to" name="contract-diff-to" aria-label="Contract diff to"></select>
+            <button id="compare-contracts" type="button">Show diff</button>
+          </div>
+          <p class="status" id="contract-diff-status">Select two saved versions to compare behavior.</p>
+          <ul class="event-feed" id="contract-diff-output"></ul>
           <div class="contracts-layout">
             <div class="contract-editor-column">
               <div class="form-grid" id="contract-form">
@@ -877,6 +886,11 @@
     const refreshContractVersionsButton = document.getElementById("refresh-contract-versions");
     const loadContractVersionButton = document.getElementById("load-contract-version");
     const saveContractButton = document.getElementById("save-contract");
+    const contractDiffFrom = document.getElementById("contract-diff-from");
+    const contractDiffTo = document.getElementById("contract-diff-to");
+    const compareContractsButton = document.getElementById("compare-contracts");
+    const contractDiffStatus = document.getElementById("contract-diff-status");
+    const contractDiffOutput = document.getElementById("contract-diff-output");
     const contractVersionInput = document.getElementById("contract-version");
     const contractAuthor = document.getElementById("contract-author");
     const contractNotes = document.getElementById("contract-notes");
@@ -1547,9 +1561,38 @@
         contractVersionSelect.innerHTML = versions.map((version) => `
           <option value="${escapeHtml(version)}"${version === payload.active_version ? " selected" : ""}>${escapeHtml(version)}</option>
         `).join("");
+        const options = versions.map((version) => `<option value="${escapeHtml(version)}">${escapeHtml(version)}</option>`).join("");
+        contractDiffFrom.innerHTML = options;
+        contractDiffTo.innerHTML = options;
+        if (payload.active_version) {
+          contractDiffTo.value = payload.active_version;
+          const previous = versions.find((version) => version !== payload.active_version);
+          if (previous) contractDiffFrom.value = previous;
+        }
       } catch (error) {
         contractStatus.textContent = `Unable to load contract versions: ${error.message}`;
         contractStatus.classList.add("error");
+      }
+    }
+
+    async function compareContracts() {
+      const fromVersion = contractDiffFrom.value;
+      const toVersion = contractDiffTo.value;
+      if (!fromVersion || !toVersion || fromVersion === toVersion) {
+        contractDiffStatus.textContent = "Choose two different contract versions.";
+        contractDiffOutput.innerHTML = "";
+        return;
+      }
+      try {
+        const payload = await fetchJson(`/v1/swarm/contract/diff?from_version=${encodeURIComponent(fromVersion)}&to_version=${encodeURIComponent(toVersion)}`);
+        const changes = Array.isArray(payload.changes) ? payload.changes : [];
+        contractDiffStatus.textContent = changes.length ? `${changes.length} changed path${changes.length === 1 ? "" : "s"}.` : "No behavioral changes.";
+        contractDiffOutput.innerHTML = changes.map((change) => `
+          <li><code>${escapeHtml(change.path)}</code><small>${escapeHtml(JSON.stringify(change.before))} → ${escapeHtml(JSON.stringify(change.after))}</small></li>
+        `).join("") || '<li class="status">No changes.</li>';
+      } catch (error) {
+        contractDiffStatus.textContent = `Unable to compare contracts: ${error.message}`;
+        contractDiffStatus.classList.add("error");
       }
     }
 
@@ -1918,6 +1961,10 @@
 
     saveContractButton.addEventListener("click", () => {
       saveContract();
+    });
+
+    compareContractsButton.addEventListener("click", () => {
+      compareContracts();
     });
 
     addWorkerPairButton.addEventListener("click", () => {
