@@ -13,6 +13,7 @@ from app.audit.projection import (
     events_to_public_response,
     checkpoints_from_events,
     memory_notes_from_events,
+    memory_graph_from_events,
     resource_budget_from_events,
     run_inspector_from_events,
     quality_from_events,
@@ -27,6 +28,7 @@ from app.schemas.tasks import (
     CreateTaskRequest,
     DemoRunRequest,
     MemoryNoteRequest,
+    MemoryRelationRequest,
     RawReasoningRevealRequest,
     RawReasoningRevealResponse,
     ReplayRequest,
@@ -527,6 +529,35 @@ async def get_task_memory(
         "query": q or "",
         "backend": "lexical",
         "notes": memory_notes_from_events(events, query=q, limit=limit),
+    }
+
+
+@router.post("/tasks/{task_id}/memory/relations", status_code=status.HTTP_201_CREATED)
+async def add_memory_relation(task_id: UUID, payload: MemoryRelationRequest, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    relation_id = uuid4()
+    event = await request.app.state.event_repository.append_event(
+        event_type="memory_relation_added",
+        trace_id=task.trace_id,
+        task_id=task.id,
+        agent_id="human",
+        payload={
+            "schema_version": "1.0",
+            "relation_id": str(relation_id),
+            **payload.model_dump(mode="json"),
+        },
+    )
+    return {"relation_id": str(relation_id), "event_id": str(event.id), **payload.model_dump(mode="json")}
+
+
+@router.get("/tasks/{task_id}/memory/graph")
+async def get_task_memory_graph(task_id: UUID, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    return {
+        "task_id": str(task.id),
+        "trace_id": str(task.trace_id),
+        **memory_graph_from_events(events),
     }
 
 

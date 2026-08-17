@@ -258,6 +258,46 @@ def memory_notes_from_events(events: list[Any], *, query: str | None = None, lim
     return notes[:limit]
 
 
+def memory_graph_from_events(events: list[Any]) -> dict:
+    nodes: dict[str, dict] = {}
+    edges = []
+    for event in events:
+        payload = event.payload if isinstance(event.payload, Mapping) else {}
+        if event.event_type == "memory_note_added":
+            memory_id = str(payload.get("memory_id", getattr(event, "id", "unknown")))
+            nodes[memory_id] = {
+                "memory_id": memory_id,
+                "task_id": str(event.task_id),
+                "kind": payload.get("kind"),
+                "title": payload.get("title"),
+                "content": payload.get("content"),
+            }
+        elif event.event_type == "memory_relation_added":
+            source = str(payload.get("source_memory_id", ""))
+            target = str(payload.get("target_memory_id", ""))
+            if not source or not target:
+                continue
+            nodes.setdefault(source, {"memory_id": source, "missing": True})
+            nodes.setdefault(target, {"memory_id": target, "missing": True})
+            edges.append(
+                {
+                    "relation_id": str(payload.get("relation_id", getattr(event, "id", "unknown"))),
+                    "source_memory_id": source,
+                    "target_memory_id": target,
+                    "relation": payload.get("relation"),
+                    "reason": payload.get("reason"),
+                    "task_id": str(event.task_id),
+                }
+            )
+    conflicts = [edge for edge in edges if edge.get("relation") == "contradicts"]
+    return {
+        "summary": {"node_count": len(nodes), "edge_count": len(edges), "conflict_count": len(conflicts)},
+        "nodes": sorted(nodes.values(), key=lambda node: node["memory_id"]),
+        "edges": edges,
+        "conflicts": conflicts,
+    }
+
+
 def _memory_tokens(value: str) -> set[str]:
     return {token for token in re.findall(r"[a-zA-Zа-яА-Я0-9_]{2,}", value.lower())}
 

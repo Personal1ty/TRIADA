@@ -54,6 +54,36 @@ async def test_task_budget_endpoint_exposes_configured_budget():
 
 
 @pytest.mark.asyncio
+async def test_task_memory_graph_stores_relations_and_conflicts():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Build memory graph"})
+        task_id = created.json()["task_id"]
+        first = await client.post(
+            f"/v1/tasks/{task_id}/memory",
+            json={"kind": "decision", "title": "Use Postgres", "content": "Durable state"},
+        )
+        second = await client.post(
+            f"/v1/tasks/{task_id}/memory",
+            json={"kind": "constraint", "title": "No SQLite", "content": "Production uses Postgres"},
+        )
+        relation = await client.post(
+            f"/v1/tasks/{task_id}/memory/relations",
+            json={
+                "source_memory_id": first.json()["memory_id"],
+                "target_memory_id": second.json()["memory_id"],
+                "relation": "contradicts",
+                "reason": "Conflicting assumptions",
+            },
+        )
+        graph = await client.get(f"/v1/tasks/{task_id}/memory/graph")
+
+    assert relation.status_code == 201
+    assert graph.status_code == 200
+    assert graph.json()["summary"]["conflict_count"] == 1
+    assert graph.json()["edges"][0]["relation"] == "contradicts"
+
+
+@pytest.mark.asyncio
 async def test_replay_creates_new_trace_and_waits_for_approval():
     async with _client() as client:
         created = await client.post("/v1/tasks", json={"goal": "Replay this task", "allowed_tools": ["echo"]})

@@ -1,0 +1,41 @@
+from types import SimpleNamespace
+
+import pytest
+
+from app.audit.projection import memory_graph_from_events
+from app.schemas.tasks import MemoryRelationRequest
+
+
+def test_memory_graph_projects_notes_relations_and_conflicts():
+    events = [
+        SimpleNamespace(
+            event_type="memory_note_added",
+            task_id="task-1",
+            payload={"memory_id": "m-1", "kind": "decision", "title": "Use Postgres", "content": "Durable state"},
+        ),
+        SimpleNamespace(
+            event_type="memory_note_added",
+            task_id="task-1",
+            payload={"memory_id": "m-2", "kind": "constraint", "title": "No SQLite", "content": "Production uses Postgres"},
+        ),
+        SimpleNamespace(
+            event_type="memory_relation_added",
+            task_id="task-1",
+            payload={"relation_id": "r-1", "source_memory_id": "m-1", "target_memory_id": "m-2", "relation": "contradicts", "reason": "Conflict"},
+        ),
+    ]
+
+    graph = memory_graph_from_events(events)
+
+    assert graph["summary"] == {"node_count": 2, "edge_count": 1, "conflict_count": 1}
+    assert graph["edges"][0]["relation"] == "contradicts"
+    assert graph["conflicts"][0]["source_memory_id"] == "m-1"
+
+
+def test_memory_relation_request_rejects_unknown_relation():
+    with pytest.raises(ValueError):
+        MemoryRelationRequest(
+            source_memory_id="m-1",
+            target_memory_id="m-2",
+            relation="mentions",
+        )

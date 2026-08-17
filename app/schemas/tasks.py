@@ -131,6 +131,34 @@ class MemoryNoteRequest(BaseModel):
         return cleaned
 
 
+class MemoryRelationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_memory_id: str = Field(min_length=1, max_length=64)
+    target_memory_id: str = Field(min_length=1, max_length=64)
+    relation: Literal[
+        "supports",
+        "contradicts",
+        "derived_from",
+        "supersedes",
+        "depends_on",
+        "validated_by",
+    ]
+    reason: str | None = Field(default=None, max_length=2_000)
+
+    @field_validator("source_memory_id", "target_memory_id", "reason")
+    @classmethod
+    def relation_text_must_be_safe(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("relation text must not be blank")
+        if contains_secret(value):
+            raise ValueError("relation text contains secret material")
+        return value
+
+
 class DemoRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
