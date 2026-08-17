@@ -218,6 +218,7 @@ def memory_notes_from_events(events: list[Any], *, query: str | None = None, lim
             {
                 "memory_id": payload.get("memory_id", str(event.id)),
                 "event_id": str(event.id),
+                "task_id": str(event.task_id),
                 "sequence": event.sequence,
                 "kind": payload.get("kind"),
                 "title": payload.get("title"),

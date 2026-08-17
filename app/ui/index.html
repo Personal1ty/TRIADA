@@ -736,6 +736,17 @@
           <ul class="thinking-list" id="memory-list"></ul>
         </div>
       </section>
+      <section id="global-memory">
+        <h2>Global Memory Search</h2>
+        <div class="panel-body">
+          <div class="inline-controls">
+            <input id="global-memory-query" type="search" placeholder="Search across all task memories">
+            <button id="search-global-memory" type="button">Search all</button>
+          </div>
+          <p class="status" id="global-memory-status">Search decisions and observations across task traces.</p>
+          <ul class="thinking-list" id="global-memory-list"></ul>
+        </div>
+      </section>
     </div>
 
     <div class="stack tab-panel" id="raw-reasoning-view" hidden>
@@ -960,6 +971,10 @@
     const searchMemoryButton = document.getElementById("search-memory");
     const memoryStatus = document.getElementById("memory-status");
     const memoryList = document.getElementById("memory-list");
+    const globalMemoryQuery = document.getElementById("global-memory-query");
+    const searchGlobalMemoryButton = document.getElementById("search-global-memory");
+    const globalMemoryStatus = document.getElementById("global-memory-status");
+    const globalMemoryList = document.getElementById("global-memory-list");
     const eventsStatus = document.getElementById("events-status");
     const eventFeed = document.getElementById("event-feed");
     const eventAutoRefresh = document.getElementById("event-auto-refresh");
@@ -1504,6 +1519,24 @@
       }
     }
 
+    async function searchGlobalMemory() {
+      const query = globalMemoryQuery.value.trim();
+      if (!query) {
+        globalMemoryStatus.textContent = "Enter a search query.";
+        return;
+      }
+      try {
+        const payload = await fetchJson(`/v1/memory/search?q=${encodeURIComponent(query)}`);
+        const notes = Array.isArray(payload.notes) ? payload.notes : [];
+        globalMemoryStatus.textContent = notes.length ? `${notes.length} cross-task note${notes.length === 1 ? "" : "s"}.` : "No matching cross-task notes.";
+        globalMemoryList.innerHTML = notes.map((note) => `
+          <li><div><span class="pill">${escapeHtml(note.kind)}</span> ${escapeHtml(note.title)}</div><small>${escapeHtml(note.content)} · task ${escapeHtml(note.state_refs?.task_id || note.task_id || "trace-linked")}</small></li>
+        `).join("");
+      } catch (error) {
+        globalMemoryStatus.textContent = `Unable to search memory: ${error.message}`;
+      }
+    }
+
     function renderEvents(payload, options = {}) {
       const events = Array.isArray(payload.events) ? payload.events : [];
       nextEventsCursor = payload.next_cursor || null;
@@ -2023,6 +2056,10 @@
 
     searchMemoryButton.addEventListener("click", () => {
       loadMemory();
+    });
+
+    searchGlobalMemoryButton.addEventListener("click", () => {
+      searchGlobalMemory();
     });
 
     loadMoreEventsButton.addEventListener("click", () => {
