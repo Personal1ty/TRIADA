@@ -268,9 +268,13 @@ Core endpoints under `/v1`:
   refs with phase, sequence, and resumable/terminal state.
 - `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
   to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
-  deterministic token-overlap ranking.
+  deterministic token-overlap ranking by default. Set
+  `MEMORY_RETRIEVAL_BACKEND=pgvector` with PostgreSQL to use the optional
+  semantic index; the audit event remains the source of truth and lexical
+  retrieval is the fallback.
 - `GET /v1/memory/search?q=...` searches validated memory notes across task
-  traces using the same ranking contract.
+  traces using the configured backend. `MEMORY_EMBEDDING_DIMENSIONS` defaults
+  to 64 for the deterministic local embedding provider.
 - `POST /v1/tasks/{task_id}/replay` creates a new task and trace from a valid
   event checkpoint, starts it in `waiting_approval`, and never mutates the
   source task history.

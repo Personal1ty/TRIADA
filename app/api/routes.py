@@ -466,6 +466,13 @@ async def add_task_memory(task_id: UUID, payload: MemoryNoteRequest, request: Re
             **payload.model_dump(mode="json"),
         },
     )
+    memory_index = request.app.state.memory_index
+    if memory_index is not None:
+        try:
+            await memory_index.index_event(event)
+        except Exception:
+            # The append-only audit event is authoritative; indexing can be rebuilt.
+            pass
     return {
         "memory_id": str(memory_id),
         "event_id": str(event.id),
@@ -481,11 +488,25 @@ async def get_task_memory(
     limit: int = Query(default=20, ge=1, le=100),
 ) -> dict:
     task = await _get_task_or_404(task_id, request)
+    memory_index = request.app.state.memory_index
+    if q and memory_index is not None:
+        try:
+            notes = [note for note in await memory_index.search(q, limit=limit) if note["task_id"] == str(task.id)]
+            return {
+                "task_id": str(task.id),
+                "trace_id": str(task.trace_id),
+                "query": q,
+                "backend": "pgvector",
+                "notes": notes,
+            }
+        except Exception:
+            pass
     events = await request.app.state.event_repository.list_events(task.trace_id)
     return {
         "task_id": str(task.id),
         "trace_id": str(task.trace_id),
         "query": q or "",
+        "backend": "lexical",
         "notes": memory_notes_from_events(events, query=q, limit=limit),
     }
 
@@ -496,9 +517,16 @@ async def search_memory(
     q: str = Query(min_length=1, max_length=200),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> dict:
+    memory_index = request.app.state.memory_index
+    if memory_index is not None:
+        try:
+            return {"query": q, "backend": "pgvector", "notes": await memory_index.search(q, limit=limit)}
+        except Exception:
+            pass
     events = await request.app.state.event_repository.list_events_by_type("memory_note_added")
     return {
         "query": q,
+        "backend": "lexical",
         "notes": memory_notes_from_events(events, query=q, limit=limit),
     }
 

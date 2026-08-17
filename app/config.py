@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     llm_api_key: SecretStr | None = None
     llm_model: str = "fake-devops-model"
     database_url: str = "sqlite+aiosqlite:///./triada.db"
+    memory_retrieval_backend: Literal["lexical", "pgvector"] = "lexical"
+    memory_embedding_dimensions: int = Field(default=64, ge=8, le=2048)
     redis_url: str | None = None
     capture_reasoning_summary: bool = True
     pass_reasoning_summary_to_auditor: bool = True

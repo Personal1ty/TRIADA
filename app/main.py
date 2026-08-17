@@ -17,6 +17,7 @@ from app.contracts.loader import load_default_swarm_contract
 from app.contracts.repository import SwarmContractRepository
 from app.events.bus import InMemoryEventBus
 from app.llm.runtime_config import LLMConfigService
+from app.memory.index import PgvectorMemoryIndex
 from app.persistence.session import create_session_factory
 from app.persistence.task_repository import TaskRepository
 from app.services.execution_engine import ExecutionEngine
@@ -28,6 +29,13 @@ def create_app(testing: bool = False, database_url: str | None = None) -> FastAP
     llm_config_path, llm_key_path = _llm_config_paths(testing)
     settings = get_settings()
     session_factory = create_session_factory(database_url)
+    memory_index = None
+    bind = session_factory.kw.get("bind")
+    if settings.memory_retrieval_backend == "pgvector" and bind is not None and bind.dialect.name == "postgresql":
+        memory_index = PgvectorMemoryIndex(
+            session_factory,
+            dimensions=settings.memory_embedding_dimensions,
+        )
     event_repository = AuditEventRepository(session_factory)
     swarm_contract_repository = SwarmContractRepository(session_factory)
     task_repository = TaskRepository(session_factory)
@@ -78,6 +86,7 @@ def create_app(testing: bool = False, database_url: str | None = None) -> FastAP
     app.state.llm_config_service = llm_config_service
     app.state.execution_engine = execution_engine
     app.state.task_service = task_service
+    app.state.memory_index = memory_index
     app.state.sse_idle_timeout_seconds = 0.1 if testing else 30.0
     app.state.testing_database_path = str(testing_database_path) if testing_database_path is not None else None
 

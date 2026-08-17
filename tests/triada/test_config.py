@@ -9,6 +9,8 @@ def test_default_settings_use_fake_provider(monkeypatch):
     assert settings.llm_provider == "fake"
     assert settings.capture_reasoning_summary is True
     assert settings.pass_reasoning_summary_to_auditor is True
+    assert settings.memory_retrieval_backend == "lexical"
+    assert settings.memory_embedding_dimensions == 64
 
 
 def test_api_key_is_secret_and_not_in_repr(monkeypatch):

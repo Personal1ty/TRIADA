@@ -40,9 +40,11 @@ Given a complex goal, TRIADA should make it possible to see:
 - conflict detection between findings and parameters.
 
 The first memory increment stores validated decision, observation, constraint,
-and summary notes as append-only audit events. Retrieval currently uses a
-deterministic token-overlap ranking; a pgvector backend can replace the ranking
-implementation without changing the memory API.
+and summary notes as append-only audit events. Retrieval uses deterministic
+token-overlap ranking by default. An opt-in PostgreSQL/pgvector secondary index
+now provides semantic retrieval without changing the memory API or moving
+source-of-truth ownership away from the append-only audit events; lexical
+retrieval remains the fallback.
 
 ### P3 — Nested swarms
 
