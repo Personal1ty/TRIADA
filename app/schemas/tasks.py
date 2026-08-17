@@ -187,6 +187,41 @@ class ResearchPlanRequest(BaseModel):
         return cleaned
 
 
+class ResearchEvidenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["observation", "experiment", "source", "artifact", "result"]
+    claim: str = Field(min_length=1, max_length=1_000)
+    content: str = Field(min_length=1, max_length=4_000)
+    supports_hypothesis: str | None = Field(default=None, max_length=1_000)
+    parameter_key: str | None = Field(default=None, max_length=200)
+    parameter_value: str | None = Field(default=None, max_length=500)
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    refs: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("claim", "content", "supports_hypothesis", "parameter_key", "parameter_value")
+    @classmethod
+    def evidence_text_must_be_safe(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("evidence text must not be blank")
+        if contains_secret(value):
+            raise ValueError("evidence text contains secret material")
+        return value
+
+    @field_validator("refs")
+    @classmethod
+    def evidence_refs_must_be_safe(cls, values: list[str]) -> list[str]:
+        cleaned = [value.strip() for value in values]
+        if any(not value for value in cleaned):
+            raise ValueError("evidence refs must not be blank")
+        if any(contains_secret(value) for value in cleaned):
+            raise ValueError("evidence refs contain secret material")
+        return cleaned
+
+
 class DemoRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

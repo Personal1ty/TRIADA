@@ -333,6 +333,61 @@ def research_plan_from_events(events: list[Any]) -> dict | None:
     return {**dict(event.payload), "event_id": str(event.id)}
 
 
+def research_evidence_from_events(events: list[Any]) -> dict:
+    plans = [
+        event for event in events
+        if event.event_type == "research_plan_created" and isinstance(event.payload, Mapping)
+    ]
+    plan = dict(plans[-1].payload) if plans else {}
+    hypotheses = [str(item) for item in plan.get("hypotheses", [])]
+    evidence = []
+    covered: dict[str, list[str]] = {hypothesis: [] for hypothesis in hypotheses}
+    for event in events:
+        if event.event_type != "research_evidence_added" or not isinstance(event.payload, Mapping):
+            continue
+        payload = event.payload
+        evidence_id = str(payload.get("evidence_id", event.id))
+        hypothesis = payload.get("supports_hypothesis")
+        if hypothesis in covered:
+            covered[hypothesis].append(evidence_id)
+        evidence.append(
+            {
+                "evidence_id": evidence_id,
+                "event_id": str(event.id),
+                "task_id": str(event.task_id),
+                "sequence": event.sequence,
+                "kind": payload.get("kind"),
+                "claim": payload.get("claim"),
+                "content": payload.get("content"),
+                "supports_hypothesis": hypothesis,
+                "parameter_key": payload.get("parameter_key"),
+                "parameter_value": payload.get("parameter_value"),
+                "confidence": float(payload.get("confidence", 0.5)),
+                "refs": _to_json_safe(payload.get("refs", [])),
+            }
+        )
+    evidence.sort(key=lambda item: item["sequence"])
+    hypothesis_rows = [
+        {"hypothesis": hypothesis, "evidence_ids": covered[hypothesis], "covered": bool(covered[hypothesis])}
+        for hypothesis in hypotheses
+    ]
+    count = len(evidence)
+    covered_count = sum(row["covered"] for row in hypothesis_rows)
+    return {
+        "summary": {
+            "evidence_count": count,
+            "hypothesis_count": len(hypotheses),
+            "covered_hypothesis_count": covered_count,
+            "coverage": round(covered_count / len(hypotheses), 4) if hypotheses else 0.0,
+            "average_confidence": round(sum(item["confidence"] for item in evidence) / count, 4) if count else 0.0,
+        },
+        "research_id": plan.get("research_id"),
+        "hypotheses": hypothesis_rows,
+        "evidence": evidence,
+        "unresolved_questions": _to_json_safe(plan.get("unresolved_questions", [])),
+    }
+
+
 def _memory_tokens(value: str) -> set[str]:
     return {token for token in re.findall(r"[a-zA-Zа-яА-Я0-9_]{2,}", value.lower())}
 

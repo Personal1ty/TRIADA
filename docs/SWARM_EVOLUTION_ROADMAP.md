@@ -54,6 +54,11 @@ Scope: item 41 and the research part of item 55.
   unresolved-question tracking.
 - LangGraph subgraphs only behind TRIADA checkpoints, budgets, and audit events.
 
+Implemented slice: append-only evidence records can be linked to hypotheses and
+parameters, with deterministic confidence and coverage projection in the API
+and Observatory UI. The optional LangGraph subgraph expands and audits the
+bounded plan while leaving persistence and tool authority with TRIADA.
+
 Gate: a research run produces a reproducible evidence map and explicit
 uncertainty instead of only a final narrative.
 

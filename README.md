@@ -275,6 +275,10 @@ Core endpoints under `/v1`:
   a question, parameter catalog, hypotheses, deterministic why/how expansion,
   and unresolved questions; `GET /v1/tasks/{task_id}/research` retrieves the
   latest plan.
+- `POST /v1/tasks/{task_id}/research/evidence` appends a validated evidence
+  record linked to an optional hypothesis/parameter; `GET
+  /v1/tasks/{task_id}/research/evidence` returns evidence count, confidence,
+  hypothesis coverage, and unresolved questions.
 - `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
   to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
   deterministic token-overlap ranking by default. Set
@@ -292,7 +296,9 @@ Core endpoints under `/v1`:
   `checkpoint_id` configuration without moving persistence ownership.
 - Optional graph spike dependencies are available through `pip install -e '.[graph]'`.
   The isolated `app/runtime/langgraph_spike.py` demonstrates a checkpointed
-  research subgraph; it is not wired into the TRIADA execution engine.
+  research subgraph; `run_research_subgraph` expands and audits a bounded plan
+  using only supplied evidence refs. It is not wired into the TRIADA execution
+  engine: the TRIADA event store remains the source of truth.
 - `GET /v1/tasks/{task_id}/audit` verifies and returns the audit trace.
 - `GET /v1/tasks/{task_id}/artifacts` returns artifact records.
 - `POST /v1/tasks/{task_id}/approve`, `/cancel`, `/resume`, and `/run_once`

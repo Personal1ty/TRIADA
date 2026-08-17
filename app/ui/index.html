@@ -765,6 +765,13 @@
           <ul class="thinking-list" id="research-plan-list"></ul>
         </div>
       </section>
+      <section id="research-evidence">
+        <h2>Research Evidence</h2>
+        <div class="panel-body">
+          <p class="status" id="research-evidence-status">Load a task to inspect evidence coverage.</p>
+          <ul class="thinking-list" id="research-evidence-list"></ul>
+        </div>
+      </section>
     </div>
 
     <div class="stack tab-panel" id="raw-reasoning-view" hidden>
@@ -1001,6 +1008,8 @@
     const memoryGraphList = document.getElementById("memory-graph-list");
     const researchPlanStatus = document.getElementById("research-plan-status");
     const researchPlanList = document.getElementById("research-plan-list");
+    const researchEvidenceStatus = document.getElementById("research-evidence-status");
+    const researchEvidenceList = document.getElementById("research-evidence-list");
     const eventsStatus = document.getElementById("events-status");
     const eventFeed = document.getElementById("event-feed");
     const eventAutoRefresh = document.getElementById("event-auto-refresh");
@@ -1560,6 +1569,15 @@
       ].join("");
     }
 
+    function renderResearchEvidence(payload) {
+      const summary = payload?.summary || {};
+      const evidence = Array.isArray(payload?.evidence) ? payload.evidence : [];
+      researchEvidenceStatus.textContent = `${summary.evidence_count || 0} evidence · ${Math.round((summary.coverage || 0) * 100)}% hypothesis coverage · average confidence ${summary.average_confidence ?? 0}`;
+      researchEvidenceList.innerHTML = evidence.map((item) =>
+        `<li><span class="pill">${escapeHtml(item.kind || "evidence")}</span> ${escapeHtml(item.claim || "")} · confidence ${escapeHtml(String(item.confidence ?? 0))}${item.supports_hypothesis ? ` · supports: ${escapeHtml(item.supports_hypothesis)}` : ""}</li>`
+      ).join("") || '<li class="status">No evidence has been recorded.</li>';
+    }
+
     async function loadMemory(taskId = currentTaskId) {
       if (!taskId) return;
       const query = memoryQuery.value.trim();
@@ -1970,7 +1988,7 @@
       try {
         const task = await fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}`);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
-        const [graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan] = await Promise.all([
+        const [graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan, researchEvidence] = await Promise.all([
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/swarm-graph`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/thinking-summary`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/inspector`),
@@ -1979,13 +1997,15 @@
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/budget`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/memory`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/memory/graph`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research`)
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research/evidence`)
         ]);
         renderGraph(graph);
         renderThinking(thinking);
         renderMemory(memory);
         renderMemoryGraph(memoryGraph);
         renderResearchPlan(researchPlan);
+        renderResearchEvidence(researchEvidence);
         const events = await loadEvents(currentTaskId);
         renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory);
         if (terminalStatuses.has(task.status)) {
@@ -2012,7 +2032,7 @@
       thinkingStatus.textContent = `Loading ${thinkingUrl}...`;
       thinkingList.innerHTML = "";
       try {
-        const [task, graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan] = await Promise.all([
+        const [task, graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan, researchEvidence] = await Promise.all([
           fetchJson(taskUrl),
           fetchJson(graphUrl),
           fetchJson(thinkingUrl),
@@ -2023,6 +2043,7 @@
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/memory`),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/memory/graph`),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/research`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/research/evidence`),
         ]);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
         renderGraph(graph);
@@ -2030,6 +2051,7 @@
         renderMemory(memory);
         renderMemoryGraph(memoryGraph);
         renderResearchPlan(researchPlan);
+        renderResearchEvidence(researchEvidence);
         const events = await loadEvents(taskId);
         renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory);
         if (!terminalStatuses.has(task.status)) {

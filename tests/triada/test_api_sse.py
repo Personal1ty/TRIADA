@@ -133,6 +133,37 @@ async def test_research_plan_is_append_only_and_retrievable():
 
 
 @pytest.mark.asyncio
+async def test_research_evidence_is_append_only_and_reports_coverage():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Research evidence"})
+        task_id = created.json()["task_id"]
+        await client.post(
+            f"/v1/tasks/{task_id}/research",
+            json={
+                "question": "Which strategy is safer?",
+                "parameter_catalog": ["risk"],
+                "hypotheses": ["Guardrails reduce risk"],
+            },
+        )
+        evidence = await client.post(
+            f"/v1/tasks/{task_id}/research/evidence",
+            json={
+                "kind": "experiment",
+                "claim": "Guardrails reduced failures.",
+                "content": "The deterministic test passed.",
+                "supports_hypothesis": "Guardrails reduce risk",
+                "confidence": 0.9,
+            },
+        )
+        fetched = await client.get(f"/v1/tasks/{task_id}/research/evidence")
+
+    assert evidence.status_code == 201
+    assert fetched.status_code == 200
+    assert fetched.json()["summary"]["coverage"] == 1.0
+    assert fetched.json()["evidence"][0]["confidence"] == 0.9
+
+
+@pytest.mark.asyncio
 async def test_replay_creates_new_trace_and_waits_for_approval():
     async with _client() as client:
         created = await client.post("/v1/tasks", json={"goal": "Replay this task", "allowed_tools": ["echo"]})
