@@ -1,5 +1,7 @@
 import pytest
+from types import SimpleNamespace
 
+from app.audit.projection import resource_budget_from_events
 from app.services.resource_budget import ResourceBudget, ResourceUsage, allocate_work
 from app.schemas.tasks import CreateTaskRequest
 
@@ -56,3 +58,32 @@ def test_task_request_accepts_bounded_resource_budget():
 def test_task_request_rejects_negative_resource_budget():
     with pytest.raises(ValueError, match="max_tokens"):
         CreateTaskRequest(goal="Research", resource_budget={"max_tokens": -1})
+
+
+def test_resource_budget_projection_summarizes_admission_events():
+    events = [
+        SimpleNamespace(
+            event_type="resource_allocation_decided",
+            payload={
+                "admitted": True,
+                "reason": "within_budget",
+                "budget": {"max_parallel_branches": 2, "max_retries": 1, "max_tokens": 1000},
+                "usage": {"active_branches": 0, "retries": 0, "tokens_used": 0},
+            },
+        ),
+        SimpleNamespace(
+            event_type="resource_allocation_decided",
+            payload={
+                "admitted": False,
+                "reason": "parallel_branches_exhausted",
+                "budget": {"max_parallel_branches": 2, "max_retries": 1, "max_tokens": 1000},
+                "usage": {"active_branches": 2, "retries": 0, "tokens_used": 0},
+            },
+        ),
+    ]
+
+    projection = resource_budget_from_events(events)
+
+    assert projection["metrics"] == {"admitted_count": 1, "rejected_count": 1}
+    assert projection["last_reason"] == "parallel_branches_exhausted"
+    assert projection["budget"]["max_parallel_branches"] == 2

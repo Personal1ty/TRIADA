@@ -37,6 +37,23 @@ async def test_create_task_and_list_events():
 
 
 @pytest.mark.asyncio
+async def test_task_budget_endpoint_exposes_configured_budget():
+    async with _client() as client:
+        created = await client.post(
+            "/v1/tasks",
+            json={
+                "goal": "Bounded research",
+                "resource_budget": {"max_parallel_branches": 2, "max_retries": 1, "max_tokens": 500},
+            },
+        )
+        budget = await client.get(f"/v1/tasks/{created.json()['task_id']}/budget")
+
+    assert budget.status_code == 200
+    assert budget.json()["budget"] == {"max_parallel_branches": 2, "max_retries": 1, "max_tokens": 500}
+    assert budget.json()["metrics"] == {"admitted_count": 0, "rejected_count": 0}
+
+
+@pytest.mark.asyncio
 async def test_replay_creates_new_trace_and_waits_for_approval():
     async with _client() as client:
         created = await client.post("/v1/tasks", json={"goal": "Replay this task", "allowed_tools": ["echo"]})

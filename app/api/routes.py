@@ -13,6 +13,7 @@ from app.audit.projection import (
     events_to_public_response,
     checkpoints_from_events,
     memory_notes_from_events,
+    resource_budget_from_events,
     run_inspector_from_events,
     quality_from_events,
     swarm_graph_from_events,
@@ -439,6 +440,22 @@ async def get_task_quality(task_id: UUID, request: Request) -> dict:
         "trace_id": str(task.trace_id),
         "status": task.status,
         "quality": quality_from_events(events),
+    }
+
+
+@router.get("/tasks/{task_id}/budget")
+async def get_task_budget(task_id: UUID, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    projection = resource_budget_from_events(events)
+    configured = task.metadata.get("resource_budget") if isinstance(task.metadata, Mapping) else None
+    if not any(projection["metrics"].values()) and isinstance(configured, Mapping):
+        projection["budget"] = dict(configured)
+    return {
+        "task_id": str(task.id),
+        "trace_id": str(task.trace_id),
+        "status": task.status,
+        **projection,
     }
 
 

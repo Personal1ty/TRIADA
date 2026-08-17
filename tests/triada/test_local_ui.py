@@ -51,6 +51,8 @@ async def test_get_local_swarm_ui():
     assert 'id="memory-query"' in response.text
     assert 'id="search-memory"' in response.text
     assert 'id="global-memory"' in response.text
+    assert 'id="observatory-memory-backend"' in response.text
+    assert 'id="observatory-budget"' in response.text
     assert 'id="search-global-memory"' in response.text
     assert "/v1/memory/search?q=" in response.text
     assert "/v1/tasks/${encodeURIComponent(taskId)}/memory" in response.text

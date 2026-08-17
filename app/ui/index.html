@@ -646,6 +646,8 @@
             <div class="observatory-card"><span class="muted">Audit pass rate</span><strong id="observatory-pass-rate">—</strong></div>
             <div class="observatory-card"><span class="muted">Corrections</span><strong id="observatory-corrections">—</strong></div>
             <div class="observatory-card"><span class="muted">Checkpoints</span><strong id="observatory-checkpoints">—</strong></div>
+            <div class="observatory-card"><span class="muted">Memory backend</span><strong id="observatory-memory-backend">—</strong></div>
+            <div class="observatory-card"><span class="muted">Budget decisions</span><strong id="observatory-budget">—</strong></div>
           </div>
           <p class="status" id="observatory-inspector">Select a task to inspect agent states.</p>
           <ul class="observatory-timeline" id="observatory-timeline"><li>Select a task to inspect its lifecycle.</li></ul>
@@ -961,6 +963,8 @@
     const observatoryCorrections = document.getElementById("observatory-corrections");
     const observatoryReplay = document.getElementById("observatory-replay");
     const observatoryCheckpoints = document.getElementById("observatory-checkpoints");
+    const observatoryMemoryBackend = document.getElementById("observatory-memory-backend");
+    const observatoryBudget = document.getElementById("observatory-budget");
     const observatoryCheckpointList = document.getElementById("observatory-checkpoint-list");
     const observatoryTimeline = document.getElementById("observatory-timeline");
     const recentTasks = document.getElementById("recent-tasks");
@@ -1560,7 +1564,7 @@
       renderRawReasoningRefs(payload);
     }
 
-    function renderRunObservatory(task, graph, eventsPayload, inspectorPayload, qualityPayload, checkpointsPayload) {
+    function renderRunObservatory(task, graph, eventsPayload, inspectorPayload, qualityPayload, checkpointsPayload, budgetPayload, memoryPayload) {
       const summary = graph && graph.summary ? graph.summary : {};
       const events = eventsPayload && Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
       const inspector = inspectorPayload && inspectorPayload.inspector ? inspectorPayload.inspector : {};
@@ -1575,6 +1579,9 @@
       observatoryPassRate.textContent = `${Math.round((metrics.audit_pass_rate || 0) * 100)}%`;
       observatoryCorrections.textContent = String(metrics.correction_count || 0);
       observatoryCheckpoints.textContent = String(checkpoints.length);
+      observatoryMemoryBackend.textContent = memoryPayload?.backend || "lexical";
+      const budgetMetrics = budgetPayload?.metrics || {};
+      observatoryBudget.textContent = `${budgetMetrics.admitted_count || 0} / ${budgetMetrics.rejected_count || 0}`;
       observatoryInspector.textContent = agents.length
         ? `${inspector.phase || "unknown phase"}: ${agents.map((agent) => `${agent.agent_id}=${agent.status}`).join(" · ")}`
         : "No agent state is available yet.";
@@ -1905,19 +1912,20 @@
       try {
         const task = await fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}`);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
-        const [graph, thinking, inspector, quality, checkpoints, memory] = await Promise.all([
+        const [graph, thinking, inspector, quality, checkpoints, budget, memory] = await Promise.all([
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/swarm-graph`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/thinking-summary`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/inspector`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/quality`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/checkpoints`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/budget`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/memory`)
         ]);
         renderGraph(graph);
         renderThinking(thinking);
         renderMemory(memory);
         const events = await loadEvents(currentTaskId);
-        renderRunObservatory(task, graph, events, inspector, quality, checkpoints);
+        renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory);
         if (terminalStatuses.has(task.status)) {
           stopEventPolling();
         }
@@ -1942,13 +1950,14 @@
       thinkingStatus.textContent = `Loading ${thinkingUrl}...`;
       thinkingList.innerHTML = "";
       try {
-        const [task, graph, thinking, inspector, quality, checkpoints, memory] = await Promise.all([
+        const [task, graph, thinking, inspector, quality, checkpoints, budget, memory] = await Promise.all([
           fetchJson(taskUrl),
           fetchJson(graphUrl),
           fetchJson(thinkingUrl),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/inspector`),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/quality`),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/checkpoints`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/budget`),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/memory`),
         ]);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
@@ -1956,7 +1965,7 @@
         renderThinking(thinking);
         renderMemory(memory);
         const events = await loadEvents(taskId);
-        renderRunObservatory(task, graph, events, inspector, quality, checkpoints);
+        renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory);
         if (!terminalStatuses.has(task.status)) {
           startEventPolling();
         } else {

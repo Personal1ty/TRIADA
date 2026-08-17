@@ -154,6 +154,31 @@ def quality_from_events(events: list[Any]) -> dict:
     }
 
 
+def resource_budget_from_events(events: list[Any]) -> dict:
+    decisions = []
+    for event in events:
+        if event.event_type != "resource_allocation_decided" or not isinstance(event.payload, Mapping):
+            continue
+        decisions.append(event.payload)
+    if not decisions:
+        return {
+            "budget": {"max_parallel_branches": 0, "max_retries": 0, "max_tokens": 0},
+            "usage": {"active_branches": 0, "retries": 0, "tokens_used": 0},
+            "metrics": {"admitted_count": 0, "rejected_count": 0},
+            "last_reason": None,
+        }
+    latest = decisions[-1]
+    return {
+        "budget": _to_json_safe(latest.get("budget", {})),
+        "usage": _to_json_safe(latest.get("usage", {})),
+        "metrics": {
+            "admitted_count": sum(bool(item.get("admitted")) for item in decisions),
+            "rejected_count": sum(not bool(item.get("admitted")) for item in decisions),
+        },
+        "last_reason": latest.get("reason"),
+    }
+
+
 def checkpoints_from_events(events: list[Any]) -> list[dict]:
     checkpoint_events = {
         "task_created",
