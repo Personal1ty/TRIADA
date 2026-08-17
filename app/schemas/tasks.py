@@ -161,6 +161,32 @@ class MemoryRelationRequest(BaseModel):
         return value
 
 
+class ResearchPlanRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=1, max_length=4_000)
+    parameter_catalog: list[str] = Field(min_length=1, max_length=30)
+    hypotheses: list[str] = Field(default_factory=list, max_length=20)
+    depth: int = Field(default=1, ge=1, le=3)
+
+    @field_validator("question", "parameter_catalog", "hypotheses")
+    @classmethod
+    def research_text_must_not_be_blank(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("research text must not be blank")
+            if contains_secret(value):
+                raise ValueError("research text contains secret material")
+            return value
+        cleaned = [item.strip() for item in value]
+        if any(not item for item in cleaned):
+            raise ValueError("research list items must not be blank")
+        if any(contains_secret(item) for item in cleaned):
+            raise ValueError("research list contains secret material")
+        return cleaned
+
+
 class DemoRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -322,6 +322,17 @@ def memory_graph_from_events(events: list[Any]) -> dict:
     }
 
 
+def research_plan_from_events(events: list[Any]) -> dict | None:
+    plans = [
+        event for event in events
+        if event.event_type == "research_plan_created" and isinstance(event.payload, Mapping)
+    ]
+    if not plans:
+        return None
+    event = plans[-1]
+    return {**dict(event.payload), "event_id": str(event.id)}
+
+
 def _memory_tokens(value: str) -> set[str]:
     return {token for token in re.findall(r"[a-zA-Zа-яА-Я0-9_]{2,}", value.lower())}
 

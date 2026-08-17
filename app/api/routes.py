@@ -14,6 +14,7 @@ from app.audit.projection import (
     checkpoints_from_events,
     memory_notes_from_events,
     memory_graph_from_events,
+    research_plan_from_events,
     resource_budget_from_events,
     run_inspector_from_events,
     quality_from_events,
@@ -32,12 +33,14 @@ from app.schemas.tasks import (
     RawReasoningRevealRequest,
     RawReasoningRevealResponse,
     ReplayRequest,
+    ResearchPlanRequest,
     TaskActionResponse,
     TaskEventsResponse,
     TaskListResponse,
     TaskResponse,
 )
 from app.services.task_service import InvalidTaskTransition
+from app.research.plan import build_research_plan
 
 router = APIRouter(prefix="/v1")
 
@@ -470,6 +473,29 @@ async def get_task_checkpoints(task_id: UUID, request: Request) -> dict:
         "trace_id": str(task.trace_id),
         "checkpoints": checkpoints_from_events(events),
     }
+
+
+@router.post("/tasks/{task_id}/research", status_code=status.HTTP_201_CREATED)
+async def create_research_plan(task_id: UUID, payload: ResearchPlanRequest, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    plan_id = uuid4()
+    plan = build_research_plan(**payload.model_dump(mode="json"))
+    event = await request.app.state.event_repository.append_event(
+        event_type="research_plan_created",
+        trace_id=task.trace_id,
+        task_id=task.id,
+        agent_id="human",
+        payload={"schema_version": "1.0", "research_id": str(plan_id), **plan},
+    )
+    return {**plan, "research_id": str(plan_id), "event_id": str(event.id)}
+
+
+@router.get("/tasks/{task_id}/research")
+async def get_research_plan(task_id: UUID, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    plan = research_plan_from_events(events)
+    return {"task_id": str(task.id), "trace_id": str(task.trace_id), "plan": plan}
 
 
 @router.post("/tasks/{task_id}/memory", status_code=status.HTTP_201_CREATED)

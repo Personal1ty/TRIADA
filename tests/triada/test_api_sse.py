@@ -111,6 +111,28 @@ async def test_global_memory_graph_combines_relations_across_tasks():
 
 
 @pytest.mark.asyncio
+async def test_research_plan_is_append_only_and_retrievable():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Research allocation"})
+        task_id = created.json()["task_id"]
+        response = await client.post(
+            f"/v1/tasks/{task_id}/research",
+            json={
+                "question": "How should resources be allocated?",
+                "parameter_catalog": ["parallelism", "latency"],
+                "hypotheses": ["More parallelism improves coverage"],
+                "depth": 2,
+            },
+        )
+        fetched = await client.get(f"/v1/tasks/{task_id}/research")
+
+    assert response.status_code == 201
+    assert fetched.status_code == 200
+    assert fetched.json()["plan"]["question"] == "How should resources be allocated?"
+    assert fetched.json()["plan"]["unresolved_questions"]
+
+
+@pytest.mark.asyncio
 async def test_replay_creates_new_trace_and_waits_for_approval():
     async with _client() as client:
         created = await client.post("/v1/tasks", json={"goal": "Replay this task", "allowed_tools": ["echo"]})
