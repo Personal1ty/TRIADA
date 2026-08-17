@@ -271,6 +271,10 @@ Core endpoints under `/v1`:
 - `GET /v1/tasks/{task_id}/budget` returns configured resource limits and
   admitted/rejected allocation decisions. Resource budget zero values preserve
   existing behavior and leave that resource unbounded.
+- `POST /v1/tasks/{task_id}/research` creates an append-only research plan with
+  a question, parameter catalog, hypotheses, deterministic why/how expansion,
+  and unresolved questions; `GET /v1/tasks/{task_id}/research` retrieves the
+  latest plan.
 - `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
   to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
   deterministic token-overlap ranking by default. Set

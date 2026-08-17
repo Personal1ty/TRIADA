@@ -50,6 +50,11 @@ Resource allocation is now auditable through `resource_allocation_decided`
 events and `GET /v1/tasks/{task_id}/budget`. Explicit branch limits can reduce
 parallel work; zero-valued limits preserve compatibility with existing tasks.
 
+Research planning now has an append-only contract: a question expands into a
+parameter catalog, hypotheses, deterministic `why/how` questions, and explicit
+unresolved questions. The plan is a research scaffold; it does not pretend
+that generated questions are evidence.
+
 ### P3 — Nested swarms
 
 - macro- and micro-triads;
