@@ -68,6 +68,10 @@ All important runtime facts are written as append-only audit events before they
 are exposed through the API or SSE stream. TRIADA exposes public progress through
 thinking_summary_delta records and treats raw model reasoning as sensitive audit
 data in model_reasoning_content_captured events.
+
+The active swarm contract drives runtime scaling: matching task-weight rules
+select worker-auditor pairs and emit a `swarm_scaled` audit event before step
+execution.
 ```
 
 ## Project Structure

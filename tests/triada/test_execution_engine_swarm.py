@@ -121,6 +121,9 @@ async def test_execution_engine_emits_swarm_route_events_from_contract(tmp_path)
     assert submit_route["payload"]["target"] == "assigned_auditor"
     assert submit_route["payload"]["input_contract"] == "worker_result@1.0"
     assert submit_route["payload"]["output_contract"] == "audit_verdict@1.0"
+    scaled = next(event for event in emitter.events if event["event_type"] == "swarm_scaled")
+    assert scaled["payload"]["weight"] == "small"
+    assert scaled["payload"]["selected_worker_ids"] == ["worker-1", "worker-2", "worker-3"]
 
 
 @pytest.mark.asyncio

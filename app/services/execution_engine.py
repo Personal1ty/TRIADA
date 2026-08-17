@@ -20,6 +20,7 @@ from app.llm.openai_responses import OpenAIResponsesProvider
 from app.llm.runtime_config import LLMConfigService
 from app.schemas.enums import AgentRole, AuditVerdictValue, DeltaSource
 from app.services.scheduler import BoundedStepScheduler
+from app.services.swarm_scaling import choose_scaling
 
 
 class ExecutionEngine:
@@ -241,8 +242,27 @@ class ExecutionEngine:
         plan: TaskPlan,
         model_summaries: list[dict[str, Any]],
     ) -> list[WorkerResult]:
+        scaling = choose_scaling(
+            self._swarm_contract,
+            step_count=len(plan.steps),
+            risk_policy=plan.risk_policy.value,
+        )
+        await self._emit(
+            task,
+            "swarm_scaled",
+            {
+                "weight": scaling.weight,
+                "requested_pairs": scaling.requested_pairs,
+                "selected_worker_ids": scaling.selected_worker_ids,
+                "selected_auditor_ids": scaling.selected_auditor_ids,
+                "step_count": len(plan.steps),
+                "risk_policy": plan.risk_policy.value,
+                "reason": scaling.reason,
+            },
+        )
+        active_pairs = self._active_pairs(scaling.selected_worker_ids)
         jobs = [
-            (self._worker_id_for_step(index), step)
+            (self._worker_id_for_step(index, active_pairs), step)
             for index, step in enumerate(plan.steps)
         ]
         if not jobs:
@@ -250,7 +270,7 @@ class ExecutionEngine:
 
         worker_limits = {
             pair.worker_id: pair.max_parallel_steps
-            for pair in self._swarm_contract.worker_auditor_pairs
+            for pair in active_pairs
         }
         max_concurrency = max(1, sum(worker_limits.values()))
         scheduler = BoundedStepScheduler(
@@ -489,11 +509,15 @@ class ExecutionEngine:
                 return pair.worker_id
         raise LookupError(f"assigned worker not found for auditor: {auditor_id}")
 
-    def _worker_id_for_step(self, step_index: int) -> str:
-        pairs = self._swarm_contract.worker_auditor_pairs
+    def _worker_id_for_step(self, step_index: int, pairs=None) -> str:
+        pairs = pairs or self._swarm_contract.worker_auditor_pairs
         if not pairs:
             return self._worker_id
         return pairs[step_index % len(pairs)].worker_id
+
+    def _active_pairs(self, worker_ids: list[str]):
+        selected = set(worker_ids)
+        return [pair for pair in self._swarm_contract.worker_auditor_pairs if pair.worker_id in selected]
 
     def _chief_verdict_value(self, final_status: str, verdicts) -> str:
         if final_status == "completed" and verdicts:
