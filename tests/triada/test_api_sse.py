@@ -84,6 +84,33 @@ async def test_task_memory_graph_stores_relations_and_conflicts():
 
 
 @pytest.mark.asyncio
+async def test_global_memory_graph_combines_relations_across_tasks():
+    async with _client() as client:
+        first_task = await client.post("/v1/tasks", json={"goal": "First research"})
+        second_task = await client.post("/v1/tasks", json={"goal": "Second research"})
+        first_note = await client.post(
+            f"/v1/tasks/{first_task.json()['task_id']}/memory",
+            json={"kind": "decision", "title": "Decision A", "content": "Use approach A"},
+        )
+        second_note = await client.post(
+            f"/v1/tasks/{second_task.json()['task_id']}/memory",
+            json={"kind": "observation", "title": "Finding B", "content": "Approach A works"},
+        )
+        await client.post(
+            f"/v1/tasks/{first_task.json()['task_id']}/memory/relations",
+            json={
+                "source_memory_id": first_note.json()["memory_id"],
+                "target_memory_id": second_note.json()["memory_id"],
+                "relation": "supports",
+            },
+        )
+        graph = await client.get("/v1/memory/graph")
+
+    assert graph.status_code == 200
+    assert graph.json()["summary"] == {"node_count": 2, "edge_count": 1, "conflict_count": 0}
+
+
+@pytest.mark.asyncio
 async def test_replay_creates_new_trace_and_waits_for_approval():
     async with _client() as client:
         created = await client.post("/v1/tasks", json={"goal": "Replay this task", "allowed_tools": ["echo"]})

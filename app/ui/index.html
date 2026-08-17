@@ -747,6 +747,8 @@
           </div>
           <p class="status" id="global-memory-status">Search decisions and observations across task traces.</p>
           <ul class="thinking-list" id="global-memory-list"></ul>
+          <p class="status" id="global-memory-graph-status">Global graph is not loaded.</p>
+          <ul class="thinking-list" id="global-memory-graph-list"></ul>
         </div>
       </section>
       <section id="memory-graph">
@@ -986,6 +988,8 @@
     const searchGlobalMemoryButton = document.getElementById("search-global-memory");
     const globalMemoryStatus = document.getElementById("global-memory-status");
     const globalMemoryList = document.getElementById("global-memory-list");
+    const globalMemoryGraphStatus = document.getElementById("global-memory-graph-status");
+    const globalMemoryGraphList = document.getElementById("global-memory-graph-list");
     const memoryGraphStatus = document.getElementById("memory-graph-status");
     const memoryGraphList = document.getElementById("memory-graph-list");
     const eventsStatus = document.getElementById("events-status");
@@ -1550,12 +1554,21 @@
         return;
       }
       try {
-        const payload = await fetchJson(`/v1/memory/search?q=${encodeURIComponent(query)}`);
+        const [payload, graph] = await Promise.all([
+          fetchJson(`/v1/memory/search?q=${encodeURIComponent(query)}`),
+          fetchJson("/v1/memory/graph")
+        ]);
         const notes = Array.isArray(payload.notes) ? payload.notes : [];
         globalMemoryStatus.textContent = notes.length ? `${notes.length} cross-task note${notes.length === 1 ? "" : "s"}.` : "No matching cross-task notes.";
         globalMemoryList.innerHTML = notes.map((note) => `
           <li><div><span class="pill">${escapeHtml(note.kind)}</span> ${escapeHtml(note.title)}</div><small>${escapeHtml(note.content)} · task ${escapeHtml(note.state_refs?.task_id || note.task_id || "trace-linked")}</small></li>
         `).join("");
+        const summary = graph.summary || {};
+        globalMemoryGraphStatus.textContent = `${summary.node_count || 0} notes · ${summary.edge_count || 0} links · ${summary.conflict_count || 0} conflicts`;
+        globalMemoryGraphStatus.classList.toggle("error", (summary.conflict_count || 0) > 0);
+        globalMemoryGraphList.innerHTML = (graph.edges || []).slice(-12).map((edge) => `
+          <li><span class="pill">${escapeHtml(edge.relation)}</span> ${escapeHtml(edge.source_memory_id)} → ${escapeHtml(edge.target_memory_id)}</li>
+        `).join("") || '<li class="status">No global memory links.</li>';
       } catch (error) {
         globalMemoryStatus.textContent = `Unable to search memory: ${error.message}`;
       }

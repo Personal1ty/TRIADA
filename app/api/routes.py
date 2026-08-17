@@ -581,6 +581,17 @@ async def search_memory(
     }
 
 
+@router.get("/memory/graph")
+async def get_global_memory_graph(request: Request) -> dict:
+    events = await request.app.state.event_repository.list_events_by_type(
+        "memory_note_added"
+    )
+    relation_events = await request.app.state.event_repository.list_events_by_type(
+        "memory_relation_added"
+    )
+    return memory_graph_from_events([*events, *relation_events])
+
+
 @router.post("/tasks/{task_id}/replay", response_model=TaskActionResponse, status_code=status.HTTP_201_CREATED)
 async def replay_task(task_id: UUID, payload: ReplayRequest, request: Request) -> TaskActionResponse:
     source = await _get_task_or_404(task_id, request)

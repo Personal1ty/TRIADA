@@ -39,3 +39,28 @@ def test_memory_relation_request_rejects_unknown_relation():
             target_memory_id="m-2",
             relation="mentions",
         )
+
+
+def test_memory_graph_keeps_cross_task_nodes_and_edges():
+    events = [
+        SimpleNamespace(
+            event_type="memory_note_added",
+            task_id="task-a",
+            payload={"memory_id": "m-a", "kind": "decision", "title": "A", "content": "First"},
+        ),
+        SimpleNamespace(
+            event_type="memory_note_added",
+            task_id="task-b",
+            payload={"memory_id": "m-b", "kind": "observation", "title": "B", "content": "Second"},
+        ),
+        SimpleNamespace(
+            event_type="memory_relation_added",
+            task_id="task-a",
+            payload={"relation_id": "r-ab", "source_memory_id": "m-a", "target_memory_id": "m-b", "relation": "supports"},
+        ),
+    ]
+
+    graph = memory_graph_from_events(events)
+
+    assert {node["task_id"] for node in graph["nodes"]} == {"task-a", "task-b"}
+    assert graph["edges"][0]["relation"] == "supports"
