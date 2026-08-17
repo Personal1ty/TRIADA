@@ -8,6 +8,9 @@
 
 **Tech Stack:** Python 3.12+, Pydantic v2, existing SwarmContract, pytest/pytest-asyncio, append-only AuditEmitter.
 
+**Progress:** Tasks 1–4 are implemented and verified. Task 5 remains the
+documentation/release gate for this increment.
+
 ---
 
 ### Task 1: Define the budget decision contract

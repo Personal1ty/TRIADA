@@ -46,6 +46,10 @@ now provides semantic retrieval without changing the memory API or moving
 source-of-truth ownership away from the append-only audit events; lexical
 retrieval remains the fallback.
 
+Resource allocation is now auditable through `resource_allocation_decided`
+events and `GET /v1/tasks/{task_id}/budget`. Explicit branch limits can reduce
+parallel work; zero-valued limits preserve compatibility with existing tasks.
+
 ### P3 — Nested swarms
 
 - macro- and micro-triads;

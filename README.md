@@ -268,6 +268,9 @@ Core endpoints under `/v1`:
   correction counts, and read-only replay points from the audit trace.
 - `GET /v1/tasks/{task_id}/checkpoints` returns safe event-backed checkpoint
   refs with phase, sequence, and resumable/terminal state.
+- `GET /v1/tasks/{task_id}/budget` returns configured resource limits and
+  admitted/rejected allocation decisions. Resource budget zero values preserve
+  existing behavior and leave that resource unbounded.
 - `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
   to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
   deterministic token-overlap ranking by default. Set
