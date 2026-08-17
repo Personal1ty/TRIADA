@@ -37,6 +37,16 @@ async def test_create_task_and_list_events():
 
 
 @pytest.mark.asyncio
+async def test_swarm_capabilities_endpoint_exposes_role_boundaries():
+    async with _client() as client:
+        response = await client.get("/v1/swarm/capabilities")
+
+    assert response.status_code == 200
+    assert "execute_tools" not in response.json()["roles"]["auditor"]["allowed"]
+    assert "issue_verdict" in response.json()["roles"]["auditor"]["allowed"]
+
+
+@pytest.mark.asyncio
 async def test_task_budget_endpoint_exposes_configured_budget():
     async with _client() as client:
         created = await client.post(

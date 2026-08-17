@@ -772,6 +772,13 @@
           <ul class="thinking-list" id="research-evidence-list"></ul>
         </div>
       </section>
+      <section id="capabilities">
+        <h2>Role Capabilities</h2>
+        <div class="panel-body">
+          <p class="status" id="capabilities-status">Loading role boundaries...</p>
+          <ul class="thinking-list" id="capabilities-list"></ul>
+        </div>
+      </section>
     </div>
 
     <div class="stack tab-panel" id="raw-reasoning-view" hidden>
@@ -1010,6 +1017,8 @@
     const researchPlanList = document.getElementById("research-plan-list");
     const researchEvidenceStatus = document.getElementById("research-evidence-status");
     const researchEvidenceList = document.getElementById("research-evidence-list");
+    const capabilitiesStatus = document.getElementById("capabilities-status");
+    const capabilitiesList = document.getElementById("capabilities-list");
     const eventsStatus = document.getElementById("events-status");
     const eventFeed = document.getElementById("event-feed");
     const eventAutoRefresh = document.getElementById("event-auto-refresh");
@@ -1576,6 +1585,20 @@
       researchEvidenceList.innerHTML = evidence.map((item) =>
         `<li><span class="pill">${escapeHtml(item.kind || "evidence")}</span> ${escapeHtml(item.claim || "")} · confidence ${escapeHtml(String(item.confidence ?? 0))}${item.supports_hypothesis ? ` · supports: ${escapeHtml(item.supports_hypothesis)}` : ""}</li>`
       ).join("") || '<li class="status">No evidence has been recorded.</li>';
+    }
+
+    async function loadCapabilities() {
+      try {
+        const payload = await fetchJson("/v1/swarm/capabilities");
+        const roles = payload?.roles || {};
+        capabilitiesList.innerHTML = Object.entries(roles).map(([role, spec]) =>
+          `<li><span class="pill">${escapeHtml(role)}</span> allowed: ${escapeHtml((spec.allowed || []).join(", "))} · denied: ${escapeHtml((spec.denied || []).join(", "))}</li>`
+        ).join("");
+        capabilitiesStatus.textContent = `${Object.keys(roles).length} explicit role boundaries loaded.`;
+      } catch (error) {
+        capabilitiesStatus.textContent = `Unable to load role boundaries: ${error.message}`;
+        capabilitiesStatus.classList.add("error");
+      }
     }
 
     async function loadMemory(taskId = currentTaskId) {
@@ -2303,6 +2326,7 @@
     loadDemoTemplates();
     loadRecentTasks();
     loadApprovalQueue();
+    loadCapabilities();
   </script>
 </body>
 </html>
