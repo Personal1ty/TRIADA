@@ -6,6 +6,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.audit.redaction import contains_secret
 
 
+class ResourceBudgetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    max_parallel_branches: int = Field(default=1, ge=0)
+    max_retries: int = Field(default=0, ge=0)
+    max_tokens: int = Field(default=0, ge=0)
+
+
 class CreateTaskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -16,6 +24,7 @@ class CreateTaskRequest(BaseModel):
     acceptance_criteria: list[str] = Field(default_factory=list)
     timeout_seconds: int | None = Field(default=None, ge=1)
     retry_limit: int = Field(default=0, ge=0)
+    resource_budget: ResourceBudgetRequest = Field(default_factory=ResourceBudgetRequest)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("goal")

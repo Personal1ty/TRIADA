@@ -260,6 +260,8 @@ async def test_llm_config(request: Request) -> dict:
 
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(payload: CreateTaskRequest, request: Request) -> TaskResponse:
+    metadata = dict(payload.metadata)
+    metadata["resource_budget"] = payload.resource_budget.model_dump(mode="json")
     task = await request.app.state.task_service.create_task(
         goal=payload.goal,
         risk=payload.risk,
@@ -268,7 +270,7 @@ async def create_task(payload: CreateTaskRequest, request: Request) -> TaskRespo
         acceptance_criteria=payload.acceptance_criteria,
         timeout_seconds=payload.timeout_seconds,
         retry_limit=payload.retry_limit,
-        metadata=payload.metadata,
+        metadata=metadata,
     )
     return _task_response(task)
 

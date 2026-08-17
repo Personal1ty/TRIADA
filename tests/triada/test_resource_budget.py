@@ -1,6 +1,7 @@
 import pytest
 
 from app.services.resource_budget import ResourceBudget, ResourceUsage, allocate_work
+from app.schemas.tasks import CreateTaskRequest
 
 
 def test_allocate_admits_work_inside_budget():
@@ -39,3 +40,19 @@ def test_budget_rejects_negative_limits():
 
     with pytest.raises(ValueError, match="max_tokens"):
         ResourceBudget(max_tokens=-1)
+
+
+def test_task_request_accepts_bounded_resource_budget():
+    request = CreateTaskRequest(
+        goal="Research a bounded question",
+        resource_budget={"max_parallel_branches": 3, "max_retries": 2, "max_tokens": 4000},
+    )
+
+    assert request.resource_budget.max_parallel_branches == 3
+    assert request.resource_budget.max_retries == 2
+    assert request.resource_budget.max_tokens == 4000
+
+
+def test_task_request_rejects_negative_resource_budget():
+    with pytest.raises(ValueError, match="max_tokens"):
+        CreateTaskRequest(goal="Research", resource_budget={"max_tokens": -1})
