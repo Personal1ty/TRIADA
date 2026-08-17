@@ -758,6 +758,13 @@
           <ul class="thinking-list" id="memory-graph-list"></ul>
         </div>
       </section>
+      <section id="research-plan">
+        <h2>Research Plan</h2>
+        <div class="panel-body">
+          <p class="status" id="research-plan-status">Load a task to inspect its research question.</p>
+          <ul class="thinking-list" id="research-plan-list"></ul>
+        </div>
+      </section>
     </div>
 
     <div class="stack tab-panel" id="raw-reasoning-view" hidden>
@@ -992,6 +999,8 @@
     const globalMemoryGraphList = document.getElementById("global-memory-graph-list");
     const memoryGraphStatus = document.getElementById("memory-graph-status");
     const memoryGraphList = document.getElementById("memory-graph-list");
+    const researchPlanStatus = document.getElementById("research-plan-status");
+    const researchPlanList = document.getElementById("research-plan-list");
     const eventsStatus = document.getElementById("events-status");
     const eventFeed = document.getElementById("event-feed");
     const eventAutoRefresh = document.getElementById("event-auto-refresh");
@@ -1535,6 +1544,22 @@
       memoryGraphStatus.classList.toggle("error", conflicts.length > 0);
     }
 
+    function renderResearchPlan(payload) {
+      const plan = payload?.plan;
+      if (!plan) {
+        researchPlanStatus.textContent = "No research plan has been created for this task.";
+        researchPlanList.innerHTML = "";
+        return;
+      }
+      researchPlanStatus.textContent = `${plan.parameter_catalog?.length || 0} parameters · depth ${plan.depth || 1} · ${plan.unresolved_questions?.length || 0} unresolved questions`;
+      researchPlanList.innerHTML = [
+        `<li><span class="pill">Question</span> ${escapeHtml(plan.question)}</li>`,
+        ...(plan.why_questions || []).map((item) => `<li><span class="pill">Why</span> ${escapeHtml(item)}</li>`),
+        ...(plan.how_questions || []).map((item) => `<li><span class="pill">How</span> ${escapeHtml(item)}</li>`),
+        ...(plan.unresolved_questions || []).map((item) => `<li><span class="pill">Open</span> ${escapeHtml(item)}</li>`),
+      ].join("");
+    }
+
     async function loadMemory(taskId = currentTaskId) {
       if (!taskId) return;
       const query = memoryQuery.value.trim();
@@ -1945,7 +1970,7 @@
       try {
         const task = await fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}`);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
-        const [graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph] = await Promise.all([
+        const [graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan] = await Promise.all([
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/swarm-graph`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/thinking-summary`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/inspector`),
@@ -1953,12 +1978,14 @@
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/checkpoints`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/budget`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/memory`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/memory/graph`)
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/memory/graph`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research`)
         ]);
         renderGraph(graph);
         renderThinking(thinking);
         renderMemory(memory);
         renderMemoryGraph(memoryGraph);
+        renderResearchPlan(researchPlan);
         const events = await loadEvents(currentTaskId);
         renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory);
         if (terminalStatuses.has(task.status)) {
@@ -1985,7 +2012,7 @@
       thinkingStatus.textContent = `Loading ${thinkingUrl}...`;
       thinkingList.innerHTML = "";
       try {
-        const [task, graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph] = await Promise.all([
+        const [task, graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan] = await Promise.all([
           fetchJson(taskUrl),
           fetchJson(graphUrl),
           fetchJson(thinkingUrl),
@@ -1995,12 +2022,14 @@
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/budget`),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/memory`),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/memory/graph`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/research`),
         ]);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
         renderGraph(graph);
         renderThinking(thinking);
         renderMemory(memory);
         renderMemoryGraph(memoryGraph);
+        renderResearchPlan(researchPlan);
         const events = await loadEvents(taskId);
         renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory);
         if (!terminalStatuses.has(task.status)) {
