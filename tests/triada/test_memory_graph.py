@@ -64,3 +64,37 @@ def test_memory_graph_keeps_cross_task_nodes_and_edges():
 
     assert {node["task_id"] for node in graph["nodes"]} == {"task-a", "task-b"}
     assert graph["edges"][0]["relation"] == "supports"
+
+
+def test_memory_graph_detects_conflicting_parameter_values():
+    events = [
+        SimpleNamespace(
+            event_type="memory_note_added",
+            task_id="task-a",
+            payload={
+                "memory_id": "m-a",
+                "kind": "decision",
+                "title": "Timeout A",
+                "content": "Use 30 seconds",
+                "parameter_key": "timeout_seconds",
+                "parameter_value": "30",
+            },
+        ),
+        SimpleNamespace(
+            event_type="memory_note_added",
+            task_id="task-b",
+            payload={
+                "memory_id": "m-b",
+                "kind": "decision",
+                "title": "Timeout B",
+                "content": "Use 60 seconds",
+                "parameter_key": "timeout_seconds",
+                "parameter_value": "60",
+            },
+        ),
+    ]
+
+    graph = memory_graph_from_events(events)
+
+    assert graph["summary"]["conflict_count"] == 1
+    assert graph["conflicts"][0]["relation"] == "parameter_conflict"

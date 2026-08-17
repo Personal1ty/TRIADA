@@ -248,6 +248,8 @@ def memory_notes_from_events(events: list[Any], *, query: str | None = None, lim
                 "kind": payload.get("kind"),
                 "title": payload.get("title"),
                 "content": payload.get("content"),
+                "parameter_key": payload.get("parameter_key"),
+                "parameter_value": payload.get("parameter_value"),
                 "tags": _to_json_safe(payload.get("tags", [])),
                 "refs": _to_json_safe(payload.get("refs", [])),
                 "score": score,
@@ -271,6 +273,8 @@ def memory_graph_from_events(events: list[Any]) -> dict:
                 "kind": payload.get("kind"),
                 "title": payload.get("title"),
                 "content": payload.get("content"),
+                "parameter_key": payload.get("parameter_key"),
+                "parameter_value": payload.get("parameter_value"),
             }
         elif event.event_type == "memory_relation_added":
             source = str(payload.get("source_memory_id", ""))
@@ -289,7 +293,27 @@ def memory_graph_from_events(events: list[Any]) -> dict:
                     "task_id": str(event.task_id),
                 }
             )
-    conflicts = [edge for edge in edges if edge.get("relation") == "contradicts"]
+    parameter_groups: dict[str, list[dict]] = {}
+    for node in nodes.values():
+        key = node.get("parameter_key")
+        if key and node.get("parameter_value") is not None:
+            parameter_groups.setdefault(str(key), []).append(node)
+    for key, group in parameter_groups.items():
+        for left_index, left in enumerate(group):
+            for right in group[left_index + 1 :]:
+                if left.get("parameter_value") == right.get("parameter_value"):
+                    continue
+                edges.append(
+                    {
+                        "relation_id": f"parameter-conflict:{left['memory_id']}:{right['memory_id']}",
+                        "source_memory_id": left["memory_id"],
+                        "target_memory_id": right["memory_id"],
+                        "relation": "parameter_conflict",
+                        "reason": f"Different values for {key}: {left['parameter_value']} vs {right['parameter_value']}",
+                        "task_id": left.get("task_id"),
+                    }
+                )
+    conflicts = [edge for edge in edges if edge.get("relation") in {"contradicts", "parameter_conflict"}]
     return {
         "summary": {"node_count": len(nodes), "edge_count": len(edges), "conflict_count": len(conflicts)},
         "nodes": sorted(nodes.values(), key=lambda node: node["memory_id"]),
