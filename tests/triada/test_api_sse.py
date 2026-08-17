@@ -120,6 +120,28 @@ async def test_task_memory_rejects_secret_content():
 
 
 @pytest.mark.asyncio
+async def test_global_memory_search_retrieves_notes_across_tasks():
+    async with _client() as client:
+        first = await client.post("/v1/tasks", json={"goal": "First context"})
+        second = await client.post("/v1/tasks", json={"goal": "Second context"})
+        for task_id, title in (
+            (first.json()["task_id"], "Research decision"),
+            (second.json()["task_id"], "Architecture decision"),
+        ):
+            await client.post(
+                f"/v1/tasks/{task_id}/memory",
+                json={"kind": "decision", "title": title, "content": "Use evidence-backed context retrieval."},
+            )
+        response = await client.get("/v1/memory/search?q=evidence")
+
+    assert response.status_code == 200
+    assert {note["title"] for note in response.json()["notes"]} == {
+        "Research decision",
+        "Architecture decision",
+    }
+
+
+@pytest.mark.asyncio
 async def test_task_events_can_be_filtered_without_sensitive_payloads():
     app = create_app(testing=True)
     async with app.router.lifespan_context(app):

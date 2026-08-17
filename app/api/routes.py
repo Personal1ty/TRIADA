@@ -490,6 +490,19 @@ async def get_task_memory(
     }
 
 
+@router.get("/memory/search")
+async def search_memory(
+    request: Request,
+    q: str = Query(min_length=1, max_length=200),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict:
+    events = await request.app.state.event_repository.list_events_by_type("memory_note_added")
+    return {
+        "query": q,
+        "notes": memory_notes_from_events(events, query=q, limit=limit),
+    }
+
+
 @router.post("/tasks/{task_id}/replay", response_model=TaskActionResponse, status_code=status.HTTP_201_CREATED)
 async def replay_task(task_id: UUID, payload: ReplayRequest, request: Request) -> TaskActionResponse:
     source = await _get_task_or_404(task_id, request)

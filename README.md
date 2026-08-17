@@ -265,6 +265,8 @@ Core endpoints under `/v1`:
 - `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
   to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
   deterministic token-overlap ranking.
+- `GET /v1/memory/search?q=...` searches validated memory notes across task
+  traces using the same ranking contract.
 - `POST /v1/tasks/{task_id}/replay` creates a new task and trace from a valid
   event checkpoint, starts it in `waiting_approval`, and never mutates the
   source task history.

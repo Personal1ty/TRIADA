@@ -182,6 +182,17 @@ class AuditEventRepository:
                 return events[index + 1 :]
         return events
 
+    async def list_events_by_type(self, event_type: str, *, limit: int = 500) -> list[AuditEvent]:
+        await self._ensure_sqlite_tables()
+        async with self._session_factory() as session:
+            statement = (
+                select(AuditEvent)
+                .where(AuditEvent.event_type == event_type)
+                .order_by(AuditEvent.created_at.desc(), AuditEvent.sequence.desc())
+                .limit(limit)
+            )
+            return list((await session.scalars(statement)).all())
+
     async def verify_trace(self, trace_id: UUID) -> bool:
         events = await self.list_events(trace_id)
         previous_hash = ""
