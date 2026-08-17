@@ -27,7 +27,7 @@ def test_allocate_rejects_parallel_branch_overage():
 def test_allocate_rejects_retry_and_token_overage_in_stable_order():
     budget = ResourceBudget(max_parallel_branches=2, max_retries=1, max_tokens=1000)
 
-    assert allocate_work(budget, ResourceUsage(active_branches=0, retries=1, tokens_used=0)).reason == "retries_exhausted"
+    assert allocate_work(budget, ResourceUsage(active_branches=0, retries=2, tokens_used=0)).reason == "retries_exhausted"
     assert allocate_work(budget, ResourceUsage(active_branches=0, retries=0, tokens_used=1000)).reason == "tokens_exhausted"
 
 

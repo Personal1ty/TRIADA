@@ -9,7 +9,7 @@ from app.audit.redaction import contains_secret
 class ResourceBudgetRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    max_parallel_branches: int = Field(default=1, ge=0)
+    max_parallel_branches: int = Field(default=0, ge=0)
     max_retries: int = Field(default=0, ge=0)
     max_tokens: int = Field(default=0, ge=0)
 

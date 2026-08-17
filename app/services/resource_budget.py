@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class ResourceBudget:
-    max_parallel_branches: int = 1
+    max_parallel_branches: int = 0
     max_retries: int = 0
     max_tokens: int = 0
 
@@ -34,9 +34,9 @@ class AllocationDecision:
 
 
 def allocate_work(budget: ResourceBudget, usage: ResourceUsage) -> AllocationDecision:
-    if usage.active_branches >= budget.max_parallel_branches:
+    if budget.max_parallel_branches > 0 and usage.active_branches >= budget.max_parallel_branches:
         return AllocationDecision(False, "parallel_branches_exhausted")
-    if usage.retries >= budget.max_retries:
+    if budget.max_retries > 0 and usage.retries > budget.max_retries:
         return AllocationDecision(False, "retries_exhausted")
     if budget.max_tokens > 0 and usage.tokens_used >= budget.max_tokens:
         return AllocationDecision(False, "tokens_exhausted")

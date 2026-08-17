@@ -20,6 +20,7 @@ from app.llm.openai_responses import OpenAIResponsesProvider
 from app.llm.runtime_config import LLMConfigService
 from app.schemas.enums import AgentRole, AuditVerdictValue, DeltaSource
 from app.services.scheduler import BoundedStepScheduler
+from app.services.resource_budget import ResourceBudget, ResourceUsage, allocate_work
 from app.services.swarm_scaling import choose_scaling
 
 
@@ -128,7 +129,7 @@ class ExecutionEngine:
 
         while True:
             attempt += 1
-            attempt_results = await self._run_plan_steps(task, plan, model_summaries)
+            attempt_results = await self._run_plan_steps(task, plan, model_summaries, attempt=attempt)
             worker_results.extend(attempt_results)
             attempt_tool_records = [record for result in attempt_results for record in result.tool_results]
             tool_records.extend(attempt_tool_records)
@@ -241,6 +242,8 @@ class ExecutionEngine:
         task: Any,
         plan: TaskPlan,
         model_summaries: list[dict[str, Any]],
+        *,
+        attempt: int = 1,
     ) -> list[WorkerResult]:
         scaling = choose_scaling(
             self._swarm_contract,
@@ -265,6 +268,46 @@ class ExecutionEngine:
             (self._worker_id_for_step(index, active_pairs), step)
             for index, step in enumerate(plan.steps)
         ]
+        if not jobs:
+            return []
+
+        raw_budget = getattr(task, "metadata", {}).get("resource_budget", {})
+        budget = ResourceBudget(**raw_budget) if isinstance(raw_budget, dict) else ResourceBudget()
+        admitted_jobs: list[tuple[str, PlanStep]] = []
+        for job in jobs:
+            decision = allocate_work(
+                budget,
+                ResourceUsage(
+                    active_branches=len(admitted_jobs),
+                    retries=max(0, attempt - 1),
+                    tokens_used=0,
+                ),
+            )
+            await self._emit(
+                task,
+                "resource_allocation_decided",
+                {
+                    "schema_version": "1.0",
+                    "admitted": decision.admitted,
+                    "reason": decision.reason,
+                    "worker_id": job[0],
+                    "step_id": job[1].id,
+                    "attempt": attempt,
+                    "budget": {
+                        "max_parallel_branches": budget.max_parallel_branches,
+                        "max_retries": budget.max_retries,
+                        "max_tokens": budget.max_tokens,
+                    },
+                    "usage": {
+                        "active_branches": len(admitted_jobs),
+                        "retries": max(0, attempt - 1),
+                        "tokens_used": 0,
+                    },
+                },
+            )
+            if decision.admitted:
+                admitted_jobs.append(job)
+        jobs = admitted_jobs
         if not jobs:
             return []
 

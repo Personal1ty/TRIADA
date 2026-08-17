@@ -127,6 +127,30 @@ async def test_execution_engine_emits_swarm_route_events_from_contract(tmp_path)
 
 
 @pytest.mark.asyncio
+async def test_execution_engine_emits_resource_allocation_decisions(tmp_path):
+    emitter = MemoryEmitter()
+    engine = ExecutionEngine(
+        emitter=emitter,
+        workspace=tmp_path,
+        orchestrator=Orchestrator(MultiStepLLM()),
+    )
+    task = make_task(goal="Run two bounded read-only steps")
+    task.metadata["resource_budget"] = {
+        "max_parallel_branches": 1,
+        "max_retries": 0,
+        "max_tokens": 0,
+    }
+
+    status = await engine.run_once(task)
+
+    assert status == "completed"
+    decisions = [event for event in emitter.events if event["event_type"] == "resource_allocation_decided"]
+    assert decisions
+    assert decisions[0]["payload"]["admitted"] is True
+    assert any(event["payload"]["reason"] == "parallel_branches_exhausted" for event in decisions)
+
+
+@pytest.mark.asyncio
 async def test_execution_engine_does_not_submit_evidence_when_worker_blocks(tmp_path):
     emitter = MemoryEmitter()
     engine = ExecutionEngine(emitter=emitter, workspace=tmp_path)

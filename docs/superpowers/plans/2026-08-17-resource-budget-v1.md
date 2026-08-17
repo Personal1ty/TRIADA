@@ -72,8 +72,9 @@ git commit -m "feat: add resource budget allocation contract"
 negative values and preserve safe defaults.
 - [ ] **Step 2: Run the focused test and observe the validation failure.**
 - [ ] **Step 3: Add optional budget fields** with bounded defaults:
-`max_parallel_branches=1`, `max_retries=0`, `max_tokens=0` where zero means
-“provider usage not reported” rather than unlimited execution.
+`max_parallel_branches=0`, `max_retries=0`, and `max_tokens=0` where zero
+preserves existing behavior and means that particular resource is not bounded
+by the task budget.
 - [ ] **Step 4: Run focused contract/schema tests.**
 - [ ] **Step 5: Commit the schema change.**
 
