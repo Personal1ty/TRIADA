@@ -122,7 +122,9 @@ The Docker service uses `DATABASE_URL=postgresql+asyncpg://triada:triada@postgre
 Local PostgreSQL uses the `pgvector/pgvector:pg16` image. Alembic migration
 `0002_enable_pgvector` enables the vector extension for PostgreSQL and skips it
 on SQLite. Migration `0003_swarm_contract_versions` stores configurable swarm
-contract versions in the database.
+contract versions in the database. Migration `0004_memory_embeddings` creates
+the optional secondary vector index; its dimensions follow
+`MEMORY_EMBEDDING_DIMENSIONS` (default `64`).
 The default non-Docker setting is `sqlite+aiosqlite:///./triada.db`.
 
 If local port `5432` is already occupied, publish Postgres on another host port:
