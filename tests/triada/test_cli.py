@@ -95,8 +95,9 @@ def test_cli_list_events_outputs_persisted_trace(monkeypatch, capsys, tmp_path):
 
 
 async def _append_test_event(database_url, trace_id, task_id):
-    repository = AuditEventRepository(create_session_factory(database_url))
-    return await repository.append_event(
+    session_factory = create_session_factory(database_url)
+    repository = AuditEventRepository(session_factory)
+    event = await repository.append_event(
         event_type="task_created",
         trace_id=trace_id,
         task_id=task_id,
@@ -104,3 +105,5 @@ async def _append_test_event(database_url, trace_id, task_id):
         payload={"status": "created"},
         created_at=datetime.now(UTC),
     )
+    await session_factory.kw["bind"].dispose()
+    return event

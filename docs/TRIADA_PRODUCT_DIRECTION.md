@@ -39,6 +39,11 @@ Given a complex goal, TRIADA should make it possible to see:
 - semantic retrieval over prior research;
 - conflict detection between findings and parameters.
 
+The first memory increment stores validated decision, observation, constraint,
+and summary notes as append-only audit events. Retrieval currently uses a
+deterministic token-overlap ranking; a pgvector backend can replace the ranking
+implementation without changing the memory API.
+
 ### P3 — Nested swarms
 
 - macro- and micro-triads;

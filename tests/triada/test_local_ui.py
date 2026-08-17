@@ -47,6 +47,10 @@ async def test_get_local_swarm_ui():
     assert 'class="graph-node-meta"' in response.text
     assert 'id="contracts"' in response.text
     assert 'id="thinking"' in response.text
+    assert 'id="memory"' in response.text
+    assert 'id="memory-query"' in response.text
+    assert 'id="search-memory"' in response.text
+    assert "/v1/tasks/${encodeURIComponent(taskId)}/memory" in response.text
     assert 'id="runs-tab"' in response.text
     assert 'id="thinking-tab"' in response.text
     assert 'id="raw-reasoning-tab"' in response.text

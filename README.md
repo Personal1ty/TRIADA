@@ -262,6 +262,9 @@ Core endpoints under `/v1`:
   correction counts, and read-only replay points from the audit trace.
 - `GET /v1/tasks/{task_id}/checkpoints` returns safe event-backed checkpoint
   refs with phase, sequence, and resumable/terminal state.
+- `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
+  to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
+  deterministic token-overlap ranking.
 - `POST /v1/tasks/{task_id}/replay` creates a new task and trace from a valid
   event checkpoint, starts it in `waiting_approval`, and never mutates the
   source task history.

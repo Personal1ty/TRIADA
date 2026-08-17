@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -191,6 +192,48 @@ def checkpoints_from_events(events: list[Any]) -> list[dict]:
             }
         )
     return checkpoints
+
+
+def memory_notes_from_events(events: list[Any], *, query: str | None = None, limit: int = 20) -> list[dict]:
+    normalized_query = _memory_tokens(query or "")
+    notes = []
+    for event in events:
+        if event.event_type != "memory_note_added" or not isinstance(event.payload, Mapping):
+            continue
+        payload = event.payload
+        searchable = _memory_tokens(
+            " ".join(
+                [
+                    str(payload.get("kind", "")),
+                    str(payload.get("title", "")),
+                    str(payload.get("content", "")),
+                    " ".join(str(tag) for tag in payload.get("tags", [])),
+                ]
+            )
+        )
+        score = len(normalized_query & searchable) if normalized_query else 0
+        if normalized_query and score == 0:
+            continue
+        notes.append(
+            {
+                "memory_id": payload.get("memory_id", str(event.id)),
+                "event_id": str(event.id),
+                "sequence": event.sequence,
+                "kind": payload.get("kind"),
+                "title": payload.get("title"),
+                "content": payload.get("content"),
+                "tags": _to_json_safe(payload.get("tags", [])),
+                "refs": _to_json_safe(payload.get("refs", [])),
+                "score": score,
+                "created_at": _serialize_datetime(event.created_at),
+            }
+        )
+    notes.sort(key=lambda note: (-note["score"], -note["sequence"]))
+    return notes[:limit]
+
+
+def _memory_tokens(value: str) -> set[str]:
+    return {token for token in re.findall(r"[a-zA-Zа-яА-Я0-9_]{2,}", value.lower())}
 
 
 def _phase_for_event(event_type: str, current: str) -> str:

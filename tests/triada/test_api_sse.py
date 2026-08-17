@@ -81,6 +81,45 @@ async def test_replay_rejects_event_from_another_trace():
 
 
 @pytest.mark.asyncio
+async def test_task_memory_notes_are_append_only_and_searchable():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Build a research context"})
+        task_id = created.json()["task_id"]
+        added = await client.post(
+            f"/v1/tasks/{task_id}/memory",
+            json={
+                "kind": "decision",
+                "title": "Use bounded context",
+                "content": "Keep research memory bounded and linked to evidence.",
+                "tags": ["context", "quality"],
+                "refs": ["event:1"],
+            },
+        )
+        listed = await client.get(f"/v1/tasks/{task_id}/memory?q=evidence")
+        audit = await client.get(f"/v1/tasks/{task_id}/audit")
+
+    assert added.status_code == 201
+    assert added.json()["kind"] == "decision"
+    assert listed.status_code == 200
+    assert len(listed.json()["notes"]) == 1
+    assert listed.json()["notes"][0]["title"] == "Use bounded context"
+    assert audit.status_code == 200
+    assert audit.json()["hash_chain_valid"] is True
+
+
+@pytest.mark.asyncio
+async def test_task_memory_rejects_secret_content():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Memory safety"})
+        response = await client.post(
+            f"/v1/tasks/{created.json()['task_id']}/memory",
+            json={"kind": "observation", "title": "Unsafe", "content": "api_key=secret-value"},
+        )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_task_events_can_be_filtered_without_sensitive_payloads():
     app = create_app(testing=True)
     async with app.router.lifespan_context(app):

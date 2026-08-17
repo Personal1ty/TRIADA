@@ -725,6 +725,17 @@
           <ul class="thinking-list" id="thinking-list"></ul>
         </div>
       </section>
+      <section id="memory">
+        <h2>Task Memory</h2>
+        <div class="panel-body">
+          <div class="inline-controls">
+            <input id="memory-query" type="search" placeholder="Search decisions, observations, constraints">
+            <button id="search-memory" type="button">Search</button>
+          </div>
+          <p class="status" id="memory-status">Load a task to inspect structured memory.</p>
+          <ul class="thinking-list" id="memory-list"></ul>
+        </div>
+      </section>
     </div>
 
     <div class="stack tab-panel" id="raw-reasoning-view" hidden>
@@ -945,6 +956,10 @@
     const graphBody = document.getElementById("graph-body");
     const thinkingStatus = document.getElementById("thinking-status");
     const thinkingList = document.getElementById("thinking-list");
+    const memoryQuery = document.getElementById("memory-query");
+    const searchMemoryButton = document.getElementById("search-memory");
+    const memoryStatus = document.getElementById("memory-status");
+    const memoryList = document.getElementById("memory-list");
     const eventsStatus = document.getElementById("events-status");
     const eventFeed = document.getElementById("event-feed");
     const eventAutoRefresh = document.getElementById("event-auto-refresh");
@@ -1465,6 +1480,30 @@
       `).join("");
     }
 
+    function renderMemory(payload) {
+      const notes = Array.isArray(payload.notes) ? payload.notes : [];
+      memoryStatus.textContent = notes.length ? `${notes.length} memory note${notes.length === 1 ? "" : "s"}.` : "No matching memory notes.";
+      memoryList.innerHTML = notes.map((note) => `
+        <li>
+          <div><span class="pill">${escapeHtml(note.kind)}</span> ${escapeHtml(note.title)}</div>
+          <div>${escapeHtml(note.content)}</div>
+          <small class="thinking-meta">score ${escapeHtml(note.score)} · refs ${escapeHtml((note.refs || []).join(", ") || "none")}</small>
+        </li>
+      `).join("");
+    }
+
+    async function loadMemory(taskId = currentTaskId) {
+      if (!taskId) return;
+      const query = memoryQuery.value.trim();
+      const suffix = query ? `?q=${encodeURIComponent(query)}` : "";
+      try {
+        renderMemory(await fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/memory${suffix}`));
+      } catch (error) {
+        memoryStatus.textContent = `Unable to load memory: ${error.message}`;
+        memoryStatus.classList.add("error");
+      }
+    }
+
     function renderEvents(payload, options = {}) {
       const events = Array.isArray(payload.events) ? payload.events : [];
       nextEventsCursor = payload.next_cursor || null;
@@ -1833,15 +1872,17 @@
       try {
         const task = await fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}`);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
-        const [graph, thinking, inspector, quality, checkpoints] = await Promise.all([
+        const [graph, thinking, inspector, quality, checkpoints, memory] = await Promise.all([
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/swarm-graph`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/thinking-summary`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/inspector`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/quality`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/checkpoints`)
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/checkpoints`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/memory`)
         ]);
         renderGraph(graph);
         renderThinking(thinking);
+        renderMemory(memory);
         const events = await loadEvents(currentTaskId);
         renderRunObservatory(task, graph, events, inspector, quality, checkpoints);
         if (terminalStatuses.has(task.status)) {
@@ -1868,17 +1909,19 @@
       thinkingStatus.textContent = `Loading ${thinkingUrl}...`;
       thinkingList.innerHTML = "";
       try {
-        const [task, graph, thinking, inspector, quality, checkpoints] = await Promise.all([
+        const [task, graph, thinking, inspector, quality, checkpoints, memory] = await Promise.all([
           fetchJson(taskUrl),
           fetchJson(graphUrl),
           fetchJson(thinkingUrl),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/inspector`),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/quality`),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/checkpoints`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/memory`),
         ]);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
         renderGraph(graph);
         renderThinking(thinking);
+        renderMemory(memory);
         const events = await loadEvents(taskId);
         renderRunObservatory(task, graph, events, inspector, quality, checkpoints);
         if (!terminalStatuses.has(task.status)) {
@@ -1976,6 +2019,10 @@
 
     refreshEventsButton.addEventListener("click", () => {
       refreshCurrentTask();
+    });
+
+    searchMemoryButton.addEventListener("click", () => {
+      loadMemory();
     });
 
     loadMoreEventsButton.addEventListener("click", () => {

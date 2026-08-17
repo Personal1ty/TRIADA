@@ -104,11 +104,14 @@ def _verify_trace(args: argparse.Namespace) -> int:
 
 async def _verify_trace_async(trace_id: str) -> int:
     repository = _audit_repository()
-    trace_uuid = UUID(trace_id)
-    events = await repository.list_events(trace_uuid)
-    valid = bool(events) and await repository.verify_trace(trace_uuid)
-    print(json.dumps({"trace_id": trace_id, "found": bool(events), "hash_chain_valid": valid}, sort_keys=True))
-    return 0 if valid else 1
+    try:
+        trace_uuid = UUID(trace_id)
+        events = await repository.list_events(trace_uuid)
+        valid = bool(events) and await repository.verify_trace(trace_uuid)
+        print(json.dumps({"trace_id": trace_id, "found": bool(events), "hash_chain_valid": valid}, sort_keys=True))
+        return 0 if valid else 1
+    finally:
+        await repository._session_factory.kw["bind"].dispose()
 
 
 def _list_events(args: argparse.Namespace) -> int:
@@ -117,9 +120,12 @@ def _list_events(args: argparse.Namespace) -> int:
 
 async def _list_events_async(trace_id: str) -> int:
     repository = _audit_repository()
-    events = await repository.list_events(UUID(trace_id))
-    print(json.dumps({"trace_id": trace_id, "events": events_to_public_response(events)}, indent=2, sort_keys=True))
-    return 0
+    try:
+        events = await repository.list_events(UUID(trace_id))
+        print(json.dumps({"trace_id": trace_id, "events": events_to_public_response(events)}, indent=2, sort_keys=True))
+        return 0
+    finally:
+        await repository._session_factory.kw["bind"].dispose()
 
 
 def _simulate_long_task(_: argparse.Namespace) -> int:

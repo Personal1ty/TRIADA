@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator, Mapping
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
@@ -12,6 +12,7 @@ from app.audit.projection import (
     event_to_sse,
     events_to_public_response,
     checkpoints_from_events,
+    memory_notes_from_events,
     run_inspector_from_events,
     quality_from_events,
     swarm_graph_from_events,
@@ -24,6 +25,7 @@ from app.schemas.tasks import (
     ApprovalRequest,
     CreateTaskRequest,
     DemoRunRequest,
+    MemoryNoteRequest,
     RawReasoningRevealRequest,
     RawReasoningRevealResponse,
     ReplayRequest,
@@ -446,6 +448,45 @@ async def get_task_checkpoints(task_id: UUID, request: Request) -> dict:
         "task_id": str(task.id),
         "trace_id": str(task.trace_id),
         "checkpoints": checkpoints_from_events(events),
+    }
+
+
+@router.post("/tasks/{task_id}/memory", status_code=status.HTTP_201_CREATED)
+async def add_task_memory(task_id: UUID, payload: MemoryNoteRequest, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    memory_id = uuid4()
+    event = await request.app.state.event_repository.append_event(
+        event_type="memory_note_added",
+        trace_id=task.trace_id,
+        task_id=task.id,
+        agent_id="human",
+        payload={
+            "schema_version": "1.0",
+            "memory_id": str(memory_id),
+            **payload.model_dump(mode="json"),
+        },
+    )
+    return {
+        "memory_id": str(memory_id),
+        "event_id": str(event.id),
+        **payload.model_dump(mode="json"),
+    }
+
+
+@router.get("/tasks/{task_id}/memory")
+async def get_task_memory(
+    task_id: UUID,
+    request: Request,
+    q: str | None = Query(default=None, max_length=200),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    return {
+        "task_id": str(task.id),
+        "trace_id": str(task.trace_id),
+        "query": q or "",
+        "notes": memory_notes_from_events(events, query=q, limit=limit),
     }
 
 

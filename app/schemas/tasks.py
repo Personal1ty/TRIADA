@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from app.audit.redaction import contains_secret
 
 
 class CreateTaskRequest(BaseModel):
@@ -89,6 +90,36 @@ class ReplayRequest(BaseModel):
     from_event_id: str = Field(min_length=1, max_length=64)
     requested_by: str | None = Field(default=None, max_length=255)
     reason: str | None = Field(default=None, max_length=2_000)
+
+
+class MemoryNoteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["decision", "observation", "constraint", "summary"]
+    title: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=4_000)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+    refs: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("title", "content")
+    @classmethod
+    def text_must_be_safe(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("memory text must not be blank")
+        if contains_secret(value):
+            raise ValueError("memory text contains secret material")
+        return value
+
+    @field_validator("tags", "refs")
+    @classmethod
+    def refs_must_be_safe(cls, values: list[str]) -> list[str]:
+        cleaned = [value.strip() for value in values]
+        if any(not value for value in cleaned):
+            raise ValueError("memory tags and refs must not be blank")
+        if any(contains_secret(value) for value in cleaned):
+            raise ValueError("memory tags and refs contain secret material")
+        return cleaned
 
 
 class DemoRunRequest(BaseModel):
