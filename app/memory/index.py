@@ -30,8 +30,8 @@ class HashEmbeddingProvider:
     """Deterministic local embedding used until a model-backed provider is configured."""
 
     def __init__(self, dimensions: int = 64) -> None:
-        if dimensions < 1:
-            raise ValueError("dimensions must be positive")
+        if dimensions < 8 or dimensions > 2048:
+            raise ValueError("dimensions must be between 8 and 2048")
         self.dimensions = dimensions
 
     def embed(self, value: str) -> list[float]:
@@ -68,7 +68,6 @@ class PgvectorMemoryIndex:
             raise RuntimeError("pgvector memory index requires PostgreSQL")
         dimensions = self._provider.dimensions
         async with bind.begin() as connection:
-            await connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             await connection.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS triada_memory_embeddings (
                     event_id VARCHAR(36) PRIMARY KEY,

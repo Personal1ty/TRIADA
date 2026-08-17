@@ -26,3 +26,4 @@ def test_memory_index_migration_creates_secondary_vector_table_without_dropping_
     assert "vector(" in migration
     assert 'bind.dialect.name != "postgresql"' in migration
     assert "DROP EXTENSION" not in migration
+    assert "CREATE EXTENSION" not in migration

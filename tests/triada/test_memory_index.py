@@ -1,6 +1,7 @@
 import pytest
 
 from app.memory.index import HashEmbeddingProvider, cosine_similarity, memory_text
+from app.persistence.session import create_session_factory
 
 
 def test_hash_embedding_is_deterministic_and_normalized():
@@ -35,3 +36,21 @@ def test_memory_text_uses_searchable_fields_without_raw_reasoning():
 def test_hash_embedding_rejects_invalid_dimensions():
     with pytest.raises(ValueError, match="dimensions"):
         HashEmbeddingProvider(dimensions=0)
+
+    with pytest.raises(ValueError, match="dimensions"):
+        HashEmbeddingProvider(dimensions=7)
+
+    with pytest.raises(ValueError, match="dimensions"):
+        HashEmbeddingProvider(dimensions=2049)
+
+
+@pytest.mark.asyncio
+async def test_pgvector_index_rejects_non_postgresql_before_opening_tables(tmp_path):
+    from app.memory.index import PgvectorMemoryIndex
+
+    factory = create_session_factory(f"sqlite+aiosqlite:///{tmp_path / 'memory.db'}")
+    try:
+        with pytest.raises(RuntimeError, match="requires PostgreSQL"):
+            await PgvectorMemoryIndex(factory).ensure_ready()
+    finally:
+        await factory.kw["bind"].dispose()
