@@ -277,6 +277,9 @@ Core endpoints under `/v1`:
 - `app/runtime/graph_adapter.py` is an optional, dependency-free LangGraph
   boundary: it translates TRIADA checkpoint refs into `thread_id` and
   `checkpoint_id` configuration without moving persistence ownership.
+- Optional graph spike dependencies are available through `pip install -e '.[graph]'`.
+  The isolated `app/runtime/langgraph_spike.py` demonstrates a checkpointed
+  research subgraph; it is not wired into the TRIADA execution engine.
 - `GET /v1/tasks/{task_id}/audit` verifies and returns the audit trace.
 - `GET /v1/tasks/{task_id}/artifacts` returns artifact records.
 - `POST /v1/tasks/{task_id}/approve`, `/cancel`, `/resume`, and `/run_once`

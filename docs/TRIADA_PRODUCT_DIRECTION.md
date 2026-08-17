@@ -68,3 +68,7 @@ become a second source of truth for TRIADA tasks and audit history.
 The first adapter spike is intentionally dependency-free. It maps a TRIADA
 checkpoint to a LangGraph-compatible `{thread_id, checkpoint_id}` config; an
 actual LangGraph runtime can be plugged in later behind this boundary.
+
+The first actual spike now lives in `app/runtime/langgraph_spike.py`: a small
+checkpointed research graph with `research -> audit` nodes. It is evaluated
+separately from TRIADA execution and does not own task identity or audit history.
