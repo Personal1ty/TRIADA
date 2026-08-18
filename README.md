@@ -285,6 +285,9 @@ Core endpoints under `/v1`:
 - `POST /v1/tasks/{task_id}/usage` appends resource usage records for an
   orchestrator, worker, or auditor; `GET /v1/tasks/{task_id}/usage` aggregates
   tokens, duration, estimated cost, branches, and role breakdown.
+- `POST /v1/tasks/{task_id}/playbook/runs` records a replayable playbook run
+  with version, status, quality score, and resource usage; `GET
+  /v1/tasks/{task_id}/playbook/runs` compares runs by quality and cost.
 - `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
   to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
   deterministic token-overlap ranking by default. Set

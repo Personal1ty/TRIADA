@@ -82,6 +82,21 @@ async def test_resource_usage_is_append_only_and_aggregated():
 
 
 @pytest.mark.asyncio
+async def test_playbook_runs_are_append_only_and_comparable():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Run a playbook"})
+        task_id = created.json()["task_id"]
+        recorded = await client.post(
+            f"/v1/tasks/{task_id}/playbook/runs",
+            json={"name": "research-v1", "version": "1.0", "quality_score": 0.85, "tokens": 100, "estimated_cost": 0.02},
+        )
+        fetched = await client.get(f"/v1/tasks/{task_id}/playbook/runs")
+
+    assert recorded.status_code == 201
+    assert fetched.json()["summary"]["best_quality_score"] == 0.85
+
+
+@pytest.mark.asyncio
 async def test_task_budget_endpoint_exposes_configured_budget():
     async with _client() as client:
         created = await client.post(

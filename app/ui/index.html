@@ -793,6 +793,13 @@
           <ul class="thinking-list" id="resource-usage-list"></ul>
         </div>
       </section>
+      <section id="playbook-runs">
+        <h2>Playbook Runs</h2>
+        <div class="panel-body">
+          <p class="status" id="playbook-runs-status">Load a task to compare playbook runs.</p>
+          <ul class="thinking-list" id="playbook-runs-list"></ul>
+        </div>
+      </section>
     </div>
 
     <div class="stack tab-panel" id="raw-reasoning-view" hidden>
@@ -1037,6 +1044,8 @@
     const parameterInfluenceList = document.getElementById("parameter-influence-list");
     const resourceUsageStatus = document.getElementById("resource-usage-status");
     const resourceUsageList = document.getElementById("resource-usage-list");
+    const playbookRunsStatus = document.getElementById("playbook-runs-status");
+    const playbookRunsList = document.getElementById("playbook-runs-list");
     const eventsStatus = document.getElementById("events-status");
     const eventFeed = document.getElementById("event-feed");
     const eventAutoRefresh = document.getElementById("event-auto-refresh");
@@ -1637,6 +1646,15 @@
       ).join("") || '<li class="status">No resource usage records.</li>';
     }
 
+    function renderPlaybookRuns(payload) {
+      const summary = payload?.summary || {};
+      const runs = Array.isArray(payload?.runs) ? payload.runs : [];
+      playbookRunsStatus.textContent = `${summary.run_count || 0} runs · ${summary.completed_count || 0} completed · best quality ${summary.best_quality_score ?? 0} · total cost ${summary.total_estimated_cost ?? 0}`;
+      playbookRunsList.innerHTML = runs.map((run) =>
+        `<li><span class="pill">${escapeHtml(run.name || "playbook")}@${escapeHtml(run.version || "")}</span> quality ${escapeHtml(String(run.quality_score ?? 0))} · ${run.tokens || 0} tokens · ${escapeHtml(run.status || "")}</li>`
+      ).join("") || '<li class="status">No playbook runs recorded.</li>';
+    }
+
     async function loadMemory(taskId = currentTaskId) {
       if (!taskId) return;
       const query = memoryQuery.value.trim();
@@ -2047,7 +2065,7 @@
       try {
         const task = await fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}`);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
-        const [graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan, researchEvidence, parameterInfluence, resourceUsage] = await Promise.all([
+        const [graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan, researchEvidence, parameterInfluence, resourceUsage, playbookRuns] = await Promise.all([
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/swarm-graph`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/thinking-summary`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/inspector`),
@@ -2059,7 +2077,8 @@
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research/evidence`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research/influence`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/usage`)
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/usage`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/playbook/runs`)
         ]);
         renderGraph(graph);
         renderThinking(thinking);
@@ -2069,6 +2088,7 @@
         renderResearchEvidence(researchEvidence);
         renderParameterInfluence(parameterInfluence);
         renderResourceUsage(resourceUsage);
+        renderPlaybookRuns(playbookRuns);
         const events = await loadEvents(currentTaskId);
         renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory);
         if (terminalStatuses.has(task.status)) {
@@ -2095,7 +2115,7 @@
       thinkingStatus.textContent = `Loading ${thinkingUrl}...`;
       thinkingList.innerHTML = "";
       try {
-        const [task, graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan, researchEvidence, parameterInfluence, resourceUsage] = await Promise.all([
+        const [task, graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan, researchEvidence, parameterInfluence, resourceUsage, playbookRuns] = await Promise.all([
           fetchJson(taskUrl),
           fetchJson(graphUrl),
           fetchJson(thinkingUrl),
@@ -2109,6 +2129,7 @@
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/research/evidence`),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/research/influence`),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/usage`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/playbook/runs`),
         ]);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
         renderGraph(graph);
@@ -2119,6 +2140,7 @@
         renderResearchEvidence(researchEvidence);
         renderParameterInfluence(parameterInfluence);
         renderResourceUsage(resourceUsage);
+        renderPlaybookRuns(playbookRuns);
         const events = await loadEvents(taskId);
         renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory);
         if (!terminalStatuses.has(task.status)) {

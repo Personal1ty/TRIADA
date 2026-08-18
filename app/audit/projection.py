@@ -210,6 +210,33 @@ def resource_usage_from_events(events: list[Any]) -> dict:
     return {"summary": summary, "by_role": by_role, "records": records}
 
 
+def playbook_runs_from_events(events: list[Any]) -> dict:
+    runs = []
+    for event in events:
+        if event.event_type != "playbook_run_recorded" or not isinstance(event.payload, Mapping):
+            continue
+        payload = event.payload
+        runs.append({
+            "run_id": str(payload.get("run_id", event.id)), "event_id": str(event.id),
+            "task_id": str(event.task_id), "sequence": event.sequence,
+            "name": payload.get("name"), "version": payload.get("version"),
+            "status": payload.get("status"), "quality_score": float(payload.get("quality_score", 0)),
+            "tokens": int(payload.get("tokens", 0)), "duration_ms": int(payload.get("duration_ms", 0)),
+            "estimated_cost": float(payload.get("estimated_cost", 0)), "note": payload.get("note"),
+        })
+    runs.sort(key=lambda item: (-item["quality_score"], item["sequence"]))
+    completed = [run for run in runs if run["status"] == "completed"]
+    return {
+        "summary": {
+            "run_count": len(runs), "completed_count": len(completed),
+            "best_quality_score": max((run["quality_score"] for run in completed), default=0),
+            "total_tokens": sum(run["tokens"] for run in runs),
+            "total_estimated_cost": round(sum(run["estimated_cost"] for run in runs), 6),
+        },
+        "runs": runs,
+    }
+
+
 def checkpoints_from_events(events: list[Any]) -> list[dict]:
     checkpoint_events = {
         "task_created",

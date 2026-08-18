@@ -15,6 +15,7 @@ from app.audit.projection import (
     memory_notes_from_events,
     memory_graph_from_events,
     parameter_influence_from_events,
+    playbook_runs_from_events,
     resource_usage_from_events,
     research_evidence_from_events,
     research_plan_from_events,
@@ -35,6 +36,7 @@ from app.schemas.tasks import (
     MemoryNoteRequest,
     MemoryRelationRequest,
     ParameterInfluenceRequest,
+    PlaybookRunRequest,
     ResourceUsageRecordRequest,
     RawReasoningRevealRequest,
     RawReasoningRevealResponse,
@@ -495,6 +497,24 @@ async def get_resource_usage(task_id: UUID, request: Request) -> dict:
     task = await _get_task_or_404(task_id, request)
     events = await request.app.state.event_repository.list_events(task.trace_id)
     return {"task_id": str(task.id), "trace_id": str(task.trace_id), **resource_usage_from_events(events)}
+
+
+@router.post("/tasks/{task_id}/playbook/runs", status_code=status.HTTP_201_CREATED)
+async def add_playbook_run(task_id: UUID, payload: PlaybookRunRequest, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    run_id = uuid4()
+    event = await request.app.state.event_repository.append_event(
+        event_type="playbook_run_recorded", trace_id=task.trace_id, task_id=task.id,
+        agent_id="operator", payload={"schema_version": "1.0", "run_id": str(run_id), **payload.model_dump(mode="json")},
+    )
+    return {"run_id": str(run_id), "event_id": str(event.id), **payload.model_dump(mode="json")}
+
+
+@router.get("/tasks/{task_id}/playbook/runs")
+async def get_playbook_runs(task_id: UUID, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    return {"task_id": str(task.id), "trace_id": str(task.trace_id), **playbook_runs_from_events(events)}
 
 
 @router.get("/tasks/{task_id}/checkpoints")

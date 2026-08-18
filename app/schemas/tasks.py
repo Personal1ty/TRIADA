@@ -37,6 +37,31 @@ class ResourceUsageRecordRequest(BaseModel):
         return value
 
 
+class PlaybookRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    version: str = Field(min_length=1, max_length=64)
+    status: Literal["completed", "failed", "blocked"] = "completed"
+    quality_score: float = Field(default=0, ge=0, le=1)
+    tokens: int = Field(default=0, ge=0)
+    duration_ms: int = Field(default=0, ge=0)
+    estimated_cost: float = Field(default=0, ge=0)
+    note: str | None = Field(default=None, max_length=1_000)
+
+    @field_validator("name", "version", "note")
+    @classmethod
+    def playbook_text_must_be_safe(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("playbook text must not be blank")
+        if contains_secret(value):
+            raise ValueError("playbook text contains secret material")
+        return value
+
+
 class CreateTaskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
