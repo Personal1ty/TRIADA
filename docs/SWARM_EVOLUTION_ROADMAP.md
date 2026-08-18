@@ -64,6 +64,8 @@ Resource usage records now aggregate tokens, duration, estimated cost, and
 branches by role, giving the operator a first tokenomics/throughput view.
 Playbook v1 now records versioned runs with quality and resource outcomes so
 future playbooks can be compared and improved from measured executions.
+Playbook templates now define reusable stages, capability scope, and acceptance
+criteria as append-only versioned contracts.
 
 Gate: a research run produces a reproducible evidence map and explicit
 uncertainty instead of only a final narrative.

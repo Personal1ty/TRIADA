@@ -800,6 +800,13 @@
           <ul class="thinking-list" id="playbook-runs-list"></ul>
         </div>
       </section>
+      <section id="playbook-templates">
+        <h2>Playbook Templates</h2>
+        <div class="panel-body">
+          <p class="status" id="playbook-templates-status">Loading reusable templates...</p>
+          <ul class="thinking-list" id="playbook-templates-list"></ul>
+        </div>
+      </section>
     </div>
 
     <div class="stack tab-panel" id="raw-reasoning-view" hidden>
@@ -1046,6 +1053,8 @@
     const resourceUsageList = document.getElementById("resource-usage-list");
     const playbookRunsStatus = document.getElementById("playbook-runs-status");
     const playbookRunsList = document.getElementById("playbook-runs-list");
+    const playbookTemplatesStatus = document.getElementById("playbook-templates-status");
+    const playbookTemplatesList = document.getElementById("playbook-templates-list");
     const eventsStatus = document.getElementById("events-status");
     const eventFeed = document.getElementById("event-feed");
     const eventAutoRefresh = document.getElementById("event-auto-refresh");
@@ -1653,6 +1662,20 @@
       playbookRunsList.innerHTML = runs.map((run) =>
         `<li><span class="pill">${escapeHtml(run.name || "playbook")}@${escapeHtml(run.version || "")}</span> quality ${escapeHtml(String(run.quality_score ?? 0))} · ${run.tokens || 0} tokens · ${escapeHtml(run.status || "")}</li>`
       ).join("") || '<li class="status">No playbook runs recorded.</li>';
+    }
+
+    async function loadPlaybookTemplates() {
+      try {
+        const payload = await fetchJson("/v1/playbooks/templates");
+        const templates = Array.isArray(payload?.templates) ? payload.templates : [];
+        playbookTemplatesStatus.textContent = `${templates.length} latest reusable templates.`;
+        playbookTemplatesList.innerHTML = templates.map((template) =>
+          `<li><span class="pill">${escapeHtml(template.name || "template")}@${escapeHtml(template.version || "")}</span> ${escapeHtml((template.stages || []).join(" → "))} · capabilities: ${escapeHtml((template.capabilities || []).join(", ") || "none")}</li>`
+        ).join("") || '<li class="status">No reusable templates.</li>';
+      } catch (error) {
+        playbookTemplatesStatus.textContent = `Unable to load templates: ${error.message}`;
+        playbookTemplatesStatus.classList.add("error");
+      }
     }
 
     async function loadMemory(taskId = currentTaskId) {
@@ -2393,6 +2416,7 @@
     loadRecentTasks();
     loadApprovalQueue();
     loadCapabilities();
+    loadPlaybookTemplates();
   </script>
 </body>
 </html>

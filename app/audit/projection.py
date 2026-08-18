@@ -237,6 +237,25 @@ def playbook_runs_from_events(events: list[Any]) -> dict:
     }
 
 
+def playbook_templates_from_events(events: list[Any]) -> dict:
+    latest_by_name: dict[str, dict] = {}
+    for event in events:
+        if event.event_type != "playbook_template_created" or not isinstance(event.payload, Mapping):
+            continue
+        payload = event.payload
+        template = {
+            "template_id": str(payload.get("template_id", event.id)), "event_id": str(event.id),
+            "task_id": str(event.task_id), "sequence": event.sequence,
+            "name": payload.get("name"), "version": payload.get("version"),
+            "description": payload.get("description"), "stages": _to_json_safe(payload.get("stages", [])),
+            "capabilities": _to_json_safe(payload.get("capabilities", [])),
+            "acceptance_criteria": _to_json_safe(payload.get("acceptance_criteria", [])),
+        }
+        latest_by_name[template["name"]] = template
+    templates = sorted(latest_by_name.values(), key=lambda item: item["name"])
+    return {"summary": {"template_count": len(templates), "latest_count": len(templates)}, "templates": templates}
+
+
 def checkpoints_from_events(events: list[Any]) -> list[dict]:
     checkpoint_events = {
         "task_created",

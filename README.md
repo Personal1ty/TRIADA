@@ -288,6 +288,9 @@ Core endpoints under `/v1`:
 - `POST /v1/tasks/{task_id}/playbook/runs` records a replayable playbook run
   with version, status, quality score, and resource usage; `GET
   /v1/tasks/{task_id}/playbook/runs` compares runs by quality and cost.
+- `POST /v1/tasks/{task_id}/playbook/template` records a versioned reusable
+  template with stages, capabilities, and acceptance criteria; `GET
+  /v1/playbooks/templates` lists the latest template per name.
 - `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
   to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
   deterministic token-overlap ranking by default. Set

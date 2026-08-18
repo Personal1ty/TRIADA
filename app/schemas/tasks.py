@@ -62,6 +62,34 @@ class PlaybookRunRequest(BaseModel):
         return value
 
 
+class PlaybookTemplateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    version: str = Field(min_length=1, max_length=64)
+    description: str | None = Field(default=None, max_length=2_000)
+    stages: list[str] = Field(min_length=1, max_length=20)
+    capabilities: list[str] = Field(default_factory=list, max_length=30)
+    acceptance_criteria: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("name", "version", "description", "stages", "capabilities", "acceptance_criteria")
+    @classmethod
+    def template_text_must_be_safe(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("template text must not be blank")
+            if contains_secret(value):
+                raise ValueError("template text contains secret material")
+            return value
+        cleaned = [item.strip() for item in value]
+        if any(not item for item in cleaned):
+            raise ValueError("template list items must not be blank")
+        if any(contains_secret(item) for item in cleaned):
+            raise ValueError("template list contains secret material")
+        return cleaned
+
+
 class CreateTaskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

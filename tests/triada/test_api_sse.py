@@ -97,6 +97,22 @@ async def test_playbook_runs_are_append_only_and_comparable():
 
 
 @pytest.mark.asyncio
+async def test_playbook_template_is_saved_and_listed_globally():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Define a playbook"})
+        task_id = created.json()["task_id"]
+        template = await client.post(
+            f"/v1/tasks/{task_id}/playbook/template",
+            json={"name": "research", "version": "1.0", "stages": ["plan", "evidence", "audit"], "capabilities": ["read_memory"]},
+        )
+        listed = await client.get("/v1/playbooks/templates")
+
+    assert template.status_code == 201
+    assert listed.status_code == 200
+    assert listed.json()["summary"]["latest_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_task_budget_endpoint_exposes_configured_budget():
     async with _client() as client:
         created = await client.post(
