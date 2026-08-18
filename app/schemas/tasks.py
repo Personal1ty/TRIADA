@@ -14,6 +14,29 @@ class ResourceBudgetRequest(BaseModel):
     max_tokens: int = Field(default=0, ge=0)
 
 
+class ResourceUsageRecordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agent_role: Literal["orchestrator", "worker", "auditor"]
+    tokens: int = Field(default=0, ge=0)
+    duration_ms: int = Field(default=0, ge=0)
+    estimated_cost: float = Field(default=0, ge=0)
+    branches: int = Field(default=0, ge=0)
+    note: str | None = Field(default=None, max_length=1_000)
+
+    @field_validator("note")
+    @classmethod
+    def usage_note_must_be_safe(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("usage note must not be blank")
+        if contains_secret(value):
+            raise ValueError("usage note contains secret material")
+        return value
+
+
 class CreateTaskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

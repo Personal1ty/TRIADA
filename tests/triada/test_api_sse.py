@@ -67,6 +67,21 @@ async def test_parameter_influence_is_append_only_and_retrievable():
 
 
 @pytest.mark.asyncio
+async def test_resource_usage_is_append_only_and_aggregated():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Measure usage"})
+        task_id = created.json()["task_id"]
+        recorded = await client.post(
+            f"/v1/tasks/{task_id}/usage",
+            json={"agent_role": "worker", "tokens": 120, "duration_ms": 500, "estimated_cost": 0.02, "branches": 2},
+        )
+        fetched = await client.get(f"/v1/tasks/{task_id}/usage")
+
+    assert recorded.status_code == 201
+    assert fetched.json()["summary"]["tokens"] == 120
+
+
+@pytest.mark.asyncio
 async def test_task_budget_endpoint_exposes_configured_budget():
     async with _client() as client:
         created = await client.post(

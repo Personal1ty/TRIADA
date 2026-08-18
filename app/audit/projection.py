@@ -179,6 +179,37 @@ def resource_budget_from_events(events: list[Any]) -> dict:
     }
 
 
+def resource_usage_from_events(events: list[Any]) -> dict:
+    records = []
+    by_role: dict[str, dict[str, float | int]] = {}
+    for event in events:
+        if event.event_type != "resource_usage_recorded" or not isinstance(event.payload, Mapping):
+            continue
+        payload = event.payload
+        role = str(payload.get("agent_role", "unknown"))
+        record = {
+            "usage_id": str(payload.get("usage_id", event.id)), "event_id": str(event.id),
+            "task_id": str(event.task_id), "sequence": event.sequence, "agent_role": role,
+            "tokens": int(payload.get("tokens", 0)), "duration_ms": int(payload.get("duration_ms", 0)),
+            "estimated_cost": float(payload.get("estimated_cost", 0)), "branches": int(payload.get("branches", 0)),
+            "note": payload.get("note"),
+        }
+        records.append(record)
+        aggregate = by_role.setdefault(role, {"tokens": 0, "duration_ms": 0, "estimated_cost": 0.0, "branches": 0})
+        for key in ("tokens", "duration_ms", "branches"):
+            aggregate[key] += record[key]
+        aggregate["estimated_cost"] += record["estimated_cost"]
+    summary = {
+        "record_count": len(records), "tokens": sum(item["tokens"] for item in records),
+        "duration_ms": sum(item["duration_ms"] for item in records),
+        "estimated_cost": round(sum(item["estimated_cost"] for item in records), 6),
+        "branches": sum(item["branches"] for item in records),
+    }
+    for aggregate in by_role.values():
+        aggregate["estimated_cost"] = round(aggregate["estimated_cost"], 6)
+    return {"summary": summary, "by_role": by_role, "records": records}
+
+
 def checkpoints_from_events(events: list[Any]) -> list[dict]:
     checkpoint_events = {
         "task_created",

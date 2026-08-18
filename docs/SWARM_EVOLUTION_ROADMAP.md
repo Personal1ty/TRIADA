@@ -60,6 +60,8 @@ and Observatory UI. The optional LangGraph subgraph expands and audits the
 bounded plan while leaving persistence and tool authority with TRIADA.
 Parameter influence records now add explicit weighted edges (`-1..1`) between
 catalog parameters, making side effects and strong relationships visible.
+Resource usage records now aggregate tokens, duration, estimated cost, and
+branches by role, giving the operator a first tokenomics/throughput view.
 
 Gate: a research run produces a reproducible evidence map and explicit
 uncertainty instead of only a final narrative.

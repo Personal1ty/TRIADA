@@ -15,6 +15,7 @@ from app.audit.projection import (
     memory_notes_from_events,
     memory_graph_from_events,
     parameter_influence_from_events,
+    resource_usage_from_events,
     research_evidence_from_events,
     research_plan_from_events,
     resource_budget_from_events,
@@ -34,6 +35,7 @@ from app.schemas.tasks import (
     MemoryNoteRequest,
     MemoryRelationRequest,
     ParameterInfluenceRequest,
+    ResourceUsageRecordRequest,
     RawReasoningRevealRequest,
     RawReasoningRevealResponse,
     ReplayRequest,
@@ -472,6 +474,27 @@ async def get_task_budget(task_id: UUID, request: Request) -> dict:
         "status": task.status,
         **projection,
     }
+
+
+@router.post("/tasks/{task_id}/usage", status_code=status.HTTP_201_CREATED)
+async def add_resource_usage(task_id: UUID, payload: ResourceUsageRecordRequest, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    usage_id = uuid4()
+    event = await request.app.state.event_repository.append_event(
+        event_type="resource_usage_recorded",
+        trace_id=task.trace_id,
+        task_id=task.id,
+        agent_id=payload.agent_role,
+        payload={"schema_version": "1.0", "usage_id": str(usage_id), **payload.model_dump(mode="json")},
+    )
+    return {"usage_id": str(usage_id), "event_id": str(event.id), **payload.model_dump(mode="json")}
+
+
+@router.get("/tasks/{task_id}/usage")
+async def get_resource_usage(task_id: UUID, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    return {"task_id": str(task.id), "trace_id": str(task.trace_id), **resource_usage_from_events(events)}
 
 
 @router.get("/tasks/{task_id}/checkpoints")
