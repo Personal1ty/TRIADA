@@ -113,6 +113,21 @@ async def test_playbook_template_is_saved_and_listed_globally():
 
 
 @pytest.mark.asyncio
+async def test_playbook_replay_and_failure_catalog_are_available():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Replay a playbook"})
+        task_id = created.json()["task_id"]
+        run = await client.post(f"/v1/tasks/{task_id}/playbook/runs", json={"name": "research", "version": "1.0"})
+        replay = await client.post(f"/v1/tasks/{task_id}/playbook/replays", json={"source_run_id": run.json()["run_id"]})
+        failure = await client.post(f"/v1/tasks/{task_id}/failures", json={"category": "timeout", "symptom": "Slow tool", "cause": "No budget", "mitigation": "Set timeout"})
+        catalog = await client.get("/v1/failures")
+
+    assert replay.status_code == 201
+    assert failure.status_code == 201
+    assert catalog.json()["summary"]["pattern_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_task_budget_endpoint_exposes_configured_budget():
     async with _client() as client:
         created = await client.post(

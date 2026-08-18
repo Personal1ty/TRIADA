@@ -291,6 +291,10 @@ Core endpoints under `/v1`:
 - `POST /v1/tasks/{task_id}/playbook/template` records a versioned reusable
   template with stages, capabilities, and acceptance criteria; `GET
   /v1/playbooks/templates` lists the latest template per name.
+- `POST /v1/tasks/{task_id}/playbook/replays` records an append-only replay
+  request linked to a source run; `GET /v1/tasks/{task_id}/playbook/replays`
+  exposes replay status. `POST /v1/tasks/{task_id}/failures` and `GET
+  /v1/failures` maintain a deduplicated reusable failure catalog.
 - `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
   to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
   deterministic token-overlap ranking by default. Set

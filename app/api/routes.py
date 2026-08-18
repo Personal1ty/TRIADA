@@ -17,6 +17,8 @@ from app.audit.projection import (
     parameter_influence_from_events,
     playbook_runs_from_events,
     playbook_templates_from_events,
+    playbook_replays_from_events,
+    failure_catalog_from_events,
     resource_usage_from_events,
     research_evidence_from_events,
     research_plan_from_events,
@@ -39,6 +41,8 @@ from app.schemas.tasks import (
     ParameterInfluenceRequest,
     PlaybookRunRequest,
     PlaybookTemplateRequest,
+    PlaybookReplayRequest,
+    FailurePatternRequest,
     ResourceUsageRecordRequest,
     RawReasoningRevealRequest,
     RawReasoningRevealResponse,
@@ -534,6 +538,35 @@ async def create_playbook_template(task_id: UUID, payload: PlaybookTemplateReque
 async def list_playbook_templates(request: Request) -> dict:
     events = await request.app.state.event_repository.list_events_by_type("playbook_template_created")
     return playbook_templates_from_events(events)
+
+
+@router.post("/tasks/{task_id}/playbook/replays", status_code=status.HTTP_201_CREATED)
+async def request_playbook_replay(task_id: UUID, payload: PlaybookReplayRequest, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    replay_id = uuid4()
+    event = await request.app.state.event_repository.append_event(event_type="playbook_replay_requested", trace_id=task.trace_id, task_id=task.id, agent_id="operator", payload={"schema_version": "1.0", "replay_id": str(replay_id), "status": "requested", **payload.model_dump(mode="json")})
+    return {"replay_id": str(replay_id), "event_id": str(event.id), "status": "requested", **payload.model_dump(mode="json")}
+
+
+@router.get("/tasks/{task_id}/playbook/replays")
+async def get_playbook_replays(task_id: UUID, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    return playbook_replays_from_events(events)
+
+
+@router.post("/tasks/{task_id}/failures", status_code=status.HTTP_201_CREATED)
+async def add_failure_pattern(task_id: UUID, payload: FailurePatternRequest, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    failure_id = uuid4()
+    event = await request.app.state.event_repository.append_event(event_type="failure_pattern_recorded", trace_id=task.trace_id, task_id=task.id, agent_id="operator", payload={"schema_version": "1.0", "failure_id": str(failure_id), **payload.model_dump(mode="json")})
+    return {"failure_id": str(failure_id), "event_id": str(event.id), **payload.model_dump(mode="json")}
+
+
+@router.get("/failures")
+async def list_failure_patterns(request: Request) -> dict:
+    events = await request.app.state.event_repository.list_events_by_type("failure_pattern_recorded")
+    return failure_catalog_from_events(events)
 
 
 @router.get("/tasks/{task_id}/checkpoints")

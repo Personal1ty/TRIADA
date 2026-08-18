@@ -67,6 +67,8 @@ async def test_get_local_swarm_ui():
     assert "/playbook/runs" in response.text
     assert 'id="playbook-templates"' in response.text
     assert "/playbooks/templates" in response.text
+    assert 'id="failure-catalog"' in response.text
+    assert "/failures" in response.text
     assert 'id="search-global-memory"' in response.text
     assert "/v1/memory/search?q=" in response.text
     assert "/v1/tasks/${encodeURIComponent(taskId)}/memory" in response.text

@@ -256,6 +256,28 @@ def playbook_templates_from_events(events: list[Any]) -> dict:
     return {"summary": {"template_count": len(templates), "latest_count": len(templates)}, "templates": templates}
 
 
+def playbook_replays_from_events(events: list[Any]) -> dict:
+    replays = []
+    for event in events:
+        if event.event_type != "playbook_replay_requested" or not isinstance(event.payload, Mapping):
+            continue
+        payload = event.payload
+        replays.append({"replay_id": str(payload.get("replay_id", event.id)), "event_id": str(event.id), "task_id": str(event.task_id), "sequence": event.sequence, "source_run_id": payload.get("source_run_id"), "status": payload.get("status", "requested"), "note": payload.get("note")})
+    return {"summary": {"replay_count": len(replays), "completed_count": sum(item["status"] == "completed" for item in replays)}, "replays": replays}
+
+
+def failure_catalog_from_events(events: list[Any]) -> dict:
+    latest: dict[tuple[str, str], dict] = {}
+    for event in events:
+        if event.event_type != "failure_pattern_recorded" or not isinstance(event.payload, Mapping):
+            continue
+        payload = event.payload
+        pattern = {"failure_id": str(payload.get("failure_id", event.id)), "event_id": str(event.id), "task_id": str(event.task_id), "sequence": event.sequence, "category": payload.get("category"), "symptom": payload.get("symptom"), "cause": payload.get("cause"), "mitigation": payload.get("mitigation"), "reusable": bool(payload.get("reusable", True))}
+        latest[(str(pattern["category"]), str(pattern["symptom"]))] = pattern
+    patterns = sorted(latest.values(), key=lambda item: (item["category"], item["symptom"]))
+    return {"summary": {"pattern_count": len(patterns), "reusable_count": sum(item["reusable"] for item in patterns)}, "patterns": patterns}
+
+
 def checkpoints_from_events(events: list[Any]) -> list[dict]:
     checkpoint_events = {
         "task_created",

@@ -90,6 +90,39 @@ class PlaybookTemplateRequest(BaseModel):
         return cleaned
 
 
+class PlaybookReplayRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_run_id: str = Field(min_length=1, max_length=64)
+    note: str | None = Field(default=None, max_length=1_000)
+
+    @field_validator("source_run_id", "note")
+    @classmethod
+    def replay_text_must_be_safe(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value or contains_secret(value):
+            raise ValueError("replay text is blank or contains secret material")
+        return value
+
+
+class FailurePatternRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    category: str = Field(min_length=1, max_length=100)
+    symptom: str = Field(min_length=1, max_length=1_000)
+    cause: str = Field(min_length=1, max_length=2_000)
+    mitigation: str = Field(min_length=1, max_length=2_000)
+    reusable: bool = True
+
+    @field_validator("category", "symptom", "cause", "mitigation")
+    @classmethod
+    def failure_text_must_be_safe(cls, value: str) -> str:
+        value = value.strip()
+        if not value or contains_secret(value):
+            raise ValueError("failure text is blank or contains secret material")
+        return value
+
+
 class CreateTaskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

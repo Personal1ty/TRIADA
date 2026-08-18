@@ -807,6 +807,13 @@
           <ul class="thinking-list" id="playbook-templates-list"></ul>
         </div>
       </section>
+      <section id="failure-catalog">
+        <h2>Failure Catalog</h2>
+        <div class="panel-body">
+          <p class="status" id="failure-catalog-status">Loading reusable failure patterns...</p>
+          <ul class="thinking-list" id="failure-catalog-list"></ul>
+        </div>
+      </section>
     </div>
 
     <div class="stack tab-panel" id="raw-reasoning-view" hidden>
@@ -1055,6 +1062,8 @@
     const playbookRunsList = document.getElementById("playbook-runs-list");
     const playbookTemplatesStatus = document.getElementById("playbook-templates-status");
     const playbookTemplatesList = document.getElementById("playbook-templates-list");
+    const failureCatalogStatus = document.getElementById("failure-catalog-status");
+    const failureCatalogList = document.getElementById("failure-catalog-list");
     const eventsStatus = document.getElementById("events-status");
     const eventFeed = document.getElementById("event-feed");
     const eventAutoRefresh = document.getElementById("event-auto-refresh");
@@ -1675,6 +1684,20 @@
       } catch (error) {
         playbookTemplatesStatus.textContent = `Unable to load templates: ${error.message}`;
         playbookTemplatesStatus.classList.add("error");
+      }
+    }
+
+    async function loadFailureCatalog() {
+      try {
+        const payload = await fetchJson("/v1/failures");
+        const patterns = Array.isArray(payload?.patterns) ? payload.patterns : [];
+        failureCatalogStatus.textContent = `${patterns.length} latest reusable failure patterns.`;
+        failureCatalogList.innerHTML = patterns.map((pattern) =>
+          `<li><span class="pill">${escapeHtml(pattern.category || "failure")}</span> ${escapeHtml(pattern.symptom || "")} · mitigation: ${escapeHtml(pattern.mitigation || "")}</li>`
+        ).join("") || '<li class="status">No failure patterns.</li>';
+      } catch (error) {
+        failureCatalogStatus.textContent = `Unable to load failure catalog: ${error.message}`;
+        failureCatalogStatus.classList.add("error");
       }
     }
 
@@ -2417,6 +2440,7 @@
     loadApprovalQueue();
     loadCapabilities();
     loadPlaybookTemplates();
+    loadFailureCatalog();
   </script>
 </body>
 </html>
