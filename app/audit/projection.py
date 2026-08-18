@@ -388,6 +388,37 @@ def research_evidence_from_events(events: list[Any]) -> dict:
     }
 
 
+def parameter_influence_from_events(events: list[Any]) -> dict:
+    influences = []
+    for event in events:
+        if event.event_type != "parameter_influence_recorded" or not isinstance(event.payload, Mapping):
+            continue
+        payload = event.payload
+        influences.append(
+            {
+                "influence_id": str(payload.get("influence_id", event.id)),
+                "event_id": str(event.id),
+                "task_id": str(event.task_id),
+                "sequence": event.sequence,
+                "source_parameter": payload.get("source_parameter"),
+                "target_parameter": payload.get("target_parameter"),
+                "weight": float(payload.get("weight", 0)),
+                "reason": payload.get("reason"),
+                "evidence_id": payload.get("evidence_id"),
+            }
+        )
+    influences.sort(key=lambda item: (-abs(item["weight"]), item["sequence"]))
+    count = len(influences)
+    return {
+        "summary": {
+            "influence_count": count,
+            "strong_count": sum(abs(item["weight"]) >= 0.7 for item in influences),
+            "average_absolute_weight": round(sum(abs(item["weight"]) for item in influences) / count, 4) if count else 0.0,
+        },
+        "influences": influences,
+    }
+
+
 def _memory_tokens(value: str) -> set[str]:
     return {token for token in re.findall(r"[a-zA-Zа-яА-Я0-9_]{2,}", value.lower())}
 

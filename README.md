@@ -279,6 +279,9 @@ Core endpoints under `/v1`:
   record linked to an optional hypothesis/parameter; `GET
   /v1/tasks/{task_id}/research/evidence` returns evidence count, confidence,
   hypothesis coverage, and unresolved questions.
+- `POST /v1/tasks/{task_id}/research/influence` appends a weighted parameter
+  influence (`-1..1`); `GET /v1/tasks/{task_id}/research/influence` returns
+  sorted strong links and average absolute weight for the Observatory.
 - `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
   to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
   deterministic token-overlap ranking by default. Set

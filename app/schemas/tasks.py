@@ -222,6 +222,28 @@ class ResearchEvidenceRequest(BaseModel):
         return cleaned
 
 
+class ParameterInfluenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_parameter: str = Field(min_length=1, max_length=200)
+    target_parameter: str = Field(min_length=1, max_length=200)
+    weight: float = Field(ge=-1, le=1)
+    reason: str | None = Field(default=None, max_length=2_000)
+    evidence_id: str | None = Field(default=None, max_length=64)
+
+    @field_validator("source_parameter", "target_parameter", "reason", "evidence_id")
+    @classmethod
+    def influence_text_must_be_safe(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("influence text must not be blank")
+        if contains_secret(value):
+            raise ValueError("influence text contains secret material")
+        return value
+
+
 class DemoRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

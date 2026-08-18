@@ -47,6 +47,26 @@ async def test_swarm_capabilities_endpoint_exposes_role_boundaries():
 
 
 @pytest.mark.asyncio
+async def test_parameter_influence_is_append_only_and_retrievable():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Measure parameter influence"})
+        task_id = created.json()["task_id"]
+        created_influence = await client.post(
+            f"/v1/tasks/{task_id}/research/influence",
+            json={
+                "source_parameter": "parallelism",
+                "target_parameter": "latency",
+                "weight": -0.8,
+                "reason": "Contention increases latency",
+            },
+        )
+        fetched = await client.get(f"/v1/tasks/{task_id}/research/influence")
+
+    assert created_influence.status_code == 201
+    assert fetched.json()["summary"]["strong_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_task_budget_endpoint_exposes_configured_budget():
     async with _client() as client:
         created = await client.post(

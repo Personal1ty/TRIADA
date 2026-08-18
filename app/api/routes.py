@@ -14,6 +14,7 @@ from app.audit.projection import (
     checkpoints_from_events,
     memory_notes_from_events,
     memory_graph_from_events,
+    parameter_influence_from_events,
     research_evidence_from_events,
     research_plan_from_events,
     resource_budget_from_events,
@@ -32,6 +33,7 @@ from app.schemas.tasks import (
     DemoRunRequest,
     MemoryNoteRequest,
     MemoryRelationRequest,
+    ParameterInfluenceRequest,
     RawReasoningRevealRequest,
     RawReasoningRevealResponse,
     ReplayRequest,
@@ -529,6 +531,27 @@ async def get_research_evidence(task_id: UUID, request: Request) -> dict:
     task = await _get_task_or_404(task_id, request)
     events = await request.app.state.event_repository.list_events(task.trace_id)
     return {"task_id": str(task.id), "trace_id": str(task.trace_id), **research_evidence_from_events(events)}
+
+
+@router.post("/tasks/{task_id}/research/influence", status_code=status.HTTP_201_CREATED)
+async def add_parameter_influence(task_id: UUID, payload: ParameterInfluenceRequest, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    influence_id = uuid4()
+    event = await request.app.state.event_repository.append_event(
+        event_type="parameter_influence_recorded",
+        trace_id=task.trace_id,
+        task_id=task.id,
+        agent_id="human",
+        payload={"schema_version": "1.0", "influence_id": str(influence_id), **payload.model_dump(mode="json")},
+    )
+    return {"influence_id": str(influence_id), "event_id": str(event.id), **payload.model_dump(mode="json")}
+
+
+@router.get("/tasks/{task_id}/research/influence")
+async def get_parameter_influence(task_id: UUID, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    return {"task_id": str(task.id), "trace_id": str(task.trace_id), **parameter_influence_from_events(events)}
 
 
 @router.post("/tasks/{task_id}/memory", status_code=status.HTTP_201_CREATED)
