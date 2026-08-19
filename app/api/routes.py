@@ -16,6 +16,7 @@ from app.audit.projection import (
     memory_graph_from_events,
     parameter_influence_from_events,
     playbook_runs_from_events,
+    playbook_benchmarks_from_events,
     playbook_templates_from_events,
     playbook_replays_from_events,
     failure_catalog_from_events,
@@ -553,6 +554,12 @@ async def create_playbook_template(task_id: UUID, payload: PlaybookTemplateReque
 async def list_playbook_templates(request: Request) -> dict:
     events = await request.app.state.event_repository.list_events_by_type("playbook_template_created")
     return playbook_templates_from_events(events)
+
+
+@router.get("/playbooks/benchmarks")
+async def list_playbook_benchmarks(request: Request) -> dict:
+    events = await request.app.state.event_repository.list_events_by_type("playbook_run_recorded")
+    return playbook_benchmarks_from_events(events)
 
 
 @router.post("/tasks/{task_id}/playbook/replays", status_code=status.HTTP_201_CREATED)

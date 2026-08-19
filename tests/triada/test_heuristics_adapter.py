@@ -1,4 +1,4 @@
-from app.research.heuristics import build_research_adapter, derive_decision_heuristics
+from app.research.heuristics import build_analysis_adapter, build_design_adapter, build_research_adapter, derive_decision_heuristics
 
 
 def test_heuristics_turn_observed_failures_and_usage_into_rules():
@@ -17,3 +17,8 @@ def test_research_adapter_is_bounded_and_declares_acceptance():
     assert adapter["adapter"] == "research"
     assert adapter["stages"][-1] == "audit_uncertainty"
     assert adapter["acceptance_criteria"]
+
+
+def test_analysis_and_design_adapters_share_explicit_stage_contracts():
+    assert build_analysis_adapter(question="Why?", parameters=["quality"])["adapter"] == "analysis"
+    assert build_design_adapter(question="What?", parameters=["usability"])["adapter"] == "design"

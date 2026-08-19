@@ -30,3 +30,19 @@ def build_research_adapter(*, question: str, parameters: list[str]) -> dict[str,
         "required_capabilities": ["read_memory", "write_artifacts", "issue_verdict"],
         "acceptance_criteria": ["evidence is linked to a hypothesis", "unresolved questions are explicit"],
     }
+
+
+def _build_domain_adapter(*, adapter: str, question: str, parameters: list[str], stages: list[str], acceptance_criteria: list[str]) -> dict[str, Any]:
+    cleaned_question = question.strip()
+    cleaned_parameters = [item.strip() for item in parameters if item.strip()]
+    if not cleaned_question or not cleaned_parameters:
+        raise ValueError(f"{adapter} adapter requires a question and parameters")
+    return {"adapter": adapter, "version": "1.0", "stages": stages, "question": cleaned_question, "parameters": cleaned_parameters, "required_capabilities": ["read_memory", "write_artifacts", "issue_verdict"], "acceptance_criteria": acceptance_criteria}
+
+
+def build_analysis_adapter(*, question: str, parameters: list[str]) -> dict[str, Any]:
+    return _build_domain_adapter(adapter="analysis", question=question, parameters=parameters, stages=["frame_problem", "compare_evidence", "test_assumptions", "audit_conclusion"], acceptance_criteria=["claims cite evidence", "assumptions are explicit"])
+
+
+def build_design_adapter(*, question: str, parameters: list[str]) -> dict[str, Any]:
+    return _build_domain_adapter(adapter="design", question=question, parameters=parameters, stages=["frame_user_need", "generate_options", "evaluate_tradeoffs", "audit_decision"], acceptance_criteria=["tradeoffs are explicit", "decision has a validation plan"])

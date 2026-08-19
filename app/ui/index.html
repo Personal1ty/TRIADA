@@ -821,6 +821,13 @@
           <ul class="thinking-list" id="decision-heuristics-list"></ul>
         </div>
       </section>
+      <section id="playbook-benchmarks">
+        <h2>Playbook Benchmarks</h2>
+        <div class="panel-body">
+          <p class="status" id="playbook-benchmarks-status">Loading measured playbook performance...</p>
+          <ul class="thinking-list" id="playbook-benchmarks-list"></ul>
+        </div>
+      </section>
     </div>
 
     <div class="stack tab-panel" id="raw-reasoning-view" hidden>
@@ -1073,6 +1080,8 @@
     const failureCatalogList = document.getElementById("failure-catalog-list");
     const decisionHeuristicsStatus = document.getElementById("decision-heuristics-status");
     const decisionHeuristicsList = document.getElementById("decision-heuristics-list");
+    const playbookBenchmarksStatus = document.getElementById("playbook-benchmarks-status");
+    const playbookBenchmarksList = document.getElementById("playbook-benchmarks-list");
     const eventsStatus = document.getElementById("events-status");
     const eventFeed = document.getElementById("event-feed");
     const eventAutoRefresh = document.getElementById("event-auto-refresh");
@@ -1719,6 +1728,20 @@
       decisionHeuristicsList.innerHTML = heuristics.map((item) =>
         `<li><span class="pill">${escapeHtml(item.priority || "rule")}</span> ${escapeHtml(item.recommendation || "")} · ${escapeHtml(item.reason || "")}</li>`
       ).join("") || '<li class="status">No decision heuristics triggered.</li>';
+    }
+
+    async function loadPlaybookBenchmarks() {
+      try {
+        const payload = await fetchJson("/v1/playbooks/benchmarks");
+        const benchmarks = Array.isArray(payload?.benchmarks) ? payload.benchmarks : [];
+        playbookBenchmarksStatus.textContent = `${benchmarks.length} measured playbook versions.`;
+        playbookBenchmarksList.innerHTML = benchmarks.map((item) =>
+          `<li><span class="pill">${escapeHtml(item.name || "playbook")}@${escapeHtml(item.version || "")}</span> quality ${item.average_quality ?? 0} · ${item.total_tokens || 0} tokens · ${item.tokens_per_quality || 0} tokens/quality</li>`
+        ).join("") || '<li class="status">No measured playbook runs.</li>';
+      } catch (error) {
+        playbookBenchmarksStatus.textContent = `Unable to load benchmarks: ${error.message}`;
+        playbookBenchmarksStatus.classList.add("error");
+      }
     }
 
     async function loadMemory(taskId = currentTaskId) {
@@ -2467,6 +2490,7 @@
     loadCapabilities();
     loadPlaybookTemplates();
     loadFailureCatalog();
+    loadPlaybookBenchmarks();
   </script>
 </body>
 </html>

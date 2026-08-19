@@ -76,6 +76,8 @@ ResourceBudget now includes a wall-clock duration limit and explicit duration
 stop reason.
 Economics projection now combines configured limits and usage into utilization,
 sufficiency, and waste signals.
+Analysis and design adapters now share the same bounded stage contract as the
+research adapter, and playbook benchmarks compare quality against resource use.
 
 Gate: a research run produces a reproducible evidence map and explicit
 uncertainty instead of only a final narrative.

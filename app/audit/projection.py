@@ -252,6 +252,25 @@ def playbook_runs_from_events(events: list[Any]) -> dict:
     }
 
 
+def playbook_benchmarks_from_events(events: list[Any]) -> dict:
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for event in events:
+        if event.event_type != "playbook_run_recorded" or not isinstance(event.payload, Mapping):
+            continue
+        payload = event.payload
+        if payload.get("status") != "completed":
+            continue
+        key = (str(payload.get("name", "unknown")), str(payload.get("version", "unknown")))
+        groups.setdefault(key, []).append(payload)
+    benchmarks = []
+    for (name, version), runs in groups.items():
+        quality = sum(float(run.get("quality_score", 0)) for run in runs) / len(runs)
+        tokens = sum(int(run.get("tokens", 0)) for run in runs)
+        benchmarks.append({"name": name, "version": version, "run_count": len(runs), "average_quality": round(quality, 4), "total_tokens": tokens, "total_estimated_cost": round(sum(float(run.get("estimated_cost", 0)) for run in runs), 6), "tokens_per_quality": round(tokens / quality, 4) if quality else 0.0})
+    benchmarks.sort(key=lambda item: (-item["average_quality"], item["name"], item["version"]))
+    return {"summary": {"benchmark_count": len(benchmarks)}, "benchmarks": benchmarks}
+
+
 def playbook_templates_from_events(events: list[Any]) -> dict:
     latest_by_name: dict[str, dict] = {}
     for event in events:

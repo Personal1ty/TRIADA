@@ -154,6 +154,18 @@ async def test_resource_economics_endpoint_exposes_utilization():
 
 
 @pytest.mark.asyncio
+async def test_playbook_benchmarks_endpoint_compares_runs():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Benchmark playbooks"})
+        task_id = created.json()["task_id"]
+        await client.post(f"/v1/tasks/{task_id}/playbook/runs", json={"name": "research", "version": "1.0", "quality_score": 0.8, "tokens": 100})
+        benchmarks = await client.get("/v1/playbooks/benchmarks")
+
+    assert benchmarks.status_code == 200
+    assert benchmarks.json()["benchmarks"][0]["run_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_task_budget_endpoint_exposes_configured_budget():
     async with _client() as client:
         created = await client.post(
