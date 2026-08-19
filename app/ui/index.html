@@ -1643,12 +1643,15 @@
 
     async function loadCapabilities() {
       try {
-        const payload = await fetchJson("/v1/swarm/capabilities");
+        const [payload, registryPayload] = await Promise.all([
+          fetchJson("/v1/swarm/capabilities"),
+          fetchJson("/v1/capabilities/registry"),
+        ]);
         const roles = payload?.roles || {};
         capabilitiesList.innerHTML = Object.entries(roles).map(([role, spec]) =>
           `<li><span class="pill">${escapeHtml(role)}</span> allowed: ${escapeHtml((spec.allowed || []).join(", "))} · denied: ${escapeHtml((spec.denied || []).join(", "))}</li>`
         ).join("");
-        capabilitiesStatus.textContent = `${Object.keys(roles).length} explicit role boundaries loaded.`;
+        capabilitiesStatus.textContent = `${Object.keys(roles).length} role boundaries · ${Object.keys(registryPayload?.capabilities || {}).length} registered capabilities.`;
       } catch (error) {
         capabilitiesStatus.textContent = `Unable to load role boundaries: ${error.message}`;
         capabilitiesStatus.classList.add("error");

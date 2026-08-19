@@ -6,6 +6,7 @@ import shutil
 from pydantic import BaseModel, Field
 
 from app.events.models import ArtifactRecord, ToolExecutionRecord, ValidationResultRecord
+from app.contracts.capabilities import check_capability
 from app.schemas.enums import RiskPolicy
 from app.tools.apply_patch import ApplyPatchTool
 from app.tools.base import ToolRequest
@@ -43,10 +44,11 @@ class WorkerResult(BaseModel):
 
 
 class Worker:
-    def __init__(self, worker_id: str, workspace: str | Path, llm=None) -> None:
+    def __init__(self, worker_id: str, workspace: str | Path, llm=None, role: str = "worker") -> None:
         self.worker_id = worker_id
         self.workspace = Path(workspace).resolve()
         self.llm = llm
+        self.role = role
 
     async def run_step(
         self,
@@ -67,6 +69,9 @@ class Worker:
                 "command is required",
                 check_name="command_required",
             )
+        capability = check_capability(self.role, "execute_tools")
+        if not capability["allowed"]:
+            return self._blocked(task_id, step_id, title, command, capability["reason"] or "capability denied")
         tool_name = self._tool_name(command)
         if not self._is_tool_allowed(tool_name, allowed_tools):
             return self._blocked(task_id, step_id, title, command, f"tool '{tool_name}' is not allowed")

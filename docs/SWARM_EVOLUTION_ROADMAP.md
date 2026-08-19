@@ -68,6 +68,8 @@ Playbook templates now define reusable stages, capability scope, and acceptance
 criteria as append-only versioned contracts.
 Replay requests now retain source-run lineage, and failure patterns are
 deduplicated into a reusable catalog with symptom, cause, and mitigation.
+Capability registry and Worker-side enforcement now make ownership, risk,
+approval, and audit requirements visible and testable.
 
 Gate: a research run produces a reproducible evidence map and explicit
 uncertainty instead of only a final narrative.

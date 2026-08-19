@@ -60,6 +60,7 @@ async def test_get_local_swarm_ui():
     assert 'id="research-evidence"' in response.text
     assert "/research" in response.text
     assert "/swarm/capabilities" in response.text
+    assert "/capabilities/registry" in response.text
     assert 'id="parameter-influence"' in response.text
     assert "/research/influence" in response.text
     assert "/usage" in response.text

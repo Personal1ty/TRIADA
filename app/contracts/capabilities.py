@@ -18,6 +18,13 @@ _CAPABILITIES: dict[str, dict[str, Any]] = {
     },
 }
 
+_REGISTRY = {
+    "execute_tools": {"owner": "worker", "risk_policy": "task_scoped", "approval_required": False, "audit_event": "tool_execution_completed"},
+    "write_artifacts": {"owner": "worker", "risk_policy": "write_policy", "approval_required": True, "audit_event": "artifact_created"},
+    "issue_verdict": {"owner": "auditor", "risk_policy": "audit_gate", "approval_required": False, "audit_event": "audit_verdict"},
+    "read_memory": {"owner": "orchestrator|worker|auditor", "risk_policy": "read_only", "approval_required": False, "audit_event": "memory_read"},
+}
+
 
 def capability_matrix() -> dict[str, dict[str, Any]]:
     return {
@@ -38,3 +45,7 @@ def check_capability(role: str, capability: str) -> dict[str, Any]:
         "allowed": allowed,
         "reason": reason,
     }
+
+
+def capability_registry() -> dict[str, dict[str, Any]]:
+    return {name: dict(spec) for name, spec in _REGISTRY.items()}

@@ -295,6 +295,9 @@ Core endpoints under `/v1`:
   request linked to a source run; `GET /v1/tasks/{task_id}/playbook/replays`
   exposes replay status. `POST /v1/tasks/{task_id}/failures` and `GET
   /v1/failures` maintain a deduplicated reusable failure catalog.
+- `GET /v1/capabilities/registry` exposes capability owner, risk policy,
+  approval requirement, and audit event; Worker execution enforces its role
+  capability boundary before invoking a tool.
 - `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
   to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
   deterministic token-overlap ranking by default. Set

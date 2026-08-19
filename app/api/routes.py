@@ -29,7 +29,7 @@ from app.audit.projection import (
     thinking_deltas_from_events,
 )
 from app.contracts.swarm import SwarmContract
-from app.contracts.capabilities import capability_matrix
+from app.contracts.capabilities import capability_matrix, capability_registry
 from app.llm.runtime_config import LLMProviderConfig
 from app.schemas.llm import LLMConfigRequest, LLMConfigResponse, LLMTestResponse
 from app.schemas.tasks import (
@@ -64,6 +64,11 @@ router = APIRouter(prefix="/v1")
 @router.get("/swarm/capabilities")
 async def get_swarm_capabilities() -> dict:
     return {"roles": capability_matrix()}
+
+
+@router.get("/capabilities/registry")
+async def get_capability_registry() -> dict:
+    return {"capabilities": capability_registry()}
 
 
 @router.get("/swarm/contract")
