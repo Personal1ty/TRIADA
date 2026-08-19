@@ -53,7 +53,8 @@ LLM boundaries имеют отдельные таймеры:
 OpenAI-compatible SSE responses дополнительно ограничены абсолютным 30-секундным
 stream deadline. Это важно потому, что transport read timeout ограничивает паузу
 между chunks, но не общий lifetime потока, который может бесконечно присылать
-частичные deltas.
+частичные deltas. Deadline применяется и к ожиданию первого/следующего chunk,
+поэтому silent upstream тоже завершается.
 
 Timeout planning публикует `llm_unavailable` и завершает задачу как `blocked`.
 Timeout auditor публикует `audit_failed`, формирует FAIL verdict и завершает
