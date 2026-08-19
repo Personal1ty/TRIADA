@@ -154,7 +154,7 @@ async def test_task_budget_endpoint_exposes_configured_budget():
         budget = await client.get(f"/v1/tasks/{created.json()['task_id']}/budget")
 
     assert budget.status_code == 200
-    assert budget.json()["budget"] == {"max_parallel_branches": 2, "max_retries": 1, "max_tokens": 500}
+    assert budget.json()["budget"] == {"max_parallel_branches": 2, "max_retries": 1, "max_tokens": 500, "max_duration_ms": 0}
     assert budget.json()["metrics"] == {"admitted_count": 0, "rejected_count": 0}
 
 

@@ -8,7 +8,7 @@ from app.schemas.tasks import CreateTaskRequest
 
 def test_allocate_admits_work_inside_budget():
     decision = allocate_work(
-        ResourceBudget(max_parallel_branches=2, max_retries=1, max_tokens=1000),
+        ResourceBudget(max_parallel_branches=2, max_retries=1, max_tokens=1000, max_duration_ms=1000),
         ResourceUsage(active_branches=1, retries=0, tokens_used=200),
     )
 
@@ -42,6 +42,12 @@ def test_budget_rejects_negative_limits():
 
     with pytest.raises(ValueError, match="max_tokens"):
         ResourceBudget(max_tokens=-1)
+    with pytest.raises(ValueError, match="max_duration_ms"):
+        ResourceBudget(max_duration_ms=-1)
+
+
+def test_budget_rejects_work_when_duration_is_exhausted():
+    assert allocate_work(ResourceBudget(max_duration_ms=1000), ResourceUsage(duration_ms=1000)).reason == "duration_exhausted"
 
 
 def test_task_request_accepts_bounded_resource_budget():
@@ -67,7 +73,7 @@ def test_resource_budget_projection_summarizes_admission_events():
             payload={
                 "admitted": True,
                 "reason": "within_budget",
-                "budget": {"max_parallel_branches": 2, "max_retries": 1, "max_tokens": 1000},
+                "budget": {"max_parallel_branches": 2, "max_retries": 1, "max_tokens": 1000, "max_duration_ms": 5000},
                 "usage": {"active_branches": 0, "retries": 0, "tokens_used": 0},
             },
         ),
@@ -76,7 +82,7 @@ def test_resource_budget_projection_summarizes_admission_events():
             payload={
                 "admitted": False,
                 "reason": "parallel_branches_exhausted",
-                "budget": {"max_parallel_branches": 2, "max_retries": 1, "max_tokens": 1000},
+                "budget": {"max_parallel_branches": 2, "max_retries": 1, "max_tokens": 1000, "max_duration_ms": 5000},
                 "usage": {"active_branches": 2, "retries": 0, "tokens_used": 0},
             },
         ),

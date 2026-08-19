@@ -12,6 +12,7 @@ class ResourceBudgetRequest(BaseModel):
     max_parallel_branches: int = Field(default=0, ge=0)
     max_retries: int = Field(default=0, ge=0)
     max_tokens: int = Field(default=0, ge=0)
+    max_duration_ms: int = Field(default=0, ge=0)
 
 
 class ResourceUsageRecordRequest(BaseModel):

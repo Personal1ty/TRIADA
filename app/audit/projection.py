@@ -162,8 +162,8 @@ def resource_budget_from_events(events: list[Any]) -> dict:
         decisions.append(event.payload)
     if not decisions:
         return {
-            "budget": {"max_parallel_branches": 0, "max_retries": 0, "max_tokens": 0},
-            "usage": {"active_branches": 0, "retries": 0, "tokens_used": 0},
+            "budget": {"max_parallel_branches": 0, "max_retries": 0, "max_tokens": 0, "max_duration_ms": 0},
+            "usage": {"active_branches": 0, "retries": 0, "tokens_used": 0, "duration_ms": 0},
             "metrics": {"admitted_count": 0, "rejected_count": 0},
             "last_reason": None,
         }

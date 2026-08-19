@@ -72,6 +72,8 @@ Capability registry and Worker-side enforcement now make ownership, risk,
 approval, and audit requirements visible and testable.
 Memory notes now support expiry timestamps, with stale-knowledge counts in the
 graph projection and Observatory.
+ResourceBudget now includes a wall-clock duration limit and explicit duration
+stop reason.
 
 Gate: a research run produces a reproducible evidence map and explicit
 uncertainty instead of only a final narrative.

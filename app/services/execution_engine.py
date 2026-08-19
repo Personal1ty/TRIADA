@@ -297,11 +297,13 @@ class ExecutionEngine:
                         "max_parallel_branches": budget.max_parallel_branches,
                         "max_retries": budget.max_retries,
                         "max_tokens": budget.max_tokens,
+                        "max_duration_ms": budget.max_duration_ms,
                     },
                     "usage": {
                         "active_branches": len(admitted_jobs),
                         "retries": max(0, attempt - 1),
                         "tokens_used": 0,
+                        "duration_ms": 0,
                     },
                 },
             )
