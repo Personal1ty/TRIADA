@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from typing import Any
 
 import httpx
@@ -171,7 +172,10 @@ class OpenAICompatibleProvider(LLMProvider):
                     response.raise_for_status()
                     content_type = response.headers.get("content-type", "")
                     if "text/event-stream" in content_type:
-                        return await self._read_streaming_message(response)
+                        return await self._read_streaming_message(
+                            response,
+                            max_duration_seconds=30.0,
+                        )
                     body = (await response.aread()).decode("utf-8", errors="replace")
                     try:
                         data = json.loads(body)
@@ -220,10 +224,18 @@ class OpenAICompatibleProvider(LLMProvider):
             "raw_reasoning_content": raw_reasoning_content or None,
         }
 
-    async def _read_streaming_message(self, response: httpx.Response) -> dict[str, Any]:
+    async def _read_streaming_message(
+        self,
+        response: httpx.Response,
+        *,
+        max_duration_seconds: float = 30.0,
+    ) -> dict[str, Any]:
         content_parts: list[str] = []
         reasoning_parts: list[str] = []
+        deadline = time.monotonic() + max_duration_seconds
         async for line in response.aiter_lines():
+            if time.monotonic() >= deadline:
+                raise RuntimeError("OpenAI-compatible LLM stream exceeded maximum duration")
             payload = self._line_payload(line)
             if payload is None:
                 continue

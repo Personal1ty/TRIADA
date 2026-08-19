@@ -388,6 +388,26 @@ async def test_openai_provider_parses_streaming_lines_and_marks_reasoning_summar
 
 
 @pytest.mark.asyncio
+async def test_openai_provider_bounds_total_stream_duration():
+    class EndlessResponse:
+        async def aiter_lines(self):
+            while True:
+                yield 'data: {"choices":[{"delta":{"content":"still working"}}]}'
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://llm.example.test",
+        api_key=None,
+        model="corp-coder",
+    )
+
+    with pytest.raises(RuntimeError, match="stream exceeded maximum duration"):
+        await provider._read_streaming_message(
+            EndlessResponse(),
+            max_duration_seconds=0,
+        )
+
+
+@pytest.mark.asyncio
 async def test_openai_provider_enables_deepseek_thinking_mode():
     seen_request = None
 
