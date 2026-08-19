@@ -55,6 +55,7 @@ def create_app(testing: bool = False, database_url: str | None = None) -> FastAP
         repository=task_repository,
         emitter=audit_emitter,
         execution_engine=execution_engine,
+        execution_timeout_seconds=settings.task_execution_timeout_seconds,
     )
 
     @asynccontextmanager

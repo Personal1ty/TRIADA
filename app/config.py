@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     worker_llm_timeout_seconds: float = Field(default=60.0, gt=0, le=3600)
     orchestrator_llm_timeout_seconds: float = Field(default=60.0, gt=0, le=3600)
     auditor_llm_timeout_seconds: float = Field(default=60.0, gt=0, le=3600)
+    task_execution_timeout_seconds: float = Field(default=300.0, gt=0, le=86_400)
     max_tool_output_bytes: int = Field(default=65536, ge=1024)
 
 

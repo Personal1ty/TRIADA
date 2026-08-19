@@ -78,6 +78,11 @@ class AuditHangingLLM:
         return {"answer": {"status": "ready"}}
 
 
+class HangingExecutionEngine:
+    async def run_once(self, task):
+        await asyncio.Event().wait()
+
+
 class AgentSummaryLLM:
     async def complete_json(self, prompt: str, *, schema_name: str):
         summaries = {
@@ -406,6 +411,22 @@ async def test_task_service_exits_running_when_auditor_model_times_out(tmp_path)
 
     assert failed.status == "failed"
     assert any(event["event_type"] == "audit_failed" for event in emitter.events)
+
+
+@pytest.mark.asyncio
+async def test_task_service_marks_whole_run_timed_out(tmp_path):
+    emitter = MemoryEmitter()
+    service = TaskService(
+        emitter=emitter,
+        execution_engine=HangingExecutionEngine(),
+        execution_timeout_seconds=0.01,
+    )
+    task = await service.create_task(goal="Wait forever")
+
+    timed_out = await service.run_task_once(task.id)
+
+    assert timed_out.status == "timed_out"
+    assert emitter.events[-1]["event_type"] == "task_timeout"
 
 
 @pytest.mark.asyncio

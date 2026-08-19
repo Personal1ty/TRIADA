@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
+
+from app.config import get_settings
 
 
 @dataclass
@@ -58,10 +61,16 @@ class TaskService:
         repository: Any | None = None,
         emitter: Any | None = None,
         execution_engine: Any | None = None,
+        execution_timeout_seconds: float | None = None,
     ) -> None:
         self._repository = repository
         self._emitter = emitter
         self._execution_engine = execution_engine
+        self._execution_timeout_seconds = (
+            execution_timeout_seconds
+            if execution_timeout_seconds is not None
+            else get_settings().task_execution_timeout_seconds
+        )
         self._tasks: dict[UUID, TaskRecord] = {}
 
     async def create_task(
@@ -199,7 +208,19 @@ class TaskService:
         running = replace(task, status="running", updated_at=datetime.now(UTC))
         await self._emit(running, "task_started", {"status": "running"})
         await self._save(running)
-        final_status = await self._execution_engine.run_once(running)
+        timeout_seconds = running.timeout_seconds or self._execution_timeout_seconds
+        try:
+            final_status = await asyncio.wait_for(
+                self._execution_engine.run_once(running),
+                timeout=timeout_seconds,
+            )
+        except TimeoutError:
+            return await self._transition_task(
+                running.id,
+                status="timed_out",
+                event_type="task_timeout",
+                payload={"status": "timed_out", "timeout_seconds": timeout_seconds},
+            )
         await self._persist_runtime_metadata(running)
         final_event_type = {
             "blocked": "task_blocked",

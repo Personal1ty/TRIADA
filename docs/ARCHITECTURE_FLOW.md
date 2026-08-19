@@ -55,6 +55,11 @@ Timeout auditor публикует `audit_failed`, формирует FAIL verdi
 задачу как `failed`. Ни один из этих случаев не должен оставлять task в
 `running`.
 
+Поверх компонентных таймеров `TaskService` имеет общий
+`TASK_EXECUTION_TIMEOUT_SECONDS` (по умолчанию 300 секунд). Он оборачивает весь
+`run_once`; если зависнет сетевой клиент или другой участок execution flow,
+публикуется `task_timeout`, а задача переходит в `timed_out`.
+
 Каждый worker сначала получает публичную модельную подготовку шага, затем
 запускает allowlisted tool. Orchestrator не выполняет инструменты напрямую,
 Auditor не меняет исходные audit events.
