@@ -366,6 +366,7 @@ def memory_graph_from_events(events: list[Any]) -> dict:
         payload = event.payload if isinstance(event.payload, Mapping) else {}
         if event.event_type == "memory_note_added":
             memory_id = str(payload.get("memory_id", getattr(event, "id", "unknown")))
+            valid_until = payload.get("valid_until")
             nodes[memory_id] = {
                 "memory_id": memory_id,
                 "task_id": str(event.task_id),
@@ -374,6 +375,8 @@ def memory_graph_from_events(events: list[Any]) -> dict:
                 "content": payload.get("content"),
                 "parameter_key": payload.get("parameter_key"),
                 "parameter_value": payload.get("parameter_value"),
+                "valid_until": valid_until,
+                "stale": _is_stale(valid_until),
             }
         elif event.event_type == "memory_relation_added":
             source = str(payload.get("source_memory_id", ""))
@@ -414,11 +417,23 @@ def memory_graph_from_events(events: list[Any]) -> dict:
                 )
     conflicts = [edge for edge in edges if edge.get("relation") in {"contradicts", "parameter_conflict"}]
     return {
-        "summary": {"node_count": len(nodes), "edge_count": len(edges), "conflict_count": len(conflicts)},
+        "summary": {"node_count": len(nodes), "edge_count": len(edges), "conflict_count": len(conflicts), "stale_count": sum(bool(node.get("stale")) for node in nodes.values())},
         "nodes": sorted(nodes.values(), key=lambda node: node["memory_id"]),
         "edges": edges,
         "conflicts": conflicts,
     }
+
+
+def _is_stale(valid_until: Any) -> bool:
+    if not valid_until:
+        return False
+    try:
+        expiry = datetime.fromisoformat(str(valid_until).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if expiry.tzinfo is None:
+        expiry = expiry.replace(tzinfo=UTC)
+    return expiry <= datetime.now(UTC)
 
 
 def research_plan_from_events(events: list[Any]) -> dict | None:

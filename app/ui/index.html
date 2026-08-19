@@ -1609,7 +1609,7 @@
       const summary = payload?.summary || {};
       const conflicts = Array.isArray(payload?.conflicts) ? payload.conflicts : [];
       const edges = Array.isArray(payload?.edges) ? payload.edges : [];
-      memoryGraphStatus.textContent = `${summary.node_count || 0} notes · ${summary.edge_count || 0} links · ${summary.conflict_count || 0} conflicts`;
+      memoryGraphStatus.textContent = `${summary.node_count || 0} notes · ${summary.edge_count || 0} links · ${summary.conflict_count || 0} conflicts · ${summary.stale_count || 0} stale`;
       memoryGraphList.innerHTML = edges.map((edge) => `
         <li><span class="pill">${escapeHtml(edge.relation)}</span> ${escapeHtml(edge.source_memory_id)} → ${escapeHtml(edge.target_memory_id)}${edge.reason ? ` · ${escapeHtml(edge.reason)}` : ""}</li>
       `).join("") || '<li class="status">No memory links.</li>';

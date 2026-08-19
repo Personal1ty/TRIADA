@@ -220,8 +220,9 @@ class MemoryNoteRequest(BaseModel):
     refs: list[str] = Field(default_factory=list, max_length=20)
     parameter_key: str | None = Field(default=None, max_length=200)
     parameter_value: str | None = Field(default=None, max_length=500)
+    valid_until: str | None = Field(default=None, max_length=64)
 
-    @field_validator("title", "content", "parameter_key", "parameter_value")
+    @field_validator("title", "content", "parameter_key", "parameter_value", "valid_until")
     @classmethod
     def text_must_be_safe(cls, value: str) -> str:
         value = value.strip()

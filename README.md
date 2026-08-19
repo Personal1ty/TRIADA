@@ -298,6 +298,8 @@ Core endpoints under `/v1`:
 - `GET /v1/capabilities/registry` exposes capability owner, risk policy,
   approval requirement, and audit event; Worker execution enforces its role
   capability boundary before invoking a tool.
+- Memory notes may include `valid_until`; memory graph projections mark expired
+  notes as stale and expose `stale_count` for operator review.
 - `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
   to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
   deterministic token-overlap ranking by default. Set

@@ -70,6 +70,8 @@ Replay requests now retain source-run lineage, and failure patterns are
 deduplicated into a reusable catalog with symptom, cause, and mitigation.
 Capability registry and Worker-side enforcement now make ownership, risk,
 approval, and audit requirements visible and testable.
+Memory notes now support expiry timestamps, with stale-knowledge counts in the
+graph projection and Observatory.
 
 Gate: a research run produces a reproducible evidence map and explicit
 uncertainty instead of only a final narrative.

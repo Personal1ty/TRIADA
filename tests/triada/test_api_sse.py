@@ -212,7 +212,7 @@ async def test_global_memory_graph_combines_relations_across_tasks():
         graph = await client.get("/v1/memory/graph")
 
     assert graph.status_code == 200
-    assert graph.json()["summary"] == {"node_count": 2, "edge_count": 1, "conflict_count": 0}
+    assert graph.json()["summary"] == {"node_count": 2, "edge_count": 1, "conflict_count": 0, "stale_count": 0}
 
 
 @pytest.mark.asyncio

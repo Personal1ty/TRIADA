@@ -27,7 +27,7 @@ def test_memory_graph_projects_notes_relations_and_conflicts():
 
     graph = memory_graph_from_events(events)
 
-    assert graph["summary"] == {"node_count": 2, "edge_count": 1, "conflict_count": 1}
+    assert graph["summary"] == {"node_count": 2, "edge_count": 1, "conflict_count": 1, "stale_count": 0}
     assert graph["edges"][0]["relation"] == "contradicts"
     assert graph["conflicts"][0]["source_memory_id"] == "m-1"
 
