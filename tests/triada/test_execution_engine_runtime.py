@@ -95,6 +95,27 @@ class AuditHangingLLM:
         return {"answer": {"status": "ready"}}
 
 
+class CancelledExecutionEngine:
+    async def run_once(self, task):
+        raise asyncio.CancelledError
+
+
+@pytest.mark.asyncio
+async def test_task_service_closes_run_when_execution_is_cancelled():
+    emitter = MemoryEmitter()
+    service = TaskService(
+        emitter=emitter,
+        execution_engine=CancelledExecutionEngine(),
+    )
+    task = await service.create_task(goal="Cancelled run")
+
+    cancelled = await service.run_task_once(task.id)
+
+    assert cancelled.status == "cancelled"
+    assert emitter.events[-1]["event_type"] == "task_cancelled"
+    assert emitter.events[-1]["payload"]["reason"] == "execution_cancelled"
+
+
 class HangingExecutionEngine:
     async def run_once(self, task):
         await asyncio.Event().wait()

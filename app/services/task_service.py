@@ -221,6 +221,13 @@ class TaskService:
                 event_type="task_timeout",
                 payload={"status": "timed_out", "timeout_seconds": timeout_seconds},
             )
+        except asyncio.CancelledError:
+            return await self._transition_task(
+                running.id,
+                status="cancelled",
+                event_type="task_cancelled",
+                payload={"status": "cancelled", "reason": "execution_cancelled"},
+            )
         await self._persist_runtime_metadata(running)
         final_event_type = {
             "blocked": "task_blocked",
