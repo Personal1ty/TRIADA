@@ -34,6 +34,7 @@ class ExecutionEngine:
         auditor: Auditor | None = None,
         worker_id: str = "worker-1",
         llm_config_service: LLMConfigService | None = None,
+        worker_llm_timeout_seconds: float | None = None,
     ) -> None:
         self._emitter = emitter
         self._workspace = Path(workspace).resolve()
@@ -45,6 +46,11 @@ class ExecutionEngine:
         if getattr(self._auditor, "llm", None) is None:
             self._auditor.llm = self._llm
         self._worker_id = worker_id
+        self._worker_llm_timeout_seconds = (
+            worker_llm_timeout_seconds
+            if worker_llm_timeout_seconds is not None
+            else get_settings().worker_llm_timeout_seconds
+        )
         self._swarm_contract = load_default_swarm_contract()
 
     def set_swarm_contract(self, contract: SwarmContract) -> None:
@@ -342,7 +348,12 @@ class ExecutionEngine:
         worker_id: str,
         model_summaries: list[dict[str, Any]],
     ) -> WorkerResult:
-        worker = Worker(worker_id=worker_id, workspace=self._workspace, llm=self._llm)
+        worker = Worker(
+            worker_id=worker_id,
+            workspace=self._workspace,
+            llm=self._llm,
+            llm_timeout_seconds=self._worker_llm_timeout_seconds,
+        )
         command = self._command_for_step(step)
         await self._emit_route(
             task,

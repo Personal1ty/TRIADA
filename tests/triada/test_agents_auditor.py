@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
@@ -85,6 +86,11 @@ class StringSummaryProvider:
             "thinking_summary_delta": "Executed echo command to confirm FixMost corp-coder connected.",
             "answer": {"status": "ready"},
         }
+
+
+class HangingWorkerProvider:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        await asyncio.Event().wait()
 
 
 @pytest.mark.asyncio
@@ -349,6 +355,27 @@ async def test_worker_normalizes_string_model_summary_delta(tmp_path):
         "Executed echo command to confirm FixMost corp-coder connected."
     )
     assert result.model_thinking_summary_delta["stage"] == "execution"
+
+
+@pytest.mark.asyncio
+async def test_worker_fails_when_model_preparation_times_out(tmp_path):
+    result = await Worker(
+        worker_id="worker-1",
+        workspace=tmp_path,
+        llm=HangingWorkerProvider(),
+        llm_timeout_seconds=0.01,
+    ).run_step(
+        task_id="task-1",
+        step_id="step-1",
+        title="Echo current step",
+        allowed_tools=["echo"],
+        command=["echo", "hello"],
+    )
+
+    assert result.status == "failed"
+    assert result.validation_results[0].check_name == "llm_prepare_timeout"
+    assert "timed out after 0.01 seconds" in result.errors[0]
+    assert result.tool_results == []
 
 
 @pytest.mark.asyncio

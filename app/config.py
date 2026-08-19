@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     llm_config_path: str = ".triada/secrets/llm_config.enc"
     llm_secret_key_path: str = ".triada/secrets/llm_config.key"
     shell_timeout_seconds: int = Field(default=60, ge=1, le=3600)
+    worker_llm_timeout_seconds: float = Field(default=60.0, gt=0, le=3600)
     max_tool_output_bytes: int = Field(default=65536, ge=1024)
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import uuid4
 
 import pytest
@@ -43,6 +44,25 @@ async def test_task_service_rejects_invalid_terminal_transition():
 class UnavailableLLM:
     async def complete_json(self, prompt: str, *, schema_name: str):
         raise RuntimeError("connection refused")
+
+
+class WorkerHangingLLM:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        if schema_name == "plan":
+            return {
+                "answer": {
+                    "steps": [
+                        {
+                            "id": "step-1",
+                            "title": "Echo",
+                            "description": "hello",
+                            "allowed_tools": ["shell"],
+                            "command": ["echo", "hello"],
+                        }
+                    ]
+                }
+            }
+        await asyncio.Event().wait()
 
 
 class AgentSummaryLLM:
@@ -377,6 +397,26 @@ async def test_execution_engine_runs_multiple_model_planned_steps(tmp_path):
         ["sed", "-n", "1,5p", "README.md"],
     ]
     assert [event["payload"]["exit_code"] for event in tool_events] == [0, 0]
+
+
+@pytest.mark.asyncio
+async def test_task_service_marks_task_failed_when_worker_model_times_out(tmp_path):
+    emitter = MemoryEmitter()
+    llm = WorkerHangingLLM()
+    engine = ExecutionEngine(
+        emitter=emitter,
+        workspace=tmp_path,
+        orchestrator=Orchestrator(llm),
+        worker_llm_timeout_seconds=0.01,
+    )
+    service = TaskService(emitter=emitter, execution_engine=engine)
+    task = await service.create_task(goal="Echo", allowed_tools=["shell"])
+
+    failed = await service.run_task_once(task.id)
+
+    assert failed.status == "failed"
+    assert any(event["event_type"] == "worker_step_failed" for event in emitter.events)
+    assert emitter.events[-1]["event_type"] == "task_failed"
 
 
 @pytest.mark.asyncio

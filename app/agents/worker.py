@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 import shutil
 
@@ -44,11 +45,19 @@ class WorkerResult(BaseModel):
 
 
 class Worker:
-    def __init__(self, worker_id: str, workspace: str | Path, llm=None, role: str = "worker") -> None:
+    def __init__(
+        self,
+        worker_id: str,
+        workspace: str | Path,
+        llm=None,
+        role: str = "worker",
+        llm_timeout_seconds: float = 60.0,
+    ) -> None:
         self.worker_id = worker_id
         self.workspace = Path(workspace).resolve()
         self.llm = llm
         self.role = role
+        self.llm_timeout_seconds = llm_timeout_seconds
 
     async def run_step(
         self,
@@ -85,14 +94,36 @@ class Worker:
                 f"{' '.join(command)} is not supported as a safe read-only command",
             )
 
-        model_response = await self._prepare_with_model(
-            task_id=task_id,
-            step_id=step_id,
-            title=title,
-            allowed_tools=allowed_tools,
-            command=command,
-            risk_policy=risk_policy,
-        )
+        try:
+            model_response = await asyncio.wait_for(
+                self._prepare_with_model(
+                    task_id=task_id,
+                    step_id=step_id,
+                    title=title,
+                    allowed_tools=allowed_tools,
+                    command=command,
+                    risk_policy=risk_policy,
+                ),
+                timeout=self.llm_timeout_seconds,
+            )
+        except TimeoutError:
+            return self._failed_before_tool(
+                task_id,
+                step_id,
+                title,
+                command,
+                f"LLM preparation timed out after {self.llm_timeout_seconds:g} seconds",
+                check_name="llm_prepare_timeout",
+            )
+        except Exception as exc:
+            return self._failed_before_tool(
+                task_id,
+                step_id,
+                title,
+                command,
+                f"LLM preparation failed: {exc}",
+                check_name="llm_prepare",
+            )
         request = ToolRequest(
             command=command,
             working_dir=self.workspace,
@@ -338,4 +369,32 @@ class Worker:
             ],
             errors=[error],
             recommended_next_action="request_allowed_tool_or_change_step",
+        )
+
+    def _failed_before_tool(
+        self,
+        task_id: str,
+        step_id: str,
+        title: str,
+        command: list[str],
+        error: str,
+        *,
+        check_name: str,
+    ) -> WorkerResult:
+        return WorkerResult(
+            task_id=task_id,
+            step_id=step_id,
+            worker_id=self.worker_id,
+            status="failed",
+            summary=f"{title} failed before tool execution.",
+            commands=[command],
+            validation_results=[
+                ValidationResultRecord(
+                    check_name=check_name,
+                    passed=False,
+                    message=error,
+                )
+            ],
+            errors=[error],
+            recommended_next_action="retry_with_bounded_llm_request",
         )
