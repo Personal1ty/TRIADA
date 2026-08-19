@@ -56,6 +56,10 @@ stream deadline. Это важно потому, что transport read timeout �
 частичные deltas. Deadline применяется и к ожиданию первого/следующего chunk,
 поэтому silent upstream тоже завершается.
 
+Если клиентский запрос `run_once` отменяется до завершения execution,
+`TaskService` перехватывает cancellation и добавляет `task_cancelled` с причиной
+`execution_cancelled`, чтобы persisted task не оставался в `running`.
+
 Timeout planning публикует `llm_unavailable` и завершает задачу как `blocked`.
 Timeout auditor публикует `audit_failed`, формирует FAIL verdict и завершает
 задачу как `failed`. Ни один из этих случаев не должен оставлять task в
