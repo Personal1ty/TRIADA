@@ -66,6 +66,7 @@ def create_app(testing: bool = False, database_url: str | None = None) -> FastAP
         if active_contract is None:
             active_contract = default_contract
         execution_engine.set_swarm_contract(active_contract)
+        await task_service.recover_orphaned_tasks()
         try:
             yield
         finally:

@@ -60,6 +60,11 @@ Timeout auditor публикует `audit_failed`, формирует FAIL verdi
 `run_once`; если зависнет сетевой клиент или другой участок execution flow,
 публикуется `task_timeout`, а задача переходит в `timed_out`.
 
+При старте процесса `TaskService` также закрывает persisted-задачи, оставшиеся
+в `running` после перезапуска API: они переходят в `timed_out`, в metadata
+фиксируется `recovery.reason=process_restart`, а в append-only trail добавляется
+`task_recovered`. Это предотвращает вечные orphaned-записи в Observatory UI.
+
 Каждый worker сначала получает публичную модельную подготовку шага, затем
 запускает allowlisted tool. Orchestrator не выполняет инструменты напрямую,
 Auditor не меняет исходные audit events.

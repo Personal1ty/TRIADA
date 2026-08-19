@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from uuid import uuid4
 
 import pytest
@@ -40,6 +41,22 @@ async def test_task_service_rejects_invalid_terminal_transition():
 
     with pytest.raises(InvalidTaskTransition, match="completed -> completed"):
         await service.run_task_once(task.id)
+
+
+@pytest.mark.asyncio
+async def test_task_service_recovers_persisted_running_task_after_process_restart():
+    emitter = MemoryEmitter()
+    service = TaskService(emitter=emitter)
+    task = await service.create_task(goal="Orphaned run")
+    service._tasks[task.id] = replace(task, status="running")
+
+    recovered = await service.recover_orphaned_tasks()
+
+    assert [item.id for item in recovered] == [task.id]
+    assert recovered[0].status == "timed_out"
+    assert recovered[0].metadata["recovery"]["reason"] == "process_restart"
+    assert emitter.events[-1]["event_type"] == "task_recovered"
+    assert emitter.events[-1]["payload"]["status"] == "timed_out"
 
 
 class UnavailableLLM:

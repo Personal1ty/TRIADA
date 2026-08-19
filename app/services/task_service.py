@@ -235,6 +235,37 @@ class TaskService:
             payload={"status": final_status},
         )
 
+    async def recover_orphaned_tasks(self) -> list[TaskRecord]:
+        """Close runs that survived persistence but not the process that owned them."""
+        orphaned = await self.list_tasks(status="running")
+        recovered: list[TaskRecord] = []
+        for task in orphaned:
+            self._ensure_transition(task.status, "timed_out")
+            metadata = deepcopy(task.metadata)
+            metadata["recovery"] = {
+                "reason": "process_restart",
+                "previous_status": task.status,
+                "recovered_at": datetime.now(UTC).isoformat(),
+            }
+            updated = replace(
+                task,
+                status="timed_out",
+                metadata=metadata,
+                updated_at=datetime.now(UTC),
+            )
+            await self._emit(
+                updated,
+                "task_recovered",
+                {
+                    "status": "timed_out",
+                    "reason": "process_restart",
+                    "previous_status": "running",
+                },
+            )
+            await self._save(updated)
+            recovered.append(updated)
+        return recovered
+
     async def mark_task_completed_without_execution(self, task_id: UUID | str) -> TaskRecord:
         return await self._transition_task(
             task_id,
