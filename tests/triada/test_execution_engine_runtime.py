@@ -100,6 +100,12 @@ class CancelledExecutionEngine:
         raise asyncio.CancelledError
 
 
+class ShortExecutionEngine:
+    async def run_once(self, task):
+        await asyncio.sleep(0.01)
+        return "completed"
+
+
 @pytest.mark.asyncio
 async def test_task_service_closes_run_when_execution_is_cancelled():
     emitter = MemoryEmitter()
@@ -114,6 +120,18 @@ async def test_task_service_closes_run_when_execution_is_cancelled():
     assert cancelled.status == "cancelled"
     assert emitter.events[-1]["event_type"] == "task_cancelled"
     assert emitter.events[-1]["payload"]["reason"] == "execution_cancelled"
+
+
+@pytest.mark.asyncio
+async def test_task_service_can_start_background_run_without_http_request_lifetime():
+    service = TaskService(execution_engine=ShortExecutionEngine())
+    task = await service.create_task(goal="Background run")
+
+    accepted = await service.start_task_once(task.id)
+    await asyncio.sleep(0.03)
+
+    assert accepted.status == "running"
+    assert (await service.get_task(task.id)).status == "completed"
 
 
 class HangingExecutionEngine:

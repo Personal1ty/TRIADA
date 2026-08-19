@@ -148,7 +148,7 @@ async def test_get_local_swarm_ui():
     assert 'window.location.protocol === "file:"' in response.text
     assert "http://127.0.0.1:8000/ui" in response.text
     assert "/v1/swarm/contracts" in response.text
-    assert "/run_once" in response.text
+    assert "/run_async" in response.text
     runs_view = response.text.partition('id="runs-view"')[2].partition('id="thinking-view"')[0]
     assert 'id="graph"' in runs_view
     assert 'id="events"' in runs_view

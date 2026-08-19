@@ -72,6 +72,7 @@ class TaskService:
             else get_settings().task_execution_timeout_seconds
         )
         self._tasks: dict[UUID, TaskRecord] = {}
+        self._background_runs: dict[UUID, asyncio.Task[TaskRecord]] = {}
 
     async def create_task(
         self,
@@ -241,6 +242,28 @@ class TaskService:
             event_type=final_event_type,
             payload={"status": final_status},
         )
+
+    async def start_task_once(self, task_id: UUID | str) -> TaskRecord:
+        """Start execution independently of the caller's HTTP request lifetime."""
+        task = await self._require_task(task_id)
+        if task.status == "running":
+            return task
+        self._ensure_transition(task.status, "running")
+        normalized_id = self._normalize_task_id(task_id)
+        runner = self._background_runs.get(normalized_id)
+        if runner is not None and not runner.done():
+            return replace(task, status="running")
+        runner = asyncio.create_task(self.run_task_once(normalized_id))
+        self._background_runs[normalized_id] = runner
+
+        def forget_finished_run(done: asyncio.Task[TaskRecord]) -> None:
+            if self._background_runs.get(normalized_id) is done:
+                self._background_runs.pop(normalized_id, None)
+            if not done.cancelled():
+                done.exception()
+
+        runner.add_done_callback(forget_finished_run)
+        return replace(task, status="running", updated_at=datetime.now(UTC))
 
     async def recover_orphaned_tasks(self) -> list[TaskRecord]:
         """Close runs that survived persistence but not the process that owned them."""

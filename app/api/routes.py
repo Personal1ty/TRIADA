@@ -901,6 +901,17 @@ async def run_task_once(task_id: UUID, request: Request) -> TaskActionResponse:
     return _task_action_response(task, "run_once")
 
 
+@router.post("/tasks/{task_id}/run_async", response_model=TaskActionResponse)
+async def run_task_async(task_id: UUID, request: Request) -> TaskActionResponse:
+    try:
+        task = await request.app.state.task_service.start_task_once(task_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="task not found") from exc
+    except InvalidTaskTransition as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _task_action_response(task, "run_async")
+
+
 async def _get_task_or_404(task_id: UUID, request: Request):
     task = await request.app.state.task_service.get_task(task_id)
     if task is None:

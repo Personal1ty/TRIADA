@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart TD
-    H[Human / UI] --> TS[TaskService]
+H[Human / UI] --> TS[TaskService]
     TS -->|task_started| OE[ExecutionEngine]
     OE --> O[Orchestrator]
     O -->|ExecutionContract proposal| PG[Policy Gate]
@@ -28,6 +28,11 @@ flowchart TD
     C --> TS
     TS --> F[Final task status]
 ```
+
+Observatory запускает `POST /v1/tasks/{task_id}/run_async`: endpoint только
+принимает run и возвращает `running`, а TaskService удерживает background task
+до terminal status. UI наблюдает результат через polling audit trail, поэтому
+жизненный цикл LLM больше не зависит от HTTP-запроса браузера.
 
 Балансировщик теперь получает `resource_budget` из effective
 `ExecutionContract`. Системный `SwarmContract` по-прежнему задаёт верхние

@@ -2323,7 +2323,7 @@
       taskStatus.textContent = `Running ${currentTaskId}...`;
       try {
         startEventPolling();
-        const result = await postJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/run_once`, {});
+        const result = await postJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/run_async`, {});
         taskStatus.textContent = `Task ${result.task_id}: ${result.status}`;
         await Promise.all([loadTask(currentTaskId), loadRecentTasks(), loadApprovalQueue()]);
       } catch (error) {
