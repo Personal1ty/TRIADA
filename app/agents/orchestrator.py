@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.contracts.execution import ExecutionContract, WriteMode
 from app.schemas.enums import RiskPolicy
 
 
@@ -29,6 +30,7 @@ class TaskPlan(BaseModel):
     output_contract: StepContract = Field(default_factory=StepContract)
     risk_policy: RiskPolicy = RiskPolicy.READ_ONLY
     requires_approval: bool = False
+    execution_contract: ExecutionContract = Field(default_factory=ExecutionContract)
     model_thinking_summary_delta: dict[str, Any] | None = None
     model_message: dict[str, Any] = Field(default_factory=dict)
     raw_reasoning_content: str | None = Field(default=None, exclude=True)
@@ -92,6 +94,7 @@ class Orchestrator:
             output_contract=StepContract(required_checks=acceptance_criteria),
             risk_policy=risk_policy,
             requires_approval=requires_approval,
+            execution_contract=self._build_execution_contract(steps, requires_approval),
             model_thinking_summary_delta=self._model_summary_delta(provider_response),
             model_message=provider_response.get("model_message", {})
             if isinstance(provider_response, dict)
@@ -99,6 +102,41 @@ class Orchestrator:
             raw_reasoning_content=provider_response.get("raw_reasoning_content")
             if isinstance(provider_response, dict)
             else None,
+        )
+
+    def _build_execution_contract(
+        self,
+        steps: list[PlanStep],
+        requires_approval: bool,
+    ) -> ExecutionContract:
+        tools: list[str] = []
+        allowed_paths: list[str] = []
+        expected_artifacts: list[str] = []
+        write_mode = WriteMode.NONE
+        for step in steps:
+            for tool in step.allowed_tools:
+                if tool not in tools:
+                    tools.append(tool)
+            expected_artifacts.extend(step.output_contract.required_artifacts)
+            command = step.command
+            if not command:
+                continue
+            if command[0] in {"write_file", "apply_patch"}:
+                write_mode = WriteMode.CREATE_FILE if command[0] == "write_file" else WriteMode.PATCH
+                if len(command) > 1 and command[1] not in allowed_paths:
+                    allowed_paths.append(command[1])
+            elif command[0] in {"mkdir", "touch"}:
+                write_mode = WriteMode.CREATE_FILE
+                for path in command[1:]:
+                    if not path.startswith("-") and path not in allowed_paths:
+                        allowed_paths.append(path)
+        return ExecutionContract(
+            allowed_tools=tools,
+            allowed_paths=allowed_paths,
+            write_mode=write_mode,
+            expected_artifacts=expected_artifacts,
+            output_schema="human_review_packet",
+            approval_required=requires_approval or write_mode != WriteMode.NONE,
         )
 
     async def _provider_response(self, goal: str, allowed_tools: list[str]) -> dict[str, Any]:

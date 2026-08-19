@@ -7,8 +7,10 @@ flowchart TD
     H[Human / UI] --> TS[TaskService]
     TS -->|task_started| OE[ExecutionEngine]
     OE --> O[Orchestrator]
-    O -->|bounded plan| OE
-    OE --> S[BoundedStepScheduler]
+    O -->|ExecutionContract proposal| PG[Policy Gate]
+    PG -->|effective contract| OE
+    OE --> B[Balancer]
+    B --> S[BoundedStepScheduler]
     S --> W1[Worker 1]
     S --> W2[Worker 2]
     S --> W3[Worker 3]
@@ -27,6 +29,11 @@ flowchart TD
     TS --> F[Final task status]
 ```
 
+Балансировщик теперь получает `resource_budget` из effective
+`ExecutionContract`. Системный `SwarmContract` по-прежнему задаёт верхние
+границы пар и concurrency; контракт Orchestrator может только сузить работу в
+этих границах.
+
 Каждый worker сначала получает публичную модельную подготовку шага, затем
 запускает allowlisted tool. Orchestrator не выполняет инструменты напрямую,
 Auditor не меняет исходные audit events.
@@ -38,10 +45,16 @@ sequenceDiagram
     participant TS as TaskService
     participant OE as ExecutionEngine
     participant W as Worker
+    participant PG as Policy Gate
+    participant B as Balancer
     participant LLM as LLM provider
     participant Audit as Audit repository
 
     TS->>OE: run_once(task)
+    OE->>PG: validate ExecutionContract
+    PG-->>OE: effective contract or rejection
+    OE->>B: allocate within contract budget
+    B-->>OE: selected workers / concurrency
     OE->>W: run_step(step)
     W->>LLM: complete_json(worker_result)
     Note over W,LLM: asyncio.wait_for(timeout=WORKER_LLM_TIMEOUT_SECONDS)

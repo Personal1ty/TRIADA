@@ -10,6 +10,7 @@ from app.agents.auditor import Auditor
 from app.agents.orchestrator import LLMUnavailableError, Orchestrator, PlanStep, TaskPlan
 from app.agents.worker import Worker, WorkerResult
 from app.config import get_settings
+from app.contracts.execution import ResourceBudgetContract
 from app.contracts.loader import load_default_swarm_contract
 from app.contracts.swarm import AgentEndpoint, RouteMapEntry, SwarmContract
 from app.events.models import ToolExecutionRecord
@@ -22,6 +23,7 @@ from app.schemas.enums import AgentRole, AuditVerdictValue, DeltaSource
 from app.services.scheduler import BoundedStepScheduler
 from app.services.resource_budget import ResourceBudget, ResourceUsage, allocate_work
 from app.services.swarm_scaling import choose_scaling
+from app.services.policy_gate import PolicyContractError, PolicyGate
 
 
 class ExecutionEngine:
@@ -52,6 +54,7 @@ class ExecutionEngine:
             else get_settings().worker_llm_timeout_seconds
         )
         self._swarm_contract = load_default_swarm_contract()
+        self._policy_gate = PolicyGate()
 
     def set_swarm_contract(self, contract: SwarmContract) -> None:
         self._swarm_contract = contract
@@ -92,6 +95,16 @@ class ExecutionEngine:
                     },
                 )
                 return "blocked"
+        try:
+            plan = self._apply_execution_contract(task, plan)
+        except PolicyContractError as exc:
+            await self._emit(
+                task,
+                "execution_contract_rejected",
+                {"status": "blocked", "reason": str(exc)},
+                agent_id="orchestrator",
+            )
+            return "blocked"
         await self._emit_plan_created(task, plan)
         model_summaries: list[dict[str, Any]] = []
         if plan.model_thinking_summary_delta:
@@ -277,8 +290,7 @@ class ExecutionEngine:
         if not jobs:
             return []
 
-        raw_budget = getattr(task, "metadata", {}).get("resource_budget", {})
-        budget = ResourceBudget(**raw_budget) if isinstance(raw_budget, dict) else ResourceBudget()
+        budget = ResourceBudget(**plan.execution_contract.resource_budget.model_dump())
         admitted_jobs: list[tuple[str, PlanStep]] = []
         for job in jobs:
             decision = allocate_work(
@@ -339,6 +351,32 @@ class ExecutionEngine:
             )
 
         return await scheduler.run(jobs, worker_key=lambda job: job[0], run=run_job)
+
+    def _apply_execution_contract(self, task: Any, plan: TaskPlan) -> TaskPlan:
+        raw_budget = getattr(task, "metadata", {}).get("resource_budget", {})
+        task_budget = (
+            ResourceBudgetContract.model_validate(raw_budget)
+            if isinstance(raw_budget, dict)
+            else ResourceBudgetContract()
+        )
+        proposal = plan.execution_contract.model_copy(update={"resource_budget": task_budget})
+        effective_contract = self._policy_gate.enforce(
+            proposal,
+            task_allowed_tools=task.allowed_tools,
+            risk_policy=plan.risk_policy,
+        )
+        requires_approval = plan.requires_approval or effective_contract.approval_required
+        steps = [
+            step.model_copy(update={"requires_approval": requires_approval})
+            for step in plan.steps
+        ]
+        return plan.model_copy(
+            update={
+                "execution_contract": effective_contract,
+                "requires_approval": requires_approval,
+                "steps": steps,
+            }
+        )
 
     async def _run_worker_step(
         self,
@@ -478,6 +516,7 @@ class ExecutionEngine:
             {
                 "risk_policy": plan.risk_policy.value,
                 "requires_approval": plan.requires_approval,
+                "execution_contract": plan.execution_contract.model_dump(mode="json"),
                 "steps": [step.model_dump(mode="json") for step in plan.steps],
             },
         )
