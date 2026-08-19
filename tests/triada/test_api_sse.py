@@ -128,6 +128,20 @@ async def test_playbook_replay_and_failure_catalog_are_available():
 
 
 @pytest.mark.asyncio
+async def test_research_recommendations_expose_heuristics_and_adapter():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Research recommendations"})
+        task_id = created.json()["task_id"]
+        await client.post(f"/v1/tasks/{task_id}/failures", json={"category": "timeout", "symptom": "Slow", "cause": "Budget", "mitigation": "Bound time"})
+        await client.post(f"/v1/tasks/{task_id}/usage", json={"agent_role": "worker", "tokens": 1200, "estimated_cost": 1.2})
+        recommendations = await client.get(f"/v1/tasks/{task_id}/research/recommendations")
+
+    assert recommendations.status_code == 200
+    assert recommendations.json()["heuristics"][0]["rule"] == "timeout_guard"
+    assert recommendations.json()["adapter"]["adapter"] == "research"
+
+
+@pytest.mark.asyncio
 async def test_task_budget_endpoint_exposes_configured_budget():
     async with _client() as client:
         created = await client.post(

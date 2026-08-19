@@ -56,6 +56,7 @@ from app.schemas.tasks import (
 )
 from app.services.task_service import InvalidTaskTransition
 from app.research.plan import build_research_plan
+from app.research.heuristics import build_research_adapter, derive_decision_heuristics
 
 router = APIRouter(prefix="/v1")
 
@@ -567,6 +568,23 @@ async def add_failure_pattern(task_id: UUID, payload: FailurePatternRequest, req
 async def list_failure_patterns(request: Request) -> dict:
     events = await request.app.state.event_repository.list_events_by_type("failure_pattern_recorded")
     return failure_catalog_from_events(events)
+
+
+@router.get("/tasks/{task_id}/research/recommendations")
+async def get_research_recommendations(task_id: UUID, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    failures = failure_catalog_from_events(events)["patterns"]
+    usage = resource_usage_from_events(events)
+    plan = research_plan_from_events(events) or {}
+    parameters = plan.get("parameter_catalog") or ["risk", "latency", "parallelism"]
+    heuristics = derive_decision_heuristics(failures=failures, usage=usage)
+    return {
+        "task_id": str(task.id),
+        "trace_id": str(task.trace_id),
+        "heuristics": heuristics,
+        "adapter": build_research_adapter(question=plan.get("question") or task.goal, parameters=parameters),
+    }
 
 
 @router.get("/tasks/{task_id}/checkpoints")

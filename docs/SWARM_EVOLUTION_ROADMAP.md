@@ -66,6 +66,8 @@ Playbook v1 now records versioned runs with quality and resource outcomes so
 future playbooks can be compared and improved from measured executions.
 Playbook templates now define reusable stages, capability scope, and acceptance
 criteria as append-only versioned contracts.
+Replay requests now retain source-run lineage, and failure patterns are
+deduplicated into a reusable catalog with symptom, cause, and mitigation.
 
 Gate: a research run produces a reproducible evidence map and explicit
 uncertainty instead of only a final narrative.

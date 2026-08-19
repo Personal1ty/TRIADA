@@ -814,6 +814,13 @@
           <ul class="thinking-list" id="failure-catalog-list"></ul>
         </div>
       </section>
+      <section id="decision-heuristics">
+        <h2>Decision Heuristics</h2>
+        <div class="panel-body">
+          <p class="status" id="decision-heuristics-status">Load a task to inspect recommendations.</p>
+          <ul class="thinking-list" id="decision-heuristics-list"></ul>
+        </div>
+      </section>
     </div>
 
     <div class="stack tab-panel" id="raw-reasoning-view" hidden>
@@ -1064,6 +1071,8 @@
     const playbookTemplatesList = document.getElementById("playbook-templates-list");
     const failureCatalogStatus = document.getElementById("failure-catalog-status");
     const failureCatalogList = document.getElementById("failure-catalog-list");
+    const decisionHeuristicsStatus = document.getElementById("decision-heuristics-status");
+    const decisionHeuristicsList = document.getElementById("decision-heuristics-list");
     const eventsStatus = document.getElementById("events-status");
     const eventFeed = document.getElementById("event-feed");
     const eventAutoRefresh = document.getElementById("event-auto-refresh");
@@ -1701,6 +1710,14 @@
       }
     }
 
+    function renderDecisionHeuristics(payload) {
+      const heuristics = Array.isArray(payload?.heuristics) ? payload.heuristics : [];
+      decisionHeuristicsStatus.textContent = `${heuristics.length} recommendations · adapter ${payload?.adapter?.adapter || "none"}`;
+      decisionHeuristicsList.innerHTML = heuristics.map((item) =>
+        `<li><span class="pill">${escapeHtml(item.priority || "rule")}</span> ${escapeHtml(item.recommendation || "")} · ${escapeHtml(item.reason || "")}</li>`
+      ).join("") || '<li class="status">No decision heuristics triggered.</li>';
+    }
+
     async function loadMemory(taskId = currentTaskId) {
       if (!taskId) return;
       const query = memoryQuery.value.trim();
@@ -2111,7 +2128,7 @@
       try {
         const task = await fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}`);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
-        const [graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan, researchEvidence, parameterInfluence, resourceUsage, playbookRuns] = await Promise.all([
+        const [graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan, researchEvidence, parameterInfluence, resourceUsage, playbookRuns, recommendations] = await Promise.all([
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/swarm-graph`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/thinking-summary`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/inspector`),
@@ -2124,7 +2141,8 @@
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research/evidence`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research/influence`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/usage`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/playbook/runs`)
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/playbook/runs`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research/recommendations`)
         ]);
         renderGraph(graph);
         renderThinking(thinking);
@@ -2135,6 +2153,7 @@
         renderParameterInfluence(parameterInfluence);
         renderResourceUsage(resourceUsage);
         renderPlaybookRuns(playbookRuns);
+        renderDecisionHeuristics(recommendations);
         const events = await loadEvents(currentTaskId);
         renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory);
         if (terminalStatuses.has(task.status)) {
@@ -2161,7 +2180,7 @@
       thinkingStatus.textContent = `Loading ${thinkingUrl}...`;
       thinkingList.innerHTML = "";
       try {
-        const [task, graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan, researchEvidence, parameterInfluence, resourceUsage, playbookRuns] = await Promise.all([
+        const [task, graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan, researchEvidence, parameterInfluence, resourceUsage, playbookRuns, recommendations] = await Promise.all([
           fetchJson(taskUrl),
           fetchJson(graphUrl),
           fetchJson(thinkingUrl),
@@ -2176,6 +2195,7 @@
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/research/influence`),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/usage`),
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/playbook/runs`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/research/recommendations`),
         ]);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
         renderGraph(graph);
@@ -2187,6 +2207,7 @@
         renderParameterInfluence(parameterInfluence);
         renderResourceUsage(resourceUsage);
         renderPlaybookRuns(playbookRuns);
+        renderDecisionHeuristics(recommendations);
         const events = await loadEvents(taskId);
         renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory);
         if (!terminalStatuses.has(task.status)) {
