@@ -142,6 +142,18 @@ async def test_research_recommendations_expose_heuristics_and_adapter():
 
 
 @pytest.mark.asyncio
+async def test_resource_economics_endpoint_exposes_utilization():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Measure economics", "resource_budget": {"max_tokens": 1000, "max_duration_ms": 2000, "max_parallel_branches": 4}})
+        task_id = created.json()["task_id"]
+        await client.post(f"/v1/tasks/{task_id}/usage", json={"agent_role": "worker", "tokens": 500, "duration_ms": 1000, "branches": 2})
+        economics = await client.get(f"/v1/tasks/{task_id}/economics")
+
+    assert economics.status_code == 200
+    assert economics.json()["utilization"]["tokens"] == 0.5
+
+
+@pytest.mark.asyncio
 async def test_task_budget_endpoint_exposes_configured_budget():
     async with _client() as client:
         created = await client.post(

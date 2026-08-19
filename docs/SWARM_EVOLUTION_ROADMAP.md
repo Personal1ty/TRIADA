@@ -74,6 +74,8 @@ Memory notes now support expiry timestamps, with stale-knowledge counts in the
 graph projection and Observatory.
 ResourceBudget now includes a wall-clock duration limit and explicit duration
 stop reason.
+Economics projection now combines configured limits and usage into utilization,
+sufficiency, and waste signals.
 
 Gate: a research run produces a reproducible evidence map and explicit
 uncertainty instead of only a final narrative.

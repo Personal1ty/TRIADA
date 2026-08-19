@@ -302,6 +302,8 @@ Core endpoints under `/v1`:
   notes as stale and expose `stale_count` for operator review.
 - Resource budgets now also support `max_duration_ms`; allocation decisions
   report `duration_exhausted` alongside branch, retry, and token stop reasons.
+- `GET /v1/tasks/{task_id}/economics` combines budget and usage into token,
+  duration, and branch utilization plus sufficiency/waste signals.
 - `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
   to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
   deterministic token-overlap ranking by default. Set

@@ -210,6 +210,21 @@ def resource_usage_from_events(events: list[Any]) -> dict:
     return {"summary": summary, "by_role": by_role, "records": records}
 
 
+def resource_economics_from_events(events: list[Any], *, configured_budget: Mapping | None = None) -> dict:
+    usage = resource_usage_from_events(events)["summary"]
+    allocations = [event.payload for event in events if event.event_type == "resource_allocation_decided" and isinstance(event.payload, Mapping)]
+    budget = dict(allocations[-1].get("budget", {})) if allocations else dict(configured_budget or {})
+    limits = {"tokens": budget.get("max_tokens", 0), "duration_ms": budget.get("max_duration_ms", 0), "parallel_branches": budget.get("max_parallel_branches", 0)}
+    values = {"tokens": usage["tokens"], "duration_ms": usage["duration_ms"], "parallel_branches": usage["branches"]}
+    utilization = {key: round(values[key] / limits[key], 4) if limits[key] else 0.0 for key in limits}
+    return {
+        "budget": budget,
+        "usage": usage,
+        "utilization": utilization,
+        "signals": {"sufficient": all(value <= 1 for value in utilization.values()), "waste": bool(usage["record_count"] and all(value < 0.25 for value in utilization.values() if value is not None))},
+    }
+
+
 def playbook_runs_from_events(events: list[Any]) -> dict:
     runs = []
     for event in events:

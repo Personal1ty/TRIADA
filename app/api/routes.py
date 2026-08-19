@@ -20,6 +20,7 @@ from app.audit.projection import (
     playbook_replays_from_events,
     failure_catalog_from_events,
     resource_usage_from_events,
+    resource_economics_from_events,
     research_evidence_from_events,
     research_plan_from_events,
     resource_budget_from_events,
@@ -488,6 +489,14 @@ async def get_task_budget(task_id: UUID, request: Request) -> dict:
         "status": task.status,
         **projection,
     }
+
+
+@router.get("/tasks/{task_id}/economics")
+async def get_task_economics(task_id: UUID, request: Request) -> dict:
+    task = await _get_task_or_404(task_id, request)
+    events = await request.app.state.event_repository.list_events(task.trace_id)
+    configured = task.metadata.get("resource_budget") if isinstance(task.metadata, Mapping) else None
+    return {"task_id": str(task.id), "trace_id": str(task.trace_id), **resource_economics_from_events(events, configured_budget=configured if isinstance(configured, Mapping) else None)}
 
 
 @router.post("/tasks/{task_id}/usage", status_code=status.HTTP_201_CREATED)
