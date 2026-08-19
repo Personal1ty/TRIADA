@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.contracts.execution import ExecutionContract, WriteMode
+from app.contracts.research import ResearchContract, ResearchMode
 from app.schemas.enums import RiskPolicy
 
 
@@ -31,6 +32,7 @@ class TaskPlan(BaseModel):
     risk_policy: RiskPolicy = RiskPolicy.READ_ONLY
     requires_approval: bool = False
     execution_contract: ExecutionContract = Field(default_factory=ExecutionContract)
+    research_contract: ResearchContract = Field(default_factory=ResearchContract)
     model_thinking_summary_delta: dict[str, Any] | None = None
     model_message: dict[str, Any] = Field(default_factory=dict)
     raw_reasoning_content: str | None = Field(default=None, exclude=True)
@@ -95,6 +97,7 @@ class Orchestrator:
             risk_policy=risk_policy,
             requires_approval=requires_approval,
             execution_contract=self._build_execution_contract(steps, requires_approval),
+            research_contract=self._build_research_contract(goal, answer, acceptance_criteria),
             model_thinking_summary_delta=self._model_summary_delta(provider_response),
             model_message=provider_response.get("model_message", {})
             if isinstance(provider_response, dict)
@@ -103,6 +106,40 @@ class Orchestrator:
             if isinstance(provider_response, dict)
             else None,
         )
+
+    def _build_research_contract(
+        self,
+        goal: str,
+        answer: Any,
+        acceptance_criteria: list[str],
+    ) -> ResearchContract:
+        normalized = goal.lower()
+        research_terms = (
+            "research",
+            "analysis",
+            "analyze",
+            "architecture",
+            "исслед",
+            "анализ",
+            "архитектур",
+            "сравни",
+        )
+        if not any(term in normalized for term in research_terms):
+            return ResearchContract(acceptance_criteria=acceptance_criteria)
+        defaults = {
+            "mode": ResearchMode.RESEARCH,
+            "research_questions": [goal],
+            "depth": "standard",
+            "required_evidence": ["tool_execution", "audit_verdict"],
+            "required_artifacts": ["research_report"],
+            "output_schema": "research_report",
+            "min_tool_executions": 3,
+            "acceptance_criteria": acceptance_criteria,
+        }
+        proposed = answer.get("research_contract") if isinstance(answer, dict) else None
+        if isinstance(proposed, dict):
+            defaults.update(proposed)
+        return ResearchContract.model_validate(defaults)
 
     def _build_execution_contract(
         self,
@@ -152,6 +189,7 @@ class Orchestrator:
                 "For write_file use: [\"write_file\", \"relative/path\", \"file content\"].",
                 "For apply_patch use: [\"apply_patch\", \"relative/path\", \"old text\", \"new text\"].",
                 "Never use absolute paths or '..' in command arguments.",
+                "For research or architecture tasks also return answer.research_contract with research_questions, depth, required_evidence, required_artifacts, output_schema, and min_tool_executions.",
             ]
         )
         try:

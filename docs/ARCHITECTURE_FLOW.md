@@ -34,6 +34,16 @@ flowchart TD
 границы пар и concurrency; контракт Orchestrator может только сузить работу в
 этих границах.
 
+## Research run completion
+
+Для целей, которые Orchestrator распознаёт как research/analysis, создаётся
+`ResearchContract`. В нём фиксируются вопросы, глубина, минимальное количество
+tool evidence, обязательные артефакты и схема отчёта. `CompletionGate` проверяет
+этот контракт после Worker и Auditor. Поэтому успешная команда вроде `git
+status` сама по себе больше не может завершить архитектурное исследование:
+без `research_report` и достаточного evidence run получает
+`completion_gate_failed` и статус `failed`.
+
 Каждый worker сначала получает публичную модельную подготовку шага, затем
 запускает allowlisted tool. Orchestrator не выполняет инструменты напрямую,
 Auditor не меняет исходные audit events.

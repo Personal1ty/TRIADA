@@ -24,6 +24,7 @@ from app.services.scheduler import BoundedStepScheduler
 from app.services.resource_budget import ResourceBudget, ResourceUsage, allocate_work
 from app.services.swarm_scaling import choose_scaling
 from app.services.policy_gate import PolicyContractError, PolicyGate
+from app.services.completion_gate import CompletionGate
 
 
 class ExecutionEngine:
@@ -55,6 +56,7 @@ class ExecutionEngine:
         )
         self._swarm_contract = load_default_swarm_contract()
         self._policy_gate = PolicyGate()
+        self._completion_gate = CompletionGate()
 
     def set_swarm_contract(self, contract: SwarmContract) -> None:
         self._swarm_contract = contract
@@ -192,6 +194,27 @@ class ExecutionEngine:
                         agent_id=auditor_id,
                     )
             final_status = "retrying"
+
+        if final_status == "completed":
+            completion = self._completion_gate.evaluate(
+                plan.research_contract,
+                worker_results=worker_results,
+                tool_records=tool_records,
+                verdicts=verdicts,
+            )
+            if not completion.passed:
+                await self._emit(
+                    task,
+                    "completion_gate_failed",
+                    {
+                        "status": "failed",
+                        "reason": completion.reason,
+                        "missing_artifacts": completion.missing_artifacts,
+                        "missing_evidence": completion.missing_evidence,
+                    },
+                    agent_id="orchestrator",
+                )
+                final_status = "failed"
 
         if final_status == "blocked" or not tool_records:
             return final_status
@@ -517,6 +540,7 @@ class ExecutionEngine:
                 "risk_policy": plan.risk_policy.value,
                 "requires_approval": plan.requires_approval,
                 "execution_contract": plan.execution_contract.model_dump(mode="json"),
+                "research_contract": plan.research_contract.model_dump(mode="json"),
                 "steps": [step.model_dump(mode="json") for step in plan.steps],
             },
         )
