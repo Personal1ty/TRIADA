@@ -44,6 +44,17 @@ status` сама по себе больше не может завершить �
 без `research_report` и достаточного evidence run получает
 `completion_gate_failed` и статус `failed`.
 
+LLM boundaries имеют отдельные таймеры:
+
+- `ORCHESTRATOR_LLM_TIMEOUT_SECONDS` — planning;
+- `WORKER_LLM_TIMEOUT_SECONDS` — подготовка worker step;
+- `AUDITOR_LLM_TIMEOUT_SECONDS` — review evidence.
+
+Timeout planning публикует `llm_unavailable` и завершает задачу как `blocked`.
+Timeout auditor публикует `audit_failed`, формирует FAIL verdict и завершает
+задачу как `failed`. Ни один из этих случаев не должен оставлять task в
+`running`.
+
 Каждый worker сначала получает публичную модельную подготовку шага, затем
 запускает allowlisted tool. Orchestrator не выполняет инструменты напрямую,
 Auditor не меняет исходные audit events.

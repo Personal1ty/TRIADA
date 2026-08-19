@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.agents.orchestrator import Orchestrator
+from app.agents.auditor import Auditor
 from app.config import get_settings
 from app.llm.codex_bridge import CodexBridgeProvider
 from app.llm.runtime_config import LLMConfigService, LLMProviderConfig
@@ -63,6 +64,18 @@ class WorkerHangingLLM:
                 }
             }
         await asyncio.Event().wait()
+
+
+class PlanningHangingLLM:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        await asyncio.Event().wait()
+
+
+class AuditHangingLLM:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        if schema_name == "audit_verdict":
+            await asyncio.Event().wait()
+        return {"answer": {"status": "ready"}}
 
 
 class AgentSummaryLLM:
@@ -356,6 +369,43 @@ async def test_execution_engine_blocks_and_emits_llm_unavailable_when_provider_f
     unavailable = next(event for event in emitter.events if event["event_type"] == "llm_unavailable")
     assert unavailable["payload"]["status"] == "blocked"
     assert unavailable["payload"]["provider"] == "UnavailableLLM"
+
+
+@pytest.mark.asyncio
+async def test_task_service_exits_running_when_orchestrator_model_times_out(tmp_path):
+    emitter = MemoryEmitter()
+    engine = ExecutionEngine(
+        emitter=emitter,
+        workspace=tmp_path,
+        orchestrator=Orchestrator(PlanningHangingLLM(), llm_timeout_seconds=0.01),
+    )
+    service = TaskService(emitter=emitter, execution_engine=engine)
+    task = await service.create_task(goal="Inspect repository", allowed_tools=["git"])
+
+    blocked = await service.run_task_once(task.id)
+
+    assert blocked.status == "blocked"
+    assert any(event["event_type"] == "llm_unavailable" for event in emitter.events)
+
+
+@pytest.mark.asyncio
+async def test_task_service_exits_running_when_auditor_model_times_out(tmp_path):
+    emitter = MemoryEmitter()
+    llm = AuditHangingLLM()
+    engine = ExecutionEngine(
+        emitter=emitter,
+        workspace=tmp_path,
+        orchestrator=Orchestrator(llm),
+        auditor=Auditor(llm),
+        auditor_llm_timeout_seconds=0.01,
+    )
+    service = TaskService(emitter=emitter, execution_engine=engine)
+    task = await service.create_task(goal="Inspect repository", allowed_tools=["echo"])
+
+    failed = await service.run_task_once(task.id)
+
+    assert failed.status == "failed"
+    assert any(event["event_type"] == "audit_failed" for event in emitter.events)
 
 
 @pytest.mark.asyncio

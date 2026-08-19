@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from app.audit.validator import audit_claims, audit_tool_results
@@ -8,8 +9,9 @@ from app.tools.base import ToolResult
 
 
 class Auditor:
-    def __init__(self, llm: Any | None = None) -> None:
+    def __init__(self, llm: Any | None = None, llm_timeout_seconds: float = 60.0) -> None:
         self.llm = llm
+        self.llm_timeout_seconds = llm_timeout_seconds
 
     def audit_tool_results(
         self,
@@ -64,5 +66,8 @@ class Auditor:
             f"Tool results: {normalized_tool_results}\n"
             "Return JSON with a public thinking_summary_delta and answer."
         )
-        response = await self.llm.complete_json(prompt, schema_name="audit_verdict")
+        response = await asyncio.wait_for(
+            self.llm.complete_json(prompt, schema_name="audit_verdict"),
+            timeout=self.llm_timeout_seconds,
+        )
         return response if isinstance(response, dict) else {}

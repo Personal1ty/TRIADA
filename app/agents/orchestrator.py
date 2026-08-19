@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -43,8 +44,9 @@ class LLMUnavailableError(RuntimeError):
 
 
 class Orchestrator:
-    def __init__(self, llm: Any) -> None:
+    def __init__(self, llm: Any, llm_timeout_seconds: float = 60.0) -> None:
         self.llm = llm
+        self.llm_timeout_seconds = llm_timeout_seconds
 
     async def plan_task(
         self,
@@ -193,7 +195,14 @@ class Orchestrator:
             ]
         )
         try:
-            response = await self.llm.complete_json(prompt, schema_name="plan")
+            response = await asyncio.wait_for(
+                self.llm.complete_json(prompt, schema_name="plan"),
+                timeout=self.llm_timeout_seconds,
+            )
+        except TimeoutError:
+            raise LLMUnavailableError(
+                f"orchestrator LLM timed out after {self.llm_timeout_seconds:g} seconds"
+            ) from None
         except Exception as exc:
             raise LLMUnavailableError(str(exc)) from None
         return response if isinstance(response, dict) else {}

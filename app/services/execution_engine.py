@@ -13,7 +13,7 @@ from app.config import get_settings
 from app.contracts.execution import ResourceBudgetContract
 from app.contracts.loader import load_default_swarm_contract
 from app.contracts.swarm import AgentEndpoint, RouteMapEntry, SwarmContract
-from app.events.models import ToolExecutionRecord
+from app.events.models import AuditVerdict, ToolExecutionRecord
 from app.llm.codex_bridge import CodexBridgeProvider
 from app.llm.fake import FakeLLMProvider
 from app.llm.openai_compatible import OpenAICompatibleProvider
@@ -38,6 +38,8 @@ class ExecutionEngine:
         worker_id: str = "worker-1",
         llm_config_service: LLMConfigService | None = None,
         worker_llm_timeout_seconds: float | None = None,
+        orchestrator_llm_timeout_seconds: float | None = None,
+        auditor_llm_timeout_seconds: float | None = None,
     ) -> None:
         self._emitter = emitter
         self._workspace = Path(workspace).resolve()
@@ -54,6 +56,19 @@ class ExecutionEngine:
             if worker_llm_timeout_seconds is not None
             else get_settings().worker_llm_timeout_seconds
         )
+        settings = get_settings()
+        self._orchestrator_llm_timeout_seconds = (
+            orchestrator_llm_timeout_seconds
+            if orchestrator_llm_timeout_seconds is not None
+            else getattr(self._orchestrator, "llm_timeout_seconds", settings.orchestrator_llm_timeout_seconds)
+        )
+        self._auditor_llm_timeout_seconds = (
+            auditor_llm_timeout_seconds
+            if auditor_llm_timeout_seconds is not None
+            else getattr(self._auditor, "llm_timeout_seconds", settings.auditor_llm_timeout_seconds)
+        )
+        self._orchestrator.llm_timeout_seconds = self._orchestrator_llm_timeout_seconds
+        self._auditor.llm_timeout_seconds = self._auditor_llm_timeout_seconds
         self._swarm_contract = load_default_swarm_contract()
         self._policy_gate = PolicyGate()
         self._completion_gate = CompletionGate()
@@ -166,7 +181,11 @@ class ExecutionEngine:
             if final_status == "completed" and any(
                 verdict.verdict != AuditVerdictValue.PASS for _auditor_id, verdict in verdicts
             ):
-                final_status = "corrections_required"
+                final_status = (
+                    "failed"
+                    if any(verdict.verdict == AuditVerdictValue.FAIL for _auditor_id, verdict in verdicts)
+                    else "corrections_required"
+                )
             if final_status != "corrections_required" or attempt > retry_limit:
                 break
             for auditor_id, verdict in verdicts:
@@ -493,16 +512,53 @@ class ExecutionEngine:
                 source_agent_id=result.worker_id,
                 target_agent_id=assigned_auditor_id,
             )
-            (
-                verdict,
-                auditor_model_delta,
-                auditor_model_message,
-                auditor_raw_reasoning_content,
-            ) = await self._auditor.audit_tool_results_with_model(
-                result.tool_results,
-                result.summary,
-                model_summaries,
-            )
+            try:
+                (
+                    verdict,
+                    auditor_model_delta,
+                    auditor_model_message,
+                    auditor_raw_reasoning_content,
+                ) = await self._auditor.audit_tool_results_with_model(
+                    result.tool_results,
+                    result.summary,
+                    model_summaries,
+                )
+            except TimeoutError as exc:
+                verdict = AuditVerdict(
+                    verdict=AuditVerdictValue.FAIL,
+                    summary=f"Auditor LLM timed out: {exc}",
+                )
+                auditor_model_delta = None
+                auditor_model_message = {}
+                auditor_raw_reasoning_content = None
+                await self._emit(
+                    task,
+                    "audit_failed",
+                    {
+                        "status": "failed",
+                        "reason": "auditor_llm_timeout",
+                        "message": f"Auditor LLM timed out after {self._auditor_llm_timeout_seconds:g} seconds",
+                    },
+                    agent_id=assigned_auditor_id,
+                )
+            except Exception as exc:
+                verdict = AuditVerdict(
+                    verdict=AuditVerdictValue.FAIL,
+                    summary=f"Auditor failed: {exc}",
+                )
+                auditor_model_delta = None
+                auditor_model_message = {}
+                auditor_raw_reasoning_content = None
+                await self._emit(
+                    task,
+                    "audit_failed",
+                    {
+                        "status": "failed",
+                        "reason": "auditor_llm_error",
+                        "message": str(exc),
+                    },
+                    agent_id=assigned_auditor_id,
+                )
             if auditor_model_delta:
                 await self._emit_model_delta(
                     task,
