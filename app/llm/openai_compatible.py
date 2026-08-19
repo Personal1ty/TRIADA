@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import time
@@ -233,9 +234,19 @@ class OpenAICompatibleProvider(LLMProvider):
         content_parts: list[str] = []
         reasoning_parts: list[str] = []
         deadline = time.monotonic() + max_duration_seconds
-        async for line in response.aiter_lines():
-            if time.monotonic() >= deadline:
+        lines = response.aiter_lines().__aiter__()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 raise RuntimeError("OpenAI-compatible LLM stream exceeded maximum duration")
+            try:
+                line = await asyncio.wait_for(lines.__anext__(), timeout=remaining)
+            except StopAsyncIteration:
+                break
+            except TimeoutError:
+                raise RuntimeError(
+                    "OpenAI-compatible LLM stream exceeded maximum duration"
+                ) from None
             payload = self._line_payload(line)
             if payload is None:
                 continue

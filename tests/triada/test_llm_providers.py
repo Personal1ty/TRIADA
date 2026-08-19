@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import UTC, datetime
 from uuid import UUID
@@ -404,6 +405,29 @@ async def test_openai_provider_bounds_total_stream_duration():
         await provider._read_streaming_message(
             EndlessResponse(),
             max_duration_seconds=0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_bounds_stream_waiting_for_first_chunk():
+    class SilentResponse:
+        async def aiter_lines(self):
+            await asyncio.Event().wait()
+            yield "never"
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://llm.example.test",
+        api_key=None,
+        model="corp-coder",
+    )
+
+    with pytest.raises(RuntimeError, match="stream exceeded maximum duration"):
+        await asyncio.wait_for(
+            provider._read_streaming_message(
+                SilentResponse(),
+                max_duration_seconds=0.01,
+            ),
+            timeout=0.1,
         )
 
 
