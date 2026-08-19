@@ -126,6 +126,8 @@ async def test_get_local_swarm_ui():
     assert 'id="llm-config"' in response.text
     assert 'id="llm-clear-api-key"' in response.text
     assert 'id="create-task-form"' in response.text
+    assert "Tool policy / Ограничения инструментов" in response.text
+    assert "task-tools-help" in response.text
     assert 'id="demo-template-select"' in response.text
     assert 'id="load-demo-template"' in response.text
     assert 'id="run-demo-flow"' in response.text

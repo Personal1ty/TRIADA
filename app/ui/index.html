@@ -696,8 +696,9 @@
               <textarea id="task-goal" name="task-goal" placeholder="Inspect repository status"></textarea>
             </div>
             <div class="field">
-              <label for="task-tools">Allowed tools</label>
-              <input id="task-tools" name="task-tools" type="text" autocomplete="off" value="git" placeholder="git, echo">
+              <label for="task-tools">Tool policy / Ограничения инструментов</label>
+              <input id="task-tools" name="task-tools" type="text" autocomplete="off" value="git" placeholder="git, rg, cat" aria-describedby="task-tools-help">
+              <small class="muted" id="task-tools-help">Ограничения для Orchestrator: он сможет выбрать только эти инструменты.</small>
             </div>
             <div class="field">
               <label for="task-criteria">Acceptance criteria</label>
