@@ -74,6 +74,8 @@ async def test_get_local_swarm_ui():
     assert "/research/recommendations" in response.text
     assert 'id="playbook-benchmarks"' in response.text
     assert "/playbooks/benchmarks" in response.text
+    assert "grid-template-columns: minmax(0, 1fr)" in response.text
+    assert "#runs-view" in response.text
     assert 'id="search-global-memory"' in response.text
     assert "/v1/memory/search?q=" in response.text
     assert "/v1/tasks/${encodeURIComponent(taskId)}/memory" in response.text

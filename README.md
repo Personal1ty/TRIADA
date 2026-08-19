@@ -306,6 +306,9 @@ Core endpoints under `/v1`:
   duration, and branch utilization plus sufficiency/waste signals.
 - `GET /v1/playbooks/benchmarks` compares completed playbook versions by
   average quality, total cost/tokens, and tokens per quality point.
+- Observatory uses a responsive full-width layout: wide screens get a
+  two-column workspace and narrow screens collapse to one column without
+  horizontal page overflow.
 - `POST /v1/tasks/{task_id}/memory` appends a validated structured memory note
   to the task trace; `GET /v1/tasks/{task_id}/memory?q=...` retrieves notes with
   deterministic token-overlap ranking by default. Set
