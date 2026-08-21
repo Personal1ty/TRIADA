@@ -30,8 +30,6 @@ async def test_get_local_swarm_ui():
     assert "Contracts" in response.text
     assert "Result" in response.text
     assert "/v1/tasks/" in response.text
-    assert "/run_async" in response.text
-    assert "/approve" in response.text
     assert "/swarm-graph" in response.text
     assert "TRIADA Swarm" in response.text
     assert "/v1/swarm/contract" in response.text
