@@ -39,8 +39,14 @@ async def test_get_local_swarm_ui():
     assert 'id="approve-task" type="button" hidden>Approve action' in response.text
     assert 'class="advanced-drawer" id="advanced-drawer" hidden' in response.text
     assert '<nav class="tabs" aria-label="TRIADA dashboard views" hidden>' in response.text
-    assert '<section id="llm-config" hidden>' in response.text
+    assert '<section id="llm-config" role="dialog" aria-modal="true" aria-labelledby="llm-config-title" hidden>' in response.text
     assert '<form id="create-task-form" class="form-grid" hidden>' in response.text
+    assert '<h2 id="llm-config-title">LLM Provider</h2>' in response.text
+    assert 'id="close-llm-config" type="button"' in response.text
+    assert 'id="task-advanced"' in response.text
+    assert '<summary>Advanced options</summary>' in response.text
+    assert 'id="task-risk"' in response.text
+    assert 'createTask(true);' in response.text
     assert 'id="raw-reasoning-view" hidden' in response.text
     assert 'id="contracts-view" hidden' in response.text
     assert 'id="approvals-view" hidden' in response.text
@@ -177,6 +183,15 @@ async def test_get_local_swarm_ui():
     assert 'id="load-demo-template"' in response.text
     assert 'id="run-demo-flow"' in response.text
     assert 'id="run-task"' in response.text
+    assert 'let taskCreateInFlight = false;' in response.text
+    assert 'if (taskCreateInFlight) {' in response.text
+    assert 'let approvalInFlight = false;' in response.text
+    assert 'if (approvalInFlight) {' in response.text
+    assert 'approveTaskButton.disabled = true;' in response.text
+    assert 'document.addEventListener("keydown"' in response.text
+    assert 'event.key === "Escape"' in response.text
+    assert 'closeLlmConfigButton.focus();' in response.text
+    assert 'trigger.focus();' in response.text
     assert 'id="event-feed"' in response.text
     assert 'id="events-panel"' in response.text
     assert 'data-observatory-panel="events-panel"' in response.text

@@ -169,6 +169,42 @@
       display: block;
     }
 
+    .drawer-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .drawer-heading h2 {
+      flex: 1;
+      border-bottom: 0;
+    }
+
+    .drawer-heading button {
+      flex: 0 0 auto;
+      margin-right: 14px;
+      border-color: #a7b3c2;
+      background: #ffffff;
+      color: var(--text);
+    }
+
+    details {
+      border-top: 1px solid var(--line);
+    }
+
+    details summary {
+      padding: 10px 0;
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 650;
+    }
+
+    details[open] {
+      padding-bottom: 2px;
+    }
+
     .advanced-drawer,
     .advanced-drawer[hidden],
     .tabs[hidden] {
@@ -902,8 +938,11 @@
 
     <main>
       <div class="stack tab-panel desktop-workspace" id="runs-view">
-      <section id="llm-config" hidden>
-        <h2>LLM Provider</h2>
+      <section id="llm-config" role="dialog" aria-modal="true" aria-labelledby="llm-config-title" hidden>
+        <div class="drawer-heading">
+          <h2 id="llm-config-title">LLM Provider</h2>
+          <button id="close-llm-config" type="button" aria-label="Close LLM API">Close</button>
+        </div>
         <div class="panel-body">
           <form class="form-grid" id="llm-form">
             <div class="field">
@@ -972,31 +1011,40 @@
         <div id="runs-panel" class="panel-body">
           <form id="create-task-form" class="form-grid" hidden>
             <div class="field">
-              <label for="demo-template-select">Demo template</label>
-              <select id="demo-template-select" name="demo-template-select"></select>
-            </div>
-            <div class="button-row">
-              <button id="load-demo-template" type="button">Load template</button>
-              <button id="run-demo-flow" type="button">Run demo flow</button>
-            </div>
-            <div class="field">
               <label for="task-goal">Goal</label>
-              <textarea id="task-goal" name="task-goal" placeholder="Inspect repository status"></textarea>
-            </div>
-            <div class="field">
-              <label for="task-tools">Tool policy / Ограничения инструментов</label>
-              <input id="task-tools" name="task-tools" type="text" autocomplete="off" value="git" placeholder="git, rg, cat" aria-describedby="task-tools-help">
-              <small class="muted" id="task-tools-help">Ограничения для Orchestrator: он сможет выбрать только эти инструменты.</small>
+              <textarea id="task-goal" name="task-goal" required placeholder="Inspect repository status"></textarea>
             </div>
             <div class="field">
               <label for="task-criteria">Acceptance criteria</label>
-              <input id="task-criteria" name="task-criteria" type="text" autocomplete="off" value="return useful result" placeholder="criterion one, criterion two">
+              <input id="task-criteria" name="task-criteria" type="text" autocomplete="off" value="return useful result" required placeholder="criterion one, criterion two">
             </div>
             <div class="button-row">
-              <button id="create-task" type="submit">Create</button>
-              <button id="create-run-task" type="button">Create & Run</button>
-              <button id="run-task" type="button" disabled>Run once</button>
+              <button id="create-task" type="submit">Create &amp; run</button>
             </div>
+            <details id="task-advanced">
+              <summary>Advanced options</summary>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="task-risk">Risk policy</label>
+                  <input id="task-risk" name="task-risk" type="text" autocomplete="off" placeholder="Leave empty for server policy">
+                </div>
+                <div class="field">
+                  <label for="task-tools">Tool policy / Ограничения инструментов</label>
+                  <input id="task-tools" name="task-tools" type="text" autocomplete="off" value="git" placeholder="git, rg, cat" aria-describedby="task-tools-help">
+                  <small class="muted" id="task-tools-help">Ограничения для Orchestrator: он сможет выбрать только эти инструменты.</small>
+                </div>
+                <div class="field">
+                  <label for="demo-template-select">Demo template</label>
+                  <select id="demo-template-select" name="demo-template-select"></select>
+                </div>
+                <div class="button-row">
+                  <button id="load-demo-template" type="button">Load template</button>
+                  <button id="run-demo-flow" type="button">Run demo flow</button>
+                  <button id="create-run-task" type="button">Create only</button>
+                  <button id="run-task" type="button" disabled>Run selected task</button>
+                </div>
+              </div>
+            </details>
           </form>
           <p class="status" id="task-status">Create a task or load an existing task id.</p>
           <ul class="task-list" id="recent-tasks">
@@ -1388,12 +1436,14 @@
     const newTaskButton = document.getElementById("new-task");
     const approveTaskButton = document.getElementById("approve-task");
     const llmConfigPanel = document.getElementById("llm-config");
+    const closeLlmConfigButton = document.getElementById("close-llm-config");
     const contractsToggleButton = document.getElementById("toggle-contracts");
     const contractsPanel = document.getElementById("contracts-panel");
     const contractsSummaryStatus = document.getElementById("contracts-summary-status");
     const createTaskForm = document.getElementById("create-task-form");
     const taskGoal = document.getElementById("task-goal");
     const taskTools = document.getElementById("task-tools");
+    const taskRisk = document.getElementById("task-risk");
     const taskCriteria = document.getElementById("task-criteria");
     const demoTemplateSelect = document.getElementById("demo-template-select");
     const loadDemoTemplateButton = document.getElementById("load-demo-template");
@@ -1480,6 +1530,8 @@
     let currentContract = null;
     let demoTemplates = [];
     let projectionGeneration = 0;
+    let taskCreateInFlight = false;
+    let approvalInFlight = false;
     const MAX_PROJECTION_EVENT_PAGES = 10;
     const MAX_LATEST_EVENT_PAGES = 1;
     const terminalStatuses = new Set(["completed", "failed", "blocked", "cancelled", "corrections_required", "timed_out"]);
@@ -2493,7 +2545,7 @@
         <li>
           <div>
             <button type="button" class="task-link" data-task-id="${escapeHtml(task.task_id)}">${escapeHtml(task.status)}</button>
-            <button type="button" class="approve-task" data-task-id="${escapeHtml(task.task_id)}">Approve</button>
+            <button type="button" class="approve-task" data-task-id="${escapeHtml(task.task_id)}"${approvalInFlight ? " disabled" : ""}>Approve</button>
           </div>
           <span>${escapeHtml(task.goal)}</span>
           <small class="muted">${escapeHtml(task.task_id)}</small>
@@ -2717,11 +2769,29 @@
       }
     }
 
+    function setApprovalButtonsDisabled(disabled) {
+      if (disabled) {
+        approveTaskButton.disabled = true;
+      } else {
+        approveTaskButton.disabled = false;
+      }
+      approvalQueue.querySelectorAll(".approve-task").forEach((button) => {
+        button.disabled = disabled;
+      });
+    }
+
     async function approveTask(taskId) {
+      if (approvalInFlight) {
+        return;
+      }
       const approvalTaskId = String(taskId);
       const approvalGeneration = projectionGeneration;
+      approvalInFlight = true;
+      setApprovalButtonsDisabled(true);
       approvalsStatus.classList.remove("error");
       approvalsStatus.textContent = `Approving ${approvalTaskId}...`;
+      taskStatus.classList.remove("error");
+      taskStatus.textContent = `Approving ${approvalTaskId}...`;
       try {
         await postJson(`/v1/tasks/${encodeURIComponent(approvalTaskId)}/approve`, { approved: true, approved_by: "local-ui" });
         if (!isCurrentProjectionRequest(approvalGeneration)) {
@@ -2745,11 +2815,12 @@
         if (isCurrentProjectionRequest(approvalGeneration)) {
           approvalsStatus.textContent = `Unable to approve task: ${error.message}`;
           approvalsStatus.classList.add("error");
+          taskStatus.textContent = `Unable to approve task: ${error.message}`;
+          taskStatus.classList.add("error");
         }
       } finally {
-        if (isCurrentProjectionRequest(approvalGeneration)) {
-          approveTaskButton.disabled = false;
-        }
+        approvalInFlight = false;
+        setApprovalButtonsDisabled(false);
       }
     }
 
@@ -3012,12 +3083,16 @@
     }
 
     async function createTask(runAfterCreate) {
+      if (taskCreateInFlight) {
+        return;
+      }
       const goal = taskGoal.value.trim();
       if (!goal) {
         taskStatus.textContent = "Goal is required.";
         taskStatus.classList.add("error");
         return;
       }
+      taskCreateInFlight = true;
       createTaskButton.disabled = true;
       createRunTaskButton.disabled = true;
       const requestToken = beginProjectionRequest();
@@ -3027,6 +3102,7 @@
       try {
         const created = await postJson("/v1/tasks", {
           goal,
+          risk: taskRisk.value.trim() || null,
           allowed_tools: parseList(taskTools.value),
           acceptance_criteria: parseList(taskCriteria.value)
         });
@@ -3059,6 +3135,7 @@
           taskStatus.classList.add("error");
         }
       } finally {
+        taskCreateInFlight = false;
         if (isCurrentProjectionRequest(requestToken)) {
           createTaskButton.disabled = false;
           createRunTaskButton.disabled = false;
@@ -3109,7 +3186,9 @@
       panel.hidden = !open;
       panel.classList.toggle("is-open", open);
       trigger.setAttribute("aria-expanded", String(open));
-      if (!open) {
+      if (open && panel === llmConfigPanel) {
+        closeLlmConfigButton.focus();
+      } else if (!open) {
         trigger.focus();
       }
     }
@@ -3133,6 +3212,17 @@
       setPanelOpen(openLlmConfigButton, llmConfigPanel, llmConfigPanel.hidden);
     });
 
+    closeLlmConfigButton.addEventListener("click", () => {
+      setPanelOpen(openLlmConfigButton, llmConfigPanel, false);
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !llmConfigPanel.hidden) {
+        event.preventDefault();
+        setPanelOpen(openLlmConfigButton, llmConfigPanel, false);
+      }
+    });
+
     newTaskButton.addEventListener("click", () => {
       const open = createTaskForm.hidden;
       setPanelOpen(newTaskButton, createTaskForm, open);
@@ -3153,7 +3243,7 @@
 
     createTaskForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      createTask(false);
+      createTask(true);
     });
 
     createRunTaskButton.addEventListener("click", () => {

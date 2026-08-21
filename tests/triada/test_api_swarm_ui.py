@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -176,6 +177,41 @@ async def test_get_task_route_graph():
     assert assigned_edge["target"] == "worker-1"
     assert audit_edge["source"] == "worker-1"
     assert audit_edge["target"] == "auditor-1"
+
+
+@pytest.mark.asyncio
+async def test_approval_continuation_via_run_async_reuses_pending_plan():
+    async with _client() as client:
+        created = await client.post(
+            "/v1/tasks",
+            json={
+                "goal": "write approved marker",
+                "allowed_tools": ["write_file"],
+                "acceptance_criteria": ["file is written only after approval"],
+            },
+        )
+        task_id = created.json()["task_id"]
+        waiting = await client.post(f"/v1/tasks/{task_id}/run_once")
+        approved = await client.post(
+            f"/v1/tasks/{task_id}/approve",
+            json={"approved": True, "approved_by": "local-ui"},
+        )
+        continued = await client.post(f"/v1/tasks/{task_id}/run_async", json={})
+
+        for _ in range(100):
+            current = await client.get(f"/v1/tasks/{task_id}")
+            if current.json()["status"] in {"completed", "failed", "blocked", "cancelled"}:
+                break
+            await asyncio.sleep(0.01)
+        events = (await client.get(f"/v1/tasks/{task_id}/events")).json()["events"]
+
+    assert waiting.status_code == 200
+    assert waiting.json()["status"] == "waiting_approval"
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+    assert continued.status_code == 200
+    assert current.json()["status"] == "completed"
+    assert "planning_reused" in [event["event_type"] for event in events]
 
 
 @pytest.mark.asyncio
