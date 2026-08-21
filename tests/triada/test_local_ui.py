@@ -61,7 +61,9 @@ async def test_get_local_swarm_ui():
     assert "/v1/llm/config" in response.text
     assert "/v1/llm/test" in response.text
     assert 'id="graph"' in response.text
+    assert 'data-observatory-panel="execution-graph-panel"' in response.text
     assert 'id="run-observatory"' in response.text
+    assert 'id="result-panel"' in response.text
     assert 'id="observatory-timeline"' in response.text
     assert 'id="observatory-inspector"' in response.text
     assert 'id="observatory-evidence"' in response.text
@@ -79,6 +81,12 @@ async def test_get_local_swarm_ui():
     assert 'id="graph-route-list"' in response.text
     assert 'class="graph-node-meta"' in response.text
     assert 'id="contracts"' in response.text
+    assert 'data-observatory-panel="contracts-panel"' in response.text
+    assert 'id="selected-research-contract"' in response.text
+    assert 'id="selected-execution-contract"' in response.text
+    assert 'id="selected-context-sources"' in response.text
+    assert 'id="selected-approval-state"' in response.text
+    assert 'id="selected-resource-budget"' in response.text
     assert 'id="thinking"' in response.text
     assert 'id="memory"' in response.text
     assert 'id="memory-query"' in response.text
@@ -166,8 +174,10 @@ async def test_get_local_swarm_ui():
     assert 'id="run-demo-flow"' in response.text
     assert 'id="run-task"' in response.text
     assert 'id="event-feed"' in response.text
+    assert 'data-observatory-panel="events-panel"' in response.text
     assert 'id="event-auto-refresh"' in response.text
     assert 'id="event-auto-refresh" name="event-auto-refresh" type="checkbox" checked' in response.text
+    assert 'const terminalStatuses = new Set(["completed", "failed", "blocked", "cancelled", "timed_out"])' in response.text
     assert 'id="refresh-events"' in response.text
     assert 'id="load-more-events"' in response.text
     assert "after_event_id" in response.text
@@ -192,6 +202,12 @@ async def test_get_local_swarm_ui():
     assert "runSelectedDemoFlow" in response.text
     assert "graph-lane-label" in response.text
     assert "node-worker" in response.text
+    assert "projectExecutionGraph" in response.text
+    assert "data-node-state" in response.text
+    assert "data-edge-purpose" in response.text
+    assert "renderSelectedContracts" in response.text
+    assert "renderSelectedResult" in response.text
+    assert "Not available for this run" in response.text
 
 
 def test_local_swarm_ui_is_packaged():

@@ -534,6 +534,60 @@
       dominant-baseline: middle;
     }
 
+    .graph-node-state {
+      fill: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }
+
+    .result-projection,
+    .contract-projection-card {
+      min-width: 0;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+    }
+
+    .result-projection h3,
+    .contract-projection-card h3 {
+      margin: 0 0 6px;
+      font-size: 13px;
+    }
+
+    .result-projection strong {
+      display: block;
+      font-size: 18px;
+    }
+
+    .result-projection p {
+      margin: 6px 0 0;
+    }
+
+    .contract-projection-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .contract-projection-card {
+      margin-top: 0;
+      background: #ffffff;
+    }
+
+    .contract-projection-card pre {
+      max-height: 180px;
+      margin: 0;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
     svg {
       display: block;
       width: 100%;
@@ -900,10 +954,16 @@
           <ul class="observatory-timeline" id="observatory-timeline"><li>Select a task to inspect its lifecycle.</li></ul>
           <ul class="event-feed" id="observatory-replay"><li class="status">No replay points.</li></ul>
           <ul class="event-feed" id="observatory-checkpoint-list"><li class="status">No checkpoints.</li></ul>
+          <div class="result-projection" id="result-panel">
+            <h3>Current result</h3>
+            <strong id="result-state">Not available for this run.</strong>
+            <p id="result-summary" class="result-empty">Not available for this run.</p>
+            <p id="result-latest-event" class="status">Not available for this run.</p>
+          </div>
         </div>
       </section>
 
-      <section id="task-runner">
+      <section id="task-runner" data-observatory-panel="runs-panel">
         <h2>Runs</h2>
         <div class="panel-body">
           <form id="create-task-form" class="form-grid" hidden>
@@ -941,7 +1001,7 @@
         </div>
       </section>
 
-      <section id="graph">
+      <section id="graph" data-observatory-panel="execution-graph-panel">
         <h2>Execution graph</h2>
         <div class="panel-body graph-wrap" id="graph-body">
           <p class="graph-summary" id="graph-summary">No route graph loaded.</p>
@@ -950,7 +1010,7 @@
         </div>
       </section>
 
-      <section id="events">
+      <section id="events" data-observatory-panel="events-panel">
         <h2>Event Feed</h2>
         <div class="panel-body">
           <div class="inline-controls">
@@ -966,13 +1026,35 @@
         </div>
       </section>
         <button id="toggle-contracts" class="contracts-toggle" type="button" aria-controls="contracts-panel" aria-expanded="false">Contracts</button>
-        <section id="contracts-panel">
+        <section id="contracts-panel" data-observatory-panel="contracts-panel">
           <h2>Contracts</h2>
           <div class="panel-body">
             <div class="contract-summary">
               <div><strong>Execution contract</strong><br><span>Active contract projection for the selected run.</span></div>
               <div><strong>Policy state</strong><br><span>Server-side risk and approval gates remain authoritative.</span></div>
               <p class="result-empty" id="contracts-summary-status">Select a run to inspect active contracts.</p>
+            </div>
+            <div class="contract-projection-grid" id="contracts-projection">
+              <article class="contract-projection-card">
+                <h3>Research contract</h3>
+                <pre id="selected-research-contract">Not available for this run.</pre>
+              </article>
+              <article class="contract-projection-card">
+                <h3>Execution / policy contract</h3>
+                <pre id="selected-execution-contract">Not available for this run.</pre>
+              </article>
+              <article class="contract-projection-card">
+                <h3>Context / memory sources</h3>
+                <pre id="selected-context-sources">Not available for this run.</pre>
+              </article>
+              <article class="contract-projection-card">
+                <h3>Approval state</h3>
+                <pre id="selected-approval-state">Not available for this run.</pre>
+              </article>
+              <article class="contract-projection-card">
+                <h3>Resource budget</h3>
+                <pre id="selected-resource-budget">Not available for this run.</pre>
+              </article>
             </div>
           </div>
         </section>
@@ -1322,6 +1404,14 @@
     const observatoryBudget = document.getElementById("observatory-budget");
     const observatoryCheckpointList = document.getElementById("observatory-checkpoint-list");
     const observatoryTimeline = document.getElementById("observatory-timeline");
+    const resultState = document.getElementById("result-state");
+    const resultSummary = document.getElementById("result-summary");
+    const resultLatestEvent = document.getElementById("result-latest-event");
+    const selectedResearchContract = document.getElementById("selected-research-contract");
+    const selectedExecutionContract = document.getElementById("selected-execution-contract");
+    const selectedContextSources = document.getElementById("selected-context-sources");
+    const selectedApprovalState = document.getElementById("selected-approval-state");
+    const selectedResourceBudget = document.getElementById("selected-resource-budget");
     const recentTasks = document.getElementById("recent-tasks");
     const graphBody = document.getElementById("graph-body");
     const thinkingStatus = document.getElementById("thinking-status");
@@ -1375,7 +1465,7 @@
     let nextEventsCursor = null;
     let currentContract = null;
     let demoTemplates = [];
-    const terminalStatuses = new Set(["completed", "blocked", "failed", "cancelled", "corrections_required"]);
+    const terminalStatuses = new Set(["completed", "failed", "blocked", "cancelled", "timed_out"]);
 
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -1763,19 +1853,72 @@
       `).join("") || '<li class="status">No routes in contract.</li>';
     }
 
-    function renderGraph(graph) {
-      const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
-      const edges = Array.isArray(graph.edges) ? graph.edges : [];
-      if (!nodes.length) {
-        graphBody.innerHTML = `
-          <p class="graph-summary" id="graph-summary">No route graph loaded.</p>
-          <ul class="graph-route-list" id="graph-route-list"></ul>
-          <p class="status">No swarm route graph events are available for this task.</p>
-        `;
-        return;
-      }
+    function latestEvent(events, eventTypes) {
+      const types = new Set(Array.isArray(eventTypes) ? eventTypes : [eventTypes]);
+      return [...(Array.isArray(events) ? events : [])].reverse().find((event) => types.has(event.event_type)) || null;
+    }
 
-      const roleOrder = ["orchestrator", "worker", "auditor", "chief_auditor", "human"];
+    function graphNodeState(node, agentStates, taskStatus) {
+      const status = agentStates.get(node.id);
+      if (status === "running") {
+        return "active";
+      }
+      if (status === "waiting" || status === "pending") {
+        return "waiting";
+      }
+      if (status === "blocked") {
+        return "blocked";
+      }
+      if (status === "completed") {
+        return "completed";
+      }
+      if (terminalStatuses.has(taskStatus)) {
+        return taskStatus === "blocked" ? "blocked" : "completed";
+      }
+      return node.role === "human" ? "waiting" : "waiting";
+    }
+
+    function graphEdgeState(edge, nodesById) {
+      const sourceState = nodesById.get(edge.source)?.state;
+      const targetState = nodesById.get(edge.target)?.state;
+      if (sourceState === "blocked" || targetState === "blocked") {
+        return "blocked";
+      }
+      if (sourceState === "active" || targetState === "active") {
+        return "active";
+      }
+      if (sourceState === "waiting" || targetState === "waiting") {
+        return "waiting";
+      }
+      return "completed";
+    }
+
+    function projectExecutionGraph(graph, context = {}) {
+      const rawNodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+      const rawEdges = Array.isArray(graph?.edges) ? graph.edges : [];
+      const inspector = context.inspector?.inspector || {};
+      const agentStates = new Map(
+        (Array.isArray(inspector.agents) ? inspector.agents : []).map((agent) => [agent.agent_id, agent.status])
+      );
+      const nodes = rawNodes.map((node) => ({
+        ...node,
+        state: graphNodeState(node, agentStates, context.task?.status)
+      }));
+      const nodesById = new Map(nodes.map((node) => [node.id, node]));
+      const edges = rawEdges.map((edge) => ({
+        ...edge,
+        purpose: edge.reason || edge.label || "Not available for this run",
+        state: graphEdgeState(edge, nodesById)
+      }));
+      return { ...graph, nodes, edges, summary: graph?.summary || {} };
+    }
+
+    function layoutExecutionGraph(projection, availableWidth) {
+      const defaultRoleOrder = ["orchestrator", "worker", "auditor", "chief_auditor", "human"];
+      const roleOrder = [...new Set([
+        ...defaultRoleOrder,
+        ...projection.nodes.map((node) => node.role || "agent")
+      ])];
       const roleLabels = {
         orchestrator: "Orchestrator",
         worker: "Workers",
@@ -1783,8 +1926,8 @@
         chief_auditor: "Chief Auditor",
         human: "Human"
       };
-      const grouped = roleOrder.map((role) => nodes.filter((node) => node.role === role));
-      const laneWidth = Math.max(128, Math.min(190, Math.floor((graphBody.clientWidth || 960) / roleOrder.length)));
+      const grouped = roleOrder.map((role) => projection.nodes.filter((node) => node.role === role));
+      const laneWidth = Math.max(128, Math.min(190, Math.floor((availableWidth || 960) / roleOrder.length)));
       const width = 112 + (roleOrder.length - 1) * laneWidth;
       const maxLaneNodes = Math.max(...grouped.map((items) => items.length), 1);
       const height = Math.max(320, 120 + maxLaneNodes * 84);
@@ -1796,6 +1939,24 @@
           positions.set(node.id, { x, y: startY + index * 84 });
         });
       });
+      return { height, laneWidth, positions, roleLabels, roleOrder, width };
+    }
+
+    function renderGraph(graph, context = {}) {
+      const projection = projectExecutionGraph(graph, context);
+      const nodes = projection.nodes;
+      const edges = projection.edges;
+      if (!nodes.length) {
+        graphBody.innerHTML = `
+          <p class="graph-summary" id="graph-summary">No route graph loaded.</p>
+          <ul class="graph-route-list" id="graph-route-list"></ul>
+          <p class="status">No swarm route graph events are available for this task.</p>
+        `;
+        return;
+      }
+
+      const layout = layoutExecutionGraph(projection, graphBody.clientWidth);
+      const { height, laneWidth, positions, roleLabels, roleOrder, width } = layout;
 
       const lanes = roleOrder.map((role, index) => {
         const x = 56 + index * laneWidth;
@@ -1816,8 +1977,8 @@
         const labelY = (source.y + target.y) / 2 - 18 + offset;
         const midpointX = (source.x + target.x) / 2;
         return `
-          <path class="edge" d="M ${source.x + 56} ${source.y + offset} C ${midpointX} ${source.y + offset}, ${midpointX} ${target.y + offset}, ${target.x - 56} ${target.y + offset}"></path>
-          <text class="edge-label" x="${labelX}" y="${labelY}">${escapeHtml(edge.reason)}</text>
+          <path class="edge edge-${escapeHtml(edge.state)}" data-edge-id="${escapeHtml(edge.id)}" data-edge-purpose="${escapeHtml(edge.purpose)}" data-edge-state="${escapeHtml(edge.state)}" d="M ${source.x + 56} ${source.y + offset} C ${midpointX} ${source.y + offset}, ${midpointX} ${target.y + offset}, ${target.x - 56} ${target.y + offset}"></path>
+          <text class="edge-label" x="${labelX}" y="${labelY}">${escapeHtml(edge.purpose)} · ${escapeHtml(edge.state)}</text>
         `;
       }).join("");
 
@@ -1826,15 +1987,16 @@
         const label = node.label || node.id;
         const meta = node.pair_id || `${node.incoming_count || 0} in / ${node.outgoing_count || 0} out`;
         return `
-          <g class="node node-${escapeHtml(node.role || "agent")}">
+          <g class="node node-${escapeHtml(node.role || "agent")}" data-node-id="${escapeHtml(node.id)}" data-node-role="${escapeHtml(node.role || "agent")}" data-node-state="${escapeHtml(node.state)}">
             <rect x="${position.x - 55}" y="${position.y - 22}" width="110" height="44" rx="7"></rect>
-            <text x="${position.x}" y="${position.y - 6}">${escapeHtml(label)}</text>
-            <text class="graph-node-meta" x="${position.x}" y="${position.y + 10}">${escapeHtml(meta)}</text>
+            <text x="${position.x}" y="${position.y - 10}">${escapeHtml(label)} · ${escapeHtml(node.id)}</text>
+            <text class="graph-node-meta" x="${position.x}" y="${position.y + 2}">${escapeHtml(node.role || "agent")} · ${escapeHtml(meta)}</text>
+            <text class="graph-node-state" x="${position.x}" y="${position.y + 14}">${escapeHtml(node.state)}</text>
           </g>
         `;
       }).join("");
 
-      const summary = graph.summary || {};
+      const summary = projection.summary || {};
       const routeList = edges.map((edge) => `
         <li class="route">
           <div>
@@ -1843,7 +2005,7 @@
             <span class="muted">to</span>
             <code>${escapeHtml(edge.target)}</code>
           </div>
-          <small>${escapeHtml(edge.source_endpoint || "agent")} -> ${escapeHtml(edge.target_endpoint || "agent")} · ${escapeHtml(edge.input_contract)} -> ${escapeHtml(edge.output_contract)} · ${escapeHtml(edge.status || "selected")}</small>
+          <small>${escapeHtml(edge.source_endpoint || "agent")} -> ${escapeHtml(edge.target_endpoint || "agent")} · ${escapeHtml(edge.input_contract)} -> ${escapeHtml(edge.output_contract)} · purpose: ${escapeHtml(edge.purpose)} · state: ${escapeHtml(edge.state)}</small>
         </li>
       `).join("");
 
@@ -2071,7 +2233,7 @@
             <span class="event-type">${escapeHtml(event.event_type)}</span>
             <span class="muted">${escapeHtml(event.agent_id || "agent")}</span>
           </div>
-          <small>${escapeHtml(event.created_at || "")}</small>
+          <small>Sequence ${escapeHtml(event.sequence ?? "Not available for this run")}${event.created_at ? ` · ${escapeHtml(event.created_at)}` : ""}${event.payload?.summary ? ` · ${escapeHtml(displayValue(event.payload.summary))}` : ""}</small>
         </li>
       `).join("");
       if (options.append) {
@@ -2082,7 +2244,106 @@
       renderRawReasoningRefs(payload);
     }
 
-    function renderRunObservatory(task, graph, eventsPayload, inspectorPayload, qualityPayload, checkpointsPayload, budgetPayload, memoryPayload) {
+    function displayValue(value) {
+      if (typeof value === "string") {
+        return value;
+      }
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch (error) {
+        return String(value ?? "");
+      }
+    }
+
+    function hasProjectionValue(value) {
+      if (value == null || value === "") {
+        return false;
+      }
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
+      if (typeof value === "object") {
+        return Object.values(value).some((item) => hasProjectionValue(item));
+      }
+      return value !== 0 && value !== false;
+    }
+
+    function renderProjectionValue(target, value) {
+      target.innerHTML = hasProjectionValue(value)
+        ? escapeHtml(displayValue(value))
+        : "Not available for this run.";
+    }
+
+    function renderSelectedContracts(task, eventsPayload, memoryPayload, budgetPayload, economicsPayload) {
+      const events = eventsPayload && Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
+      const planning = latestEvent(events, "planning_completed");
+      const planningPayload = planning?.payload || {};
+      const researchContract = planningPayload.research_contract;
+      const executionContract = planningPayload.execution_contract;
+      const policy = planning
+        ? {
+            risk_policy: planningPayload.risk_policy,
+            requires_approval: planningPayload.requires_approval
+          }
+        : null;
+      const memoryNotes = Array.isArray(memoryPayload?.notes)
+        ? memoryPayload.notes.map((note) => ({
+            kind: note.kind,
+            title: note.title,
+            refs: note.refs || []
+          }))
+        : [];
+      const approved = latestEvent(events, "task_approved");
+      const waiting = latestEvent(events, ["task_waiting_approval", "replay_waiting_approval"]);
+      let approval = null;
+      if (approved) {
+        approval = { status: "approved", approved_by: approved.payload?.approved_by || "Not available for this run" };
+      } else if (task?.status === "waiting_approval" || waiting) {
+        approval = { status: "waiting" };
+      } else if (planning && planningPayload.requires_approval === false) {
+        approval = { status: "not_required" };
+      } else if (planning && planningPayload.requires_approval === true) {
+        approval = { status: "pending" };
+      }
+      const budget = hasProjectionValue(budgetPayload?.budget)
+        ? budgetPayload.budget
+        : economicsPayload?.budget;
+
+      renderProjectionValue(selectedResearchContract, researchContract);
+      renderProjectionValue(selectedExecutionContract, executionContract || policy);
+      renderProjectionValue(selectedContextSources, memoryNotes);
+      renderProjectionValue(selectedApprovalState, approval);
+      renderProjectionValue(selectedResourceBudget, budget);
+      contractsSummaryStatus.textContent = planning
+        ? `Selected run contracts from sequence ${planning.sequence}.`
+        : "No contract projection is available for this run.";
+    }
+
+    function renderSelectedResult(task, eventsPayload, inspectorPayload) {
+      const events = eventsPayload && Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
+      const latestResult = latestEvent(events, [
+        "human_review_packet_created",
+        "task_completed",
+        "task_failed",
+        "task_blocked",
+        "task_waiting_approval",
+        "task_timeout",
+        "task_cancelled"
+      ]);
+      const payload = latestResult?.payload || {};
+      const verdict = payload.chief_auditor_verdict;
+      const summary = payload.summary || verdict?.summary || payload.reason;
+      const phase = inspectorPayload?.inspector?.phase;
+      resultState.innerHTML = escapeHtml(task?.status || "Not available for this run.");
+      resultSummary.innerHTML = summary
+        ? escapeHtml(displayValue(summary))
+        : "Not available for this run.";
+      resultLatestEvent.innerHTML = latestResult
+        ? `Latest event: ${escapeHtml(latestResult.event_type)} · sequence ${escapeHtml(latestResult.sequence)}${phase ? ` · phase ${escapeHtml(phase)}` : ""}`
+        : "Not available for this run.";
+    }
+
+    function renderRunObservatory(task, graph, eventsPayload, inspectorPayload, qualityPayload, checkpointsPayload, budgetPayload, memoryPayload, economicsPayload) {
       const summary = graph && graph.summary ? graph.summary : {};
       const events = eventsPayload && Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
       const inspector = inspectorPayload && inspectorPayload.inspector ? inspectorPayload.inspector : {};
@@ -2116,6 +2377,8 @@
       observatoryCheckpointList.innerHTML = checkpoints.slice(-8).map((checkpoint) => `
         <li><span class="event-type">Checkpoint ${escapeHtml(checkpoint.sequence)}</span> ${escapeHtml(checkpoint.phase)} · ${checkpoint.resumable ? "resumable" : "terminal"}</li>
       `).join("") || '<li class="status">No checkpoints.</li>';
+      renderSelectedResult(task, eventsPayload, inspectorPayload);
+      renderSelectedContracts(task, eventsPayload, memoryPayload, budgetPayload, economicsPayload);
       approveTaskButton.hidden = task.status !== "waiting_approval";
       contractsSummaryStatus.textContent = task.status === "waiting_approval"
         ? "Approval is required before the run can continue."
@@ -2318,10 +2581,12 @@
         taskInput.value = currentTaskId;
         runTaskButton.disabled = false;
         taskStatus.textContent = `Demo flow ${templateId}: ${result.task.status} (${result.actions.join(" -> ")})`;
-        renderGraph(result.graph || {});
+        renderGraph(result.graph || {}, { task: result.task, events: result.events?.events || [] });
         renderThinking(result.thinking || { deltas: [] });
         renderEvents(result.events || { events: [] });
         renderRawReasoningRefs(result.events || { raw_reasoning_refs: [] });
+        renderSelectedResult(result.task, result.events || { events: [] }, {});
+        renderSelectedContracts(result.task, result.events || { events: [] }, {}, {}, {});
         await Promise.all([loadRecentTasks(), loadApprovalQueue()]);
         if (!terminalStatuses.has(result.task.status)) {
           startEventPolling();
@@ -2451,7 +2716,8 @@
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/playbook/runs`),
           fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research/recommendations`)
         ]);
-        renderGraph(graph);
+        const events = await loadEvents(currentTaskId);
+        renderGraph(graph, { task, inspector, events: events.events || [] });
         renderThinking(thinking);
         renderMemory(memory);
         renderMemoryGraph(memoryGraph);
@@ -2461,8 +2727,7 @@
         renderResourceUsage({...resourceUsage, summary: resourceUsage?.summary || economics?.usage, economics});
         renderPlaybookRuns(playbookRuns);
         renderDecisionHeuristics(recommendations);
-        const events = await loadEvents(currentTaskId);
-        renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory);
+        renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory, economics);
         if (terminalStatuses.has(task.status)) {
           stopEventPolling();
         }
@@ -2506,7 +2771,6 @@
           fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/research/recommendations`),
         ]);
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
-        renderGraph(graph);
         renderThinking(thinking);
         renderMemory(memory);
         renderMemoryGraph(memoryGraph);
@@ -2517,7 +2781,8 @@
         renderPlaybookRuns(playbookRuns);
         renderDecisionHeuristics(recommendations);
         const events = await loadEvents(taskId);
-        renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory);
+        renderGraph(graph, { task, inspector, events: events.events || [] });
+        renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory, economics);
         if (!terminalStatuses.has(task.status)) {
           startEventPolling();
         } else {
