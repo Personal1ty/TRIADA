@@ -23,6 +23,16 @@ async def test_get_local_swarm_ui():
         response = await client.get("/ui")
 
     assert response.status_code == 200
+    assert "TRIADA Observatory" in response.text
+    assert "LLM API" in response.text
+    assert "New task" in response.text or "+ New task" in response.text
+    assert "Execution graph" in response.text
+    assert "Contracts" in response.text
+    assert "Result" in response.text
+    assert "/v1/tasks/" in response.text
+    assert "/run_async" in response.text
+    assert "/approve" in response.text
+    assert "/swarm-graph" in response.text
     assert "TRIADA Swarm" in response.text
     assert "/v1/swarm/contract" in response.text
     assert "/v1/llm/config" in response.text
