@@ -3029,9 +3029,6 @@
       taskStatus.textContent = `Approving ${approvalTaskId}...`;
       try {
         await postJson(`/v1/tasks/${encodeURIComponent(approvalTaskId)}/approve`, { approved: true, approved_by: "local-ui" });
-        if (!isCurrentProjectionRequest(approvalGeneration)) {
-          return;
-        }
         await postJson(`/v1/tasks/${encodeURIComponent(approvalTaskId)}/run_async`, {});
         if (!isCurrentProjectionRequest(approvalGeneration)) {
           return;
@@ -3389,10 +3386,13 @@
           allowed_tools: parseList(taskTools.value),
           acceptance_criteria: parseList(taskCriteria.value)
         });
+        createdTaskId = String(created.task_id);
+        if (runAfterCreate) {
+          await postJson(`/v1/tasks/${encodeURIComponent(createdTaskId)}/run_async`, {});
+        }
         if (!isCurrentProjectionRequest(requestToken)) {
           return;
         }
-        createdTaskId = String(created.task_id);
         currentTaskId = createdTaskId;
         if (!isCurrentTaskRequest(created.task_id, requestToken)) {
           return;
@@ -3408,7 +3408,7 @@
         createTaskButton.disabled = false;
         createRunTaskButton.disabled = false;
         if (runAfterCreate) {
-          await runCurrentTask();
+          await loadTask(createdTaskId);
         } else {
           await loadTask(createdTaskId);
         }

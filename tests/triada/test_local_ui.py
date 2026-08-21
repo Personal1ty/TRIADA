@@ -330,6 +330,10 @@ async def test_get_local_swarm_ui():
     assert "/v1/swarm/contracts" in response.text
     assert "/run_async" in response.text
     assert 'await postJson(`/v1/tasks/${encodeURIComponent(approvalTaskId)}/run_async`, {});' in response.text
+    approval_loader = response.text.partition('async function approveTask(taskId)')[2].partition('async function revealRawReasoning')[0]
+    approval_lifecycle = approval_loader.partition('await postJson(`/v1/tasks/${encodeURIComponent(approvalTaskId)}/approve`')[2].partition('await postJson(`/v1/tasks/${encodeURIComponent(approvalTaskId)}/run_async`, {});')[0]
+    assert 'const approvalTaskId = String(taskId);' in approval_loader
+    assert 'isCurrentProjectionRequest' not in approval_lifecycle
     runs_view = response.text.partition('id="runs-view"')[2].partition('id="thinking-view"')[0]
     assert 'id="graph"' in runs_view
     assert 'id="events"' in runs_view
@@ -376,6 +380,12 @@ async def test_get_local_swarm_ui():
     assert "isCurrentTaskRequest(rawReasoningTaskId, rawReasoningGeneration)" in response.text
     assert "isCurrentTaskRequest(memoryTaskId, memoryGeneration)" in response.text
     assert "isCurrentProjectionRequest(approvalGeneration)" in response.text
+    create_loader = response.text.partition('async function createTask(runAfterCreate)')[2].partition('async function runCurrentTask')[0]
+    create_lifecycle = create_loader.partition('const created = await postJson("/v1/tasks", {')[2].partition('await postJson(`/v1/tasks/${encodeURIComponent(createdTaskId)}/run_async`, {});')[0]
+    assert 'createdTaskId = String(created.task_id);' in create_lifecycle
+    assert 'isCurrentProjectionRequest' not in create_lifecycle
+    assert 'isCurrentTaskRequest' not in create_lifecycle
+    assert 'await postJson(`/v1/tasks/${encodeURIComponent(createdTaskId)}/run_async`, {});' in create_loader
     assert "shortGraphLabel" in response.text
     assert "<title>${escapeHtml(node.id)}" in response.text
     assert 'data-node-id="${escapeHtml(node.id)}"' in response.text
