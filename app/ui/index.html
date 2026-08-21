@@ -1540,6 +1540,10 @@
     let projectionGeneration = 0;
     let taskCreateInFlight = false;
     let approvalInFlight = false;
+    let refreshInFlight = false;
+    let refreshSequence = 0;
+    let contractLoadSequence = 0;
+    let requestedContractVersion = "";
     const MAX_PROJECTION_EVENT_PAGES = 10;
     const MAX_LATEST_EVENT_PAGES = 1;
     const terminalStatuses = new Set(["completed", "failed", "blocked", "cancelled", "corrections_required", "timed_out"]);
@@ -1930,6 +1934,34 @@
       `).join("") || '<li class="status">No routes in contract.</li>';
     }
 
+    function beginContractLoad(version) {
+      contractLoadSequence += 1;
+      requestedContractVersion = version;
+      return { sequence: contractLoadSequence, version };
+    }
+
+    function isCurrentContractLoad(request) {
+      return request.sequence === contractLoadSequence
+        && (!request.version || requestedContractVersion === request.version)
+        && (!request.version || contractVersionSelect.value === request.version);
+    }
+
+    function clearContractProjection(message) {
+      currentContract = null;
+      pairCount.textContent = "—";
+      contractJson.value = "";
+      renderContractForm({});
+      contractBodies.innerHTML = `
+        <article class="contract-body-card">
+          <h3>Contract unavailable</h3>
+          <pre>${escapeHtml(message)}</pre>
+        </article>
+      `;
+      routeMap.innerHTML = `<li class="status error">${escapeHtml(message)}</li>`;
+      contractStatus.textContent = message;
+      contractStatus.classList.add("error");
+    }
+
     function latestEvent(events, eventTypes) {
       const types = new Set(Array.isArray(eventTypes) ? eventTypes : [eventTypes]);
       return [...(Array.isArray(events) ? events : [])]
@@ -1941,8 +1973,13 @@
       return currentTaskId === taskId && projectionGeneration === generation;
     }
 
+    function isCurrentRefreshRequest(taskId, generation, sequence) {
+      return refreshSequence === sequence && isCurrentTaskRequest(taskId, generation);
+    }
+
     function beginProjectionRequest(taskId = null) {
       projectionGeneration += 1;
+      refreshSequence += 1;
       if (taskId !== null) {
         currentTaskId = String(taskId);
       }
@@ -2574,9 +2611,17 @@
     }
 
     async function loadContract() {
+      const contractRequest = beginContractLoad("");
       try {
-        renderContract(await fetchJson(contractUrl));
+        const contract = await fetchJson(contractUrl);
+        if (!isCurrentContractLoad(contractRequest)) {
+          return;
+        }
+        renderContract(contract);
       } catch (error) {
+        if (!isCurrentContractLoad(contractRequest)) {
+          return;
+        }
         contractStatus.textContent = `Unable to load ${contractUrl}: ${error.message}`;
         contractStatus.classList.add("error");
         routeMap.innerHTML = `<li class="status error">Unable to load ${contractUrl}: ${escapeHtml(error.message)}</li>`;
@@ -2657,13 +2702,20 @@
       if (!version) {
         return;
       }
+      const contractRequest = beginContractLoad(version);
       contractStatus.classList.remove("error");
       contractStatus.textContent = `Loading contract version ${version}...`;
       try {
-        renderContract(await fetchJson(`/v1/swarm/contract?version=${encodeURIComponent(version)}`));
+        const contract = await fetchJson(`/v1/swarm/contract?version=${encodeURIComponent(version)}`);
+        if (!isCurrentContractLoad(contractRequest)) {
+          return;
+        }
+        renderContract(contract);
       } catch (error) {
-        contractStatus.textContent = `Unable to load contract version: ${error.message}`;
-        contractStatus.classList.add("error");
+        if (!isCurrentContractLoad(contractRequest)) {
+          return;
+        }
+        clearContractProjection(`Unable to load contract version: ${error.message}`);
       }
     }
 
@@ -2964,13 +3016,18 @@
     async function refreshCurrentTask(options = {}) {
       const requestedTaskId = options.taskId || currentTaskId;
       const requestGeneration = options.generation ?? projectionGeneration;
+      if (refreshInFlight) {
+        return;
+      }
       if (!requestedTaskId || !isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
         return;
       }
+      const refreshRequestSequence = ++refreshSequence;
+      refreshInFlight = true;
       try {
         const task = await fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}`);
         const selectedTask = task || { task_id: requestedTaskId, status: "unknown" };
-        if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
+        if (!isCurrentRefreshRequest(requestedTaskId, requestGeneration, refreshRequestSequence)) {
           return;
         }
         taskStatus.textContent = `Task ${selectedTask.task_id}: ${selectedTask.status}`;
@@ -2991,12 +3048,12 @@
           fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/playbook/runs`),
           fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/research/recommendations`)
         ]);
-        if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
+        if (!isCurrentRefreshRequest(requestedTaskId, requestGeneration, refreshRequestSequence)) {
           return;
         }
         const visibleEvents = await loadEvents(requestedTaskId, { generation: requestGeneration });
         const events = await loadProjectionEvents(requestedTaskId);
-        if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
+        if (!isCurrentRefreshRequest(requestedTaskId, requestGeneration, refreshRequestSequence)) {
           return;
         }
         renderGraph(graph, { task: selectedTask, inspector, events: events.events || [] });
@@ -3014,10 +3071,12 @@
           stopEventPolling();
         }
       } catch (error) {
-        if (!options.quiet && isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
+        if (!options.quiet && isCurrentRefreshRequest(requestedTaskId, requestGeneration, refreshRequestSequence)) {
           eventsStatus.textContent = `Unable to refresh task: ${error.message}`;
           eventsStatus.classList.add("error");
         }
+      } finally {
+        refreshInFlight = false;
       }
     }
 

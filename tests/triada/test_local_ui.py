@@ -203,8 +203,24 @@ async def test_get_local_swarm_ui():
     assert 'llmConfigPanel.querySelectorAll' in response.text
     assert 'closeLlmConfigButton.focus();' in response.text
     assert 'trigger.focus();' in response.text
+    assert 'let refreshInFlight = false;' in response.text
+    assert 'let refreshSequence = 0;' in response.text
+    assert 'function isCurrentRefreshRequest' in response.text
+    refresh_loader = response.text.partition('async function refreshCurrentTask(options = {})')[2].partition('async function loadTask')[0]
+    assert 'if (refreshInFlight) {' in refresh_loader
+    assert 'refreshInFlight = true;' in refresh_loader
+    assert 'const refreshRequestSequence = ++refreshSequence;' in refresh_loader
+    assert 'isCurrentRefreshRequest(requestedTaskId, requestGeneration, refreshRequestSequence)' in refresh_loader
+    assert 'refreshInFlight = false;' in refresh_loader
+    assert 'let contractLoadSequence = 0;' in response.text
+    assert 'let requestedContractVersion = "";' in response.text
+    assert 'function isCurrentContractLoad' in response.text
+    assert 'function clearContractProjection' in response.text
     contract_loader = response.text.partition('async function loadSelectedContractVersion()')[2].partition('async function saveContract')[0]
     assert 'try {' in contract_loader
+    assert 'const contractRequest = beginContractLoad(version);' in contract_loader
+    assert 'isCurrentContractLoad(contractRequest)' in contract_loader
+    assert 'clearContractProjection' in contract_loader
     assert 'Unable to load contract version:' in contract_loader
     assert 'id="event-feed"' in response.text
     assert 'id="events-panel"' in response.text
