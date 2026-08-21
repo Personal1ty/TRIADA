@@ -39,6 +39,8 @@ async def test_get_local_swarm_ui():
     assert 'id="approve-task" type="button" hidden>Approve action' in response.text
     assert 'class="advanced-drawer" id="advanced-drawer" hidden' in response.text
     assert '.advanced-drawer.is-open' in response.text
+    hidden_css = response.text.partition('\n    [hidden] {')[2].partition('}')[0]
+    assert 'display: none !important;' in hidden_css
     assert 'id="toggle-advanced" type="button" aria-controls="advanced-drawer" aria-expanded="false">Advanced</button>' in response.text
     assert 'advancedToggleButton.addEventListener("click"' in response.text
     assert '<nav class="tabs" aria-label="TRIADA dashboard views" hidden>' in response.text
@@ -47,6 +49,7 @@ async def test_get_local_swarm_ui():
     assert '<h2 id="llm-config-title">LLM Provider</h2>' in response.text
     assert 'id="close-llm-config" type="button"' in response.text
     assert 'id="task-advanced"' in response.text
+    assert '<form class="controls" id="task-form" hidden>' in response.text
     assert '<summary>Advanced options</summary>' in response.text
     assert 'id="task-risk"' in response.text
     assert 'createTask(true);' in response.text
