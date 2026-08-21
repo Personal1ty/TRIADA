@@ -350,6 +350,26 @@ Local dashboard:
   the audit-event cursor. Raw reasoning stays in sensitive audit events and is
   hidden until explicitly revealed.
 
+### Desktop Observatory workflow
+
+For the local operator flow, open `/ui`, configure the LLM API once, then click
+`New task` and submit a goal (with optional acceptance criteria). Select the
+task to observe live `Runs`, the `Execution graph`, `Contracts`, `Result`, and
+`Events` views as the run progresses. Approve only actionable actions shown in
+the approval queue; advanced diagnostics and raw controls remain behind
+`Advanced`.
+
+The server remains authoritative for routing, tool boundaries, `PolicyGate`,
+approvals, memory, and the append-only audit trail. The desktop Observatory is
+an operator view over those server-side decisions, not a replacement for them.
+
+To verify the implementation locally:
+
+```bash
+python3 -m pytest -q
+node --check <(sed -n '/<script>/,/<\/script>/p' app/ui/index.html | sed '1d;$d')
+```
+
 Safe read-only tools currently supported by the worker: `git status`, `echo`,
 `pytest`, `rg`, `ls`, `cat`, and `sed` without mutating flags such as `-i`.
 
