@@ -38,6 +38,9 @@ async def test_get_local_swarm_ui():
     assert 'id="new-task" type="button" aria-controls="create-task-form" aria-expanded="false">+ New task' in response.text
     assert 'id="approve-task" type="button" hidden>Approve action' in response.text
     assert 'class="advanced-drawer" id="advanced-drawer" hidden' in response.text
+    assert '.advanced-drawer.is-open' in response.text
+    assert 'id="toggle-advanced" type="button" aria-controls="advanced-drawer" aria-expanded="false">Advanced</button>' in response.text
+    assert 'advancedToggleButton.addEventListener("click"' in response.text
     assert '<nav class="tabs" aria-label="TRIADA dashboard views" hidden>' in response.text
     assert '<section id="llm-config" role="dialog" aria-modal="true" aria-labelledby="llm-config-title" hidden>' in response.text
     assert '<form id="create-task-form" class="form-grid" hidden>' in response.text
@@ -68,6 +71,8 @@ async def test_get_local_swarm_ui():
     assert 'panel.hidden = !open;' in response.text
     assert 'trigger.setAttribute("aria-expanded", String(open));' in response.text
     assert 'trigger.focus();' in response.text
+    assert 'if (!advancedDrawer.hidden && event.key === "Escape")' in response.text
+    assert 'setPanelOpen(advancedToggleButton, advancedDrawer, false);' in response.text
     assert "/v1/tasks/" in response.text
     assert "/swarm-graph" in response.text
     assert "TRIADA Swarm" in response.text
@@ -213,11 +218,13 @@ async def test_get_local_swarm_ui():
     assert 'isCurrentRefreshRequest(requestedTaskId, requestGeneration, refreshRequestSequence)' in refresh_loader
     assert 'refreshInFlight = false;' in refresh_loader
     assert 'let contractLoadSequence = 0;' in response.text
+    assert 'let contractRequestGeneration = 0;' in response.text
     assert 'let requestedContractVersion = "";' in response.text
     assert 'let contractVersionsInFlight = false;' in response.text
     assert 'let contractVersionsSequence = 0;' in response.text
     assert 'let contractDiffSequence = 0;' in response.text
     assert 'function isCurrentContractLoad' in response.text
+    assert 'request.generation === contractRequestGeneration' in response.text
     assert 'function clearContractProjection' in response.text
     contract_versions_loader = response.text.partition('async function loadContractVersions(preferredVersionOverride = "", allowDuringContractAction = false)')[2].partition('async function compareContracts')[0]
     assert 'if (contractVersionsInFlight) {' in contract_versions_loader
@@ -235,6 +242,8 @@ async def test_get_local_swarm_ui():
     default_contract_loader = response.text.partition('async function loadContract()')[2].partition('async function loadContractVersions')[0]
     assert 'clearContractProjection' in default_contract_loader
     contract_loader = response.text.partition('async function loadSelectedContractVersion()')[2].partition('async function saveContract')[0]
+    assert 'if (contractActionInFlight) {' in contract_loader
+    assert 'return;' in contract_loader
     assert 'try {' in contract_loader
     assert 'const contractRequest = beginContractLoad(version);' in contract_loader
     assert 'isCurrentContractLoad(contractRequest)' in contract_loader
@@ -269,6 +278,7 @@ async def test_get_local_swarm_ui():
     assert 'if (actionSequence !== contractActionSequence)' in contract_save_loader
     assert 'saveContractButton.disabled = true;' in contract_save_loader
     assert 'saveContractButton.disabled = false;' in contract_save_loader
+    assert 'invalidateContractRequest();' in contract_save_loader
     assert 'invalidateContractVersionsRequest();' in contract_save_loader
     assert 'await loadContractVersions(savedContract.contract_version, true);' in contract_save_loader
     assert 'syncContractVersionSelection(savedContract);' in contract_save_loader
@@ -287,6 +297,11 @@ async def test_get_local_swarm_ui():
     assert 'function setLlmActionBusy(busy)' in response.text
     assert 'saveLlmButton.disabled = busy;' in response.text
     assert 'testLlmButton.disabled = busy;' in response.text
+    assert 'let rawReasoningRevealSequence = 0;' in response.text
+    raw_reasoning_loader = response.text.partition('async function revealRawReasoning(eventId)')[2].partition('function clearRawReasoningReveal')[0]
+    assert 'const rawReasoningRequestSequence = ++rawReasoningRevealSequence;' in raw_reasoning_loader
+    assert 'rawReasoningRequestSequence !== rawReasoningRevealSequence' in raw_reasoning_loader
+    assert 'acknowledge_sensitive: rawReasoningAck.checked' in raw_reasoning_loader
     assert 'id="event-feed"' in response.text
     assert 'id="events-panel"' in response.text
     assert 'data-observatory-panel="events-panel"' in response.text

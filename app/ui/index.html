@@ -211,6 +211,10 @@
       display: none;
     }
 
+    .advanced-drawer.is-open {
+      display: block;
+    }
+
     #events .inline-controls {
       display: none;
     }
@@ -1379,7 +1383,10 @@
       </div>
     </main>
 
-    <footer>TRIADA Observatory · Worker execution and Auditor verification remain server-controlled.</footer>
+    <footer>
+      TRIADA Observatory · Worker execution and Auditor verification remain server-controlled.
+      <button id="toggle-advanced" type="button" aria-controls="advanced-drawer" aria-expanded="false">Advanced</button>
+    </footer>
   </div>
 
   <script>
@@ -1392,6 +1399,8 @@
     const contractUrl = "/v1/swarm/contract";
     const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
     const tabPanels = Array.from(document.querySelectorAll(".tab-panel[id$='-view']"));
+    const advancedDrawer = document.getElementById("advanced-drawer");
+    const advancedToggleButton = document.getElementById("toggle-advanced");
     const llmForm = document.getElementById("llm-form");
     const llmProvider = document.getElementById("llm-provider");
     const llmBaseUrl = document.getElementById("llm-base-url");
@@ -1545,6 +1554,7 @@
     let refreshInFlight = false;
     let refreshSequence = 0;
     let contractLoadSequence = 0;
+    let contractRequestGeneration = 0;
     let requestedContractVersion = "";
     let contractVersionsInFlight = false;
     let contractVersionsSequence = 0;
@@ -1553,6 +1563,7 @@
     let contractActionSequence = 0;
     let eventPageInFlight = false;
     let eventProjectionSequence = 0;
+    let rawReasoningRevealSequence = 0;
     let llmActionInFlight = false;
     let llmActionSequence = 0;
     const MAX_PROJECTION_EVENT_PAGES = 10;
@@ -1987,14 +1998,22 @@
 
     function beginContractLoad(version) {
       contractLoadSequence += 1;
+      contractRequestGeneration += 1;
       requestedContractVersion = version;
-      return { sequence: contractLoadSequence, version };
+      return { sequence: contractLoadSequence, generation: contractRequestGeneration, version };
     }
 
     function isCurrentContractLoad(request) {
       return request.sequence === contractLoadSequence
+        && request.generation === contractRequestGeneration
         && (!request.version || requestedContractVersion === request.version)
         && (!request.version || contractVersionSelect.value === request.version);
+    }
+
+    function invalidateContractRequest() {
+      contractLoadSequence += 1;
+      contractRequestGeneration += 1;
+      requestedContractVersion = "";
     }
 
     function clearContractProjection(message) {
@@ -2817,6 +2836,9 @@
     }
 
     async function loadSelectedContractVersion() {
+      if (contractActionInFlight) {
+        return;
+      }
       const version = contractVersionSelect.value;
       if (!version) {
         return;
@@ -2846,8 +2868,7 @@
       contractActionInFlight = true;
       saveContractButton.disabled = true;
       invalidateContractVersionsRequest();
-      contractLoadSequence += 1;
-      requestedContractVersion = "";
+      invalidateContractRequest();
       contractStatus.classList.remove("error");
       try {
         const payload = contractFromForm();
@@ -3037,6 +3058,7 @@
     async function revealRawReasoning(eventId) {
       const rawReasoningTaskId = String(currentTaskId);
       const rawReasoningGeneration = projectionGeneration;
+      const rawReasoningRequestSequence = ++rawReasoningRevealSequence;
       rawReasoningStatus.classList.remove("error");
       rawReasoningOutput.textContent = "";
       if (!rawReasoningTaskId) {
@@ -3049,13 +3071,15 @@
           `/v1/tasks/${encodeURIComponent(rawReasoningTaskId)}/raw-reasoning/${encodeURIComponent(eventId)}/reveal`,
           { acknowledge_sensitive: rawReasoningAck.checked, requested_by: "local-ui" }
         );
-        if (!isCurrentTaskRequest(rawReasoningTaskId, rawReasoningGeneration)) {
+        if (!isCurrentTaskRequest(rawReasoningTaskId, rawReasoningGeneration)
+          || rawReasoningRequestSequence !== rawReasoningRevealSequence) {
           return;
         }
         rawReasoningStatus.textContent = `Revealed ${result.event_id} from ${result.agent_id || "agent"}.`;
         rawReasoningOutput.textContent = result.raw_reasoning_content;
       } catch (error) {
-        if (isCurrentTaskRequest(rawReasoningTaskId, rawReasoningGeneration)) {
+        if (isCurrentTaskRequest(rawReasoningTaskId, rawReasoningGeneration)
+          && rawReasoningRequestSequence === rawReasoningRevealSequence) {
           rawReasoningStatus.textContent = `Unable to reveal raw reasoning: ${error.message}`;
           rawReasoningStatus.classList.add("error");
         }
@@ -3063,6 +3087,7 @@
     }
 
     function clearRawReasoningReveal() {
+      rawReasoningRevealSequence += 1;
       rawReasoningAck.checked = false;
       rawReasoningOutput.textContent = "";
     }
@@ -3440,6 +3465,8 @@
       trigger.setAttribute("aria-expanded", String(open));
       if (open && panel === llmConfigPanel) {
         closeLlmConfigButton.focus();
+      } else if (open && panel === advancedDrawer) {
+        refreshEventsButton.focus();
       } else if (!open) {
         trigger.focus();
       }
@@ -3492,15 +3519,23 @@
     });
 
     document.addEventListener("keydown", (event) => {
-      if (llmConfigPanel.hidden) {
+      if (!llmConfigPanel.hidden) {
+        if (event.key === "Tab") {
+          trapLlmDialogFocus(event);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          setPanelOpen(openLlmConfigButton, llmConfigPanel, false);
+        }
         return;
       }
-      if (event.key === "Tab") {
-        trapLlmDialogFocus(event);
-      } else if (event.key === "Escape") {
+      if (!advancedDrawer.hidden && event.key === "Escape") {
         event.preventDefault();
-        setPanelOpen(openLlmConfigButton, llmConfigPanel, false);
+        setPanelOpen(advancedToggleButton, advancedDrawer, false);
       }
+    });
+
+    advancedToggleButton.addEventListener("click", () => {
+      setPanelOpen(advancedToggleButton, advancedDrawer, advancedDrawer.hidden);
     });
 
     newTaskButton.addEventListener("click", () => {
