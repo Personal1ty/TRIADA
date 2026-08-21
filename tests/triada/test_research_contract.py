@@ -14,6 +14,18 @@ class ResearchPlanProvider:
         return {"answer": {"steps": [{"id": "step-1", "title": "Inspect", "description": "Inspect", "allowed_tools": ["echo"], "command": ["echo", "evidence"]}]}}
 
 
+class StructuredOutputSchemaProvider:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        return {
+            "answer": {
+                "steps": [],
+                "research_contract": {
+                    "output_schema": {"type": "object", "properties": {"result": {"type": "string"}}}
+                },
+            }
+        }
+
+
 def _tool_record():
     return ToolExecutionRecord(tool="shell", command=["git", "status"], exit_code=0)
 
@@ -29,6 +41,17 @@ async def test_orchestrator_builds_research_contract_for_analysis_goal():
     assert plan.research_contract.mode == ResearchMode.RESEARCH
     assert plan.research_contract.required_artifacts == ["research_report"]
     assert plan.research_contract.min_tool_executions == 3
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_falls_back_when_output_schema_is_structured_object():
+    plan = await Orchestrator(StructuredOutputSchemaProvider()).plan_task(
+        goal="Проведи архитектурный анализ TRIADA",
+        allowed_tools=["echo"],
+        acceptance_criteria=[],
+    )
+
+    assert plan.research_contract.output_schema == "research_report"
 
 
 def test_completion_gate_rejects_successful_tool_without_research_artifact():
