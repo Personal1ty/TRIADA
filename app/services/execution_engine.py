@@ -471,6 +471,7 @@ class ExecutionEngine:
                 step=step,
                 worker_id=worker_id,
                 model_summaries=model_summaries,
+                research_mode=plan.research_contract.mode.value == "research",
             )
 
         return await scheduler.run(jobs, worker_key=lambda job: job[0], run=run_job)
@@ -508,6 +509,7 @@ class ExecutionEngine:
         step: PlanStep,
         worker_id: str,
         model_summaries: list[dict[str, Any]],
+        research_mode: bool = False,
     ) -> WorkerResult:
         worker = Worker(
             worker_id=worker_id,
@@ -549,6 +551,7 @@ class ExecutionEngine:
             command=command,
             risk_policy=step.risk_policy,
             approval_ref=self._approval_ref(task),
+            research_mode=research_mode,
         )
         if result.model_thinking_summary_delta:
             model_summaries.append(result.model_thinking_summary_delta)

@@ -68,6 +68,7 @@ class Worker:
         command: list[str],
         risk_policy: RiskPolicy = RiskPolicy.READ_ONLY,
         approval_ref: str | None = None,
+        research_mode: bool = False,
     ) -> WorkerResult:
         if not command:
             return self._blocked(
@@ -158,7 +159,17 @@ class Worker:
                 raw_reasoning_content=model_response.get("raw_reasoning_content"),
             )
 
-        passed = result.exit_code == 0 and not result.timed_out
+        nonfatal_research_probe = (
+            research_mode
+            and risk_policy == RiskPolicy.READ_ONLY
+            and tool_name in {"ls", "cat", "rg", "sed"}
+            and result.exit_code != 0
+            and not result.timed_out
+        )
+        passed = (result.exit_code == 0 and not result.timed_out) or nonfatal_research_probe
+        validation_message = result.stderr or result.stdout or None
+        if nonfatal_research_probe:
+            validation_message = f"nonfatal research probe: {validation_message or f'exit code {result.exit_code}'}"
         tool_record = ToolExecutionRecord(
             tool=result.tool,
             command=result.command,
@@ -174,15 +185,19 @@ class Worker:
             step_id=step_id,
             worker_id=self.worker_id,
             status="succeeded" if passed else "failed",
-            summary=f"{title} {'succeeded' if passed else 'failed'} with exit code {result.exit_code}.",
-            evidence=[result.stdout] if result.stdout else [],
+            summary=(
+                f"{title} recorded a nonfatal research probe result with exit code {result.exit_code}."
+                if nonfatal_research_probe
+                else f"{title} {'succeeded' if passed else 'failed'} with exit code {result.exit_code}."
+            ),
+            evidence=[value for value in (result.stdout, result.stderr) if value],
             commands=[command],
             tool_results=[tool_record],
             validation_results=[
                 ValidationResultRecord(
                     check_name="tool_execution",
                     passed=passed,
-                    message=result.stderr or result.stdout or None,
+                    message=validation_message,
                 )
             ],
             errors=[] if passed else [result.stderr or f"exit code {result.exit_code}"],

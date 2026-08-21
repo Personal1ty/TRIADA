@@ -425,6 +425,23 @@ async def test_worker_runs_read_only_tool_when_rate_limit_exhausted(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_worker_keeps_missing_read_only_probe_as_research_evidence(tmp_path):
+    result = await Worker(worker_id="worker-1", workspace=tmp_path).run_step(
+        task_id="task-1",
+        step_id="step-1",
+        title="Inspect optional schema",
+        allowed_tools=["cat"],
+        command=["cat", "optional-schema.json"],
+        research_mode=True,
+    )
+
+    assert result.status == "succeeded"
+    assert result.tool_results[0].exit_code != 0
+    assert result.validation_results[0].passed is True
+    assert "nonfatal research probe" in result.validation_results[0].message
+
+
+@pytest.mark.asyncio
 async def test_worker_blocks_write_file_outside_workspace(tmp_path):
     result = await Worker(worker_id="worker-1", workspace=tmp_path).run_step(
         task_id="task-1",
