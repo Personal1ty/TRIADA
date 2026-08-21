@@ -47,6 +47,14 @@ async def test_get_local_swarm_ui():
     assert '<summary>Advanced options</summary>' in response.text
     assert 'id="task-risk"' in response.text
     assert 'createTask(true);' in response.text
+    criteria_control = response.text.partition('id="task-criteria"')[2].partition('</div>')[0]
+    assert 'required' not in criteria_control
+    assert 'value="return useful result"' not in criteria_control
+    assert 'acceptance_criteria: parseList(taskCriteria.value)' in response.text
+    assert 'createRunTaskButton.addEventListener("click", () => {' in response.text
+    assert 'createTask(false);' in response.text
+    create_task_body = response.text.partition('async function createTask(runAfterCreate)')[2].partition('async function runCurrentTask')[0]
+    assert 'taskCreateInFlight = false;\n        createTaskButton.disabled = false;\n        createRunTaskButton.disabled = false;' in create_task_body
     assert 'id="raw-reasoning-view" hidden' in response.text
     assert 'id="contracts-view" hidden' in response.text
     assert 'id="approvals-view" hidden' in response.text
@@ -190,8 +198,14 @@ async def test_get_local_swarm_ui():
     assert 'approveTaskButton.disabled = true;' in response.text
     assert 'document.addEventListener("keydown"' in response.text
     assert 'event.key === "Escape"' in response.text
+    assert 'event.key === "Tab"' in response.text
+    assert 'function trapLlmDialogFocus' in response.text
+    assert 'llmConfigPanel.querySelectorAll' in response.text
     assert 'closeLlmConfigButton.focus();' in response.text
     assert 'trigger.focus();' in response.text
+    contract_loader = response.text.partition('async function loadSelectedContractVersion()')[2].partition('async function saveContract')[0]
+    assert 'try {' in contract_loader
+    assert 'Unable to load contract version:' in contract_loader
     assert 'id="event-feed"' in response.text
     assert 'id="events-panel"' in response.text
     assert 'data-observatory-panel="events-panel"' in response.text

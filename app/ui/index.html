@@ -1016,7 +1016,7 @@
             </div>
             <div class="field">
               <label for="task-criteria">Acceptance criteria</label>
-              <input id="task-criteria" name="task-criteria" type="text" autocomplete="off" value="return useful result" required placeholder="criterion one, criterion two">
+              <input id="task-criteria" name="task-criteria" type="text" autocomplete="off" placeholder="criterion one, criterion two">
             </div>
             <div class="button-row">
               <button id="create-task" type="submit">Create &amp; run</button>
@@ -1437,6 +1437,14 @@
     const approveTaskButton = document.getElementById("approve-task");
     const llmConfigPanel = document.getElementById("llm-config");
     const closeLlmConfigButton = document.getElementById("close-llm-config");
+    const llmDialogFocusableSelector = [
+      "button:not([disabled])",
+      "input:not([disabled])",
+      "select:not([disabled])",
+      "textarea:not([disabled])",
+      "[href]",
+      "[tabindex]:not([tabindex='-1'])"
+    ].join(", ");
     const contractsToggleButton = document.getElementById("toggle-contracts");
     const contractsPanel = document.getElementById("contracts-panel");
     const contractsSummaryStatus = document.getElementById("contracts-summary-status");
@@ -2649,7 +2657,14 @@
       if (!version) {
         return;
       }
-      renderContract(await fetchJson(`/v1/swarm/contract?version=${encodeURIComponent(version)}`));
+      contractStatus.classList.remove("error");
+      contractStatus.textContent = `Loading contract version ${version}...`;
+      try {
+        renderContract(await fetchJson(`/v1/swarm/contract?version=${encodeURIComponent(version)}`));
+      } catch (error) {
+        contractStatus.textContent = `Unable to load contract version: ${error.message}`;
+        contractStatus.classList.add("error");
+      }
     }
 
     async function saveContract() {
@@ -3136,10 +3151,8 @@
         }
       } finally {
         taskCreateInFlight = false;
-        if (isCurrentProjectionRequest(requestToken)) {
-          createTaskButton.disabled = false;
-          createRunTaskButton.disabled = false;
-        }
+        createTaskButton.disabled = false;
+        createRunTaskButton.disabled = false;
       }
     }
 
@@ -3193,6 +3206,29 @@
       }
     }
 
+    function trapLlmDialogFocus(event) {
+      if (llmConfigPanel.hidden || event.key !== "Tab") {
+        return;
+      }
+      const focusable = Array.from(llmConfigPanel.querySelectorAll(llmDialogFocusableSelector));
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!llmConfigPanel.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
     const contractsMediaQuery = window.matchMedia("(max-width: 1100px)");
     function syncContractsPanel() {
       if (contractsMediaQuery.matches) {
@@ -3217,7 +3253,12 @@
     });
 
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !llmConfigPanel.hidden) {
+      if (llmConfigPanel.hidden) {
+        return;
+      }
+      if (event.key === "Tab") {
+        trapLlmDialogFocus(event);
+      } else if (event.key === "Escape") {
         event.preventDefault();
         setPanelOpen(openLlmConfigButton, llmConfigPanel, false);
       }
@@ -3247,7 +3288,7 @@
     });
 
     createRunTaskButton.addEventListener("click", () => {
-      createTask(true);
+      createTask(false);
     });
 
     runTaskButton.addEventListener("click", () => {
