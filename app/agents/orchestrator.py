@@ -143,6 +143,8 @@ class Orchestrator:
             defaults.update(proposed)
         if not isinstance(defaults.get("output_schema"), str) or not defaults["output_schema"].strip():
             defaults["output_schema"] = "research_report"
+        if not isinstance(defaults.get("depth"), str):
+            defaults["depth"] = str(defaults["depth"])
         return ResearchContract.model_validate(defaults)
 
     def _build_execution_contract(

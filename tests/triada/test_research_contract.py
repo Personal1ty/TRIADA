@@ -26,6 +26,16 @@ class StructuredOutputSchemaProvider:
         }
 
 
+class NumericDepthProvider:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        return {
+            "answer": {
+                "steps": [],
+                "research_contract": {"depth": 2},
+            }
+        }
+
+
 def _tool_record():
     return ToolExecutionRecord(tool="shell", command=["git", "status"], exit_code=0)
 
@@ -52,6 +62,17 @@ async def test_orchestrator_falls_back_when_output_schema_is_structured_object()
     )
 
     assert plan.research_contract.output_schema == "research_report"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_normalizes_numeric_research_depth():
+    plan = await Orchestrator(NumericDepthProvider()).plan_task(
+        goal="Проведи архитектурный анализ TRIADA",
+        allowed_tools=["echo"],
+        acceptance_criteria=[],
+    )
+
+    assert plan.research_contract.depth == "2"
 
 
 def test_completion_gate_rejects_successful_tool_without_research_artifact():
