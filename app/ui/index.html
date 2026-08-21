@@ -1606,22 +1606,22 @@
 
     function renderPairEditor(pairs) {
       workerPairEditor.innerHTML = pairs.map((pair, index) => `
-        <div class="pair-row" data-index="${index}">
+        <div class="pair-row" data-index="${escapeHtml(index)}">
           <div class="field">
-            <label for="worker-id-${index}">Worker</label>
-            <input id="worker-id-${index}" class="pair-worker" type="text" value="${escapeHtml(pair.worker_id || "")}">
+            <label for="worker-id-${escapeHtml(index)}">Worker</label>
+            <input id="worker-id-${escapeHtml(index)}" class="pair-worker" type="text" value="${escapeHtml(pair.worker_id || "")}">
           </div>
           <div class="field">
-            <label for="auditor-id-${index}">Auditor</label>
-            <input id="auditor-id-${index}" class="pair-auditor" type="text" value="${escapeHtml(pair.auditor_id || "")}">
+            <label for="auditor-id-${escapeHtml(index)}">Auditor</label>
+            <input id="auditor-id-${escapeHtml(index)}" class="pair-auditor" type="text" value="${escapeHtml(pair.auditor_id || "")}">
           </div>
           <div class="field">
-            <label for="pair-capabilities-${index}">Capabilities</label>
-            <input id="pair-capabilities-${index}" class="pair-capabilities" type="text" value="${escapeHtml((pair.capabilities || []).join(", "))}">
+            <label for="pair-capabilities-${escapeHtml(index)}">Capabilities</label>
+            <input id="pair-capabilities-${escapeHtml(index)}" class="pair-capabilities" type="text" value="${escapeHtml((pair.capabilities || []).join(", "))}">
           </div>
           <div class="field">
-            <label for="pair-parallel-${index}">Parallel</label>
-            <input id="pair-parallel-${index}" class="pair-parallel" type="number" min="1" step="1" value="${escapeHtml(pair.max_parallel_steps || 1)}">
+            <label for="pair-parallel-${escapeHtml(index)}">Parallel</label>
+            <input id="pair-parallel-${escapeHtml(index)}" class="pair-parallel" type="number" min="1" step="1" value="${escapeHtml(pair.max_parallel_steps || 1)}">
           </div>
           <button type="button" class="remove-worker-pair" aria-label="Remove pair">x</button>
         </div>
@@ -1630,26 +1630,26 @@
 
     function renderRouteEditor(routes) {
       routeMapEditor.innerHTML = routes.map((route, index) => `
-        <div class="route-row" data-index="${index}">
+        <div class="route-row" data-index="${escapeHtml(index)}">
           <div class="field">
-            <label for="route-source-${index}">Source</label>
-            <input id="route-source-${index}" class="route-source" type="text" value="${escapeHtml(route.source || "")}">
+            <label for="route-source-${escapeHtml(index)}">Source</label>
+            <input id="route-source-${escapeHtml(index)}" class="route-source" type="text" value="${escapeHtml(route.source || "")}">
           </div>
           <div class="field">
-            <label for="route-target-${index}">Target</label>
-            <input id="route-target-${index}" class="route-target" type="text" value="${escapeHtml(route.target || "")}">
+            <label for="route-target-${escapeHtml(index)}">Target</label>
+            <input id="route-target-${escapeHtml(index)}" class="route-target" type="text" value="${escapeHtml(route.target || "")}">
           </div>
           <div class="field">
-            <label for="route-reason-${index}">Reason</label>
-            <input id="route-reason-${index}" class="route-reason" type="text" value="${escapeHtml(route.reason || "")}">
+            <label for="route-reason-${escapeHtml(index)}">Reason</label>
+            <input id="route-reason-${escapeHtml(index)}" class="route-reason" type="text" value="${escapeHtml(route.reason || "")}">
           </div>
           <div class="field">
-            <label for="route-input-${index}">Input contract</label>
-            <input id="route-input-${index}" class="route-input-contract" type="text" value="${escapeHtml(contractRef(route.input_contract))}" placeholder="name@version">
+            <label for="route-input-${escapeHtml(index)}">Input contract</label>
+            <input id="route-input-${escapeHtml(index)}" class="route-input-contract" type="text" value="${escapeHtml(contractRef(route.input_contract))}" placeholder="name@version">
           </div>
           <div class="field">
-            <label for="route-output-${index}">Output contract</label>
-            <input id="route-output-${index}" class="route-output-contract" type="text" value="${escapeHtml(contractRef(route.output_contract))}" placeholder="name@version">
+            <label for="route-output-${escapeHtml(index)}">Output contract</label>
+            <input id="route-output-${escapeHtml(index)}" class="route-output-contract" type="text" value="${escapeHtml(contractRef(route.output_contract))}" placeholder="name@version">
           </div>
           <button type="button" class="remove-route-map-entry" aria-label="Remove route">x</button>
         </div>
@@ -1872,7 +1872,9 @@
 
     function latestEvent(events, eventTypes) {
       const types = new Set(Array.isArray(eventTypes) ? eventTypes : [eventTypes]);
-      return [...(Array.isArray(events) ? events : [])].reverse().find((event) => types.has(event.event_type)) || null;
+      return [...(Array.isArray(events) ? events : [])]
+        .filter((event) => types.has(event.event_type))
+        .sort((left, right) => Number(right.sequence || 0) - Number(left.sequence || 0))[0] || null;
     }
 
     function isCurrentTaskRequest(taskId, generation) {
@@ -1998,8 +2000,8 @@
       const lanes = roleOrder.map((role, index) => {
         const x = 56 + index * laneWidth;
         return `
-          <text class="graph-lane-label" x="${x}" y="32">${escapeHtml(roleLabels[role] || role)}</text>
-          <line class="graph-lane" x1="${x}" y1="48" x2="${x}" y2="${height - 24}"></line>
+          <text class="graph-lane-label" x="${escapeHtml(x)}" y="32">${escapeHtml(roleLabels[role] || role)}</text>
+          <line class="graph-lane" x1="${escapeHtml(x)}" y1="48" x2="${escapeHtml(x)}" y2="${escapeHtml(height - 24)}"></line>
         `;
       }).join("");
 
@@ -2014,8 +2016,8 @@
         const labelY = (source.y + target.y) / 2 - 18 + offset;
         const midpointX = (source.x + target.x) / 2;
         return `
-          <path class="edge edge-${escapeHtml(edge.state)}" data-edge-id="${escapeHtml(edge.id)}" data-edge-purpose="${escapeHtml(edge.purpose)}" data-edge-state="${escapeHtml(edge.state)}" d="M ${source.x + 56} ${source.y + offset} C ${midpointX} ${source.y + offset}, ${midpointX} ${target.y + offset}, ${target.x - 56} ${target.y + offset}"></path>
-          <text class="edge-label" x="${labelX}" y="${labelY}">${escapeHtml(edge.purpose)} · ${escapeHtml(edge.state)}</text>
+          <path class="edge edge-${escapeHtml(edge.state)}" data-edge-id="${escapeHtml(edge.id)}" data-edge-purpose="${escapeHtml(edge.purpose)}" data-edge-state="${escapeHtml(edge.state)}" d="M ${escapeHtml(source.x + 56)} ${escapeHtml(source.y + offset)} C ${escapeHtml(midpointX)} ${escapeHtml(source.y + offset)}, ${escapeHtml(midpointX)} ${escapeHtml(target.y + offset)}, ${escapeHtml(target.x - 56)} ${escapeHtml(target.y + offset)}"></path>
+          <text class="edge-label" x="${escapeHtml(labelX)}" y="${escapeHtml(labelY)}">${escapeHtml(edge.purpose)} · ${escapeHtml(edge.state)}</text>
         `;
       }).join("");
 
@@ -2025,11 +2027,11 @@
         const meta = node.pair_id || `${node.incoming_count || 0} in / ${node.outgoing_count || 0} out`;
         return `
           <g class="node node-${escapeHtml(node.role || "agent")}" data-node-id="${escapeHtml(node.id)}" data-node-role="${escapeHtml(node.role || "agent")}" data-node-state="${escapeHtml(node.state)}">
-            <rect x="${position.x - 55}" y="${position.y - 22}" width="110" height="44" rx="7"></rect>
+            <rect x="${escapeHtml(position.x - 55)}" y="${escapeHtml(position.y - 22)}" width="110" height="44" rx="7"></rect>
             <title>${escapeHtml(node.id)} · ${escapeHtml(node.role || "agent")}</title>
-            <text class="graph-node-label" x="${position.x}" y="${position.y - 10}">${escapeHtml(label)}</text>
-            <text class="graph-node-meta" x="${position.x}" y="${position.y + 2}">${escapeHtml(node.role || "agent")} · ${escapeHtml(meta)}</text>
-            <text class="graph-node-state" x="${position.x}" y="${position.y + 14}">${escapeHtml(node.state)}</text>
+            <text class="graph-node-label" x="${escapeHtml(position.x)}" y="${escapeHtml(position.y - 10)}">${escapeHtml(label)}</text>
+            <text class="graph-node-meta" x="${escapeHtml(position.x)}" y="${escapeHtml(position.y + 2)}">${escapeHtml(node.role || "agent")} · ${escapeHtml(meta)}</text>
+            <text class="graph-node-state" x="${escapeHtml(position.x)}" y="${escapeHtml(position.y + 14)}">${escapeHtml(node.state)}</text>
           </g>
         `;
       }).join("");
@@ -2166,7 +2168,7 @@
       const byRole = payload?.by_role || {};
       resourceUsageStatus.textContent = `${summary.tokens || 0} tokens · ${summary.duration_ms || 0} ms · estimated cost ${summary.estimated_cost ?? 0} · ${summary.branches || 0} branches`;
       resourceUsageList.innerHTML = Object.entries(byRole).map(([role, item]) =>
-        `<li><span class="pill">${escapeHtml(role)}</span> ${item.tokens || 0} tokens · ${item.duration_ms || 0} ms · cost ${item.estimated_cost ?? 0}</li>`
+        `<li><span class="pill">${escapeHtml(role)}</span> ${escapeHtml(item.tokens || 0)} tokens · ${escapeHtml(item.duration_ms || 0)} ms · cost ${escapeHtml(item.estimated_cost ?? 0)}</li>`
       ).join("") || '<li class="status">No resource usage records.</li>';
     }
 
@@ -2175,7 +2177,7 @@
       const runs = Array.isArray(payload?.runs) ? payload.runs : [];
       playbookRunsStatus.textContent = `${summary.run_count || 0} runs · ${summary.completed_count || 0} completed · best quality ${summary.best_quality_score ?? 0} · total cost ${summary.total_estimated_cost ?? 0}`;
       playbookRunsList.innerHTML = runs.map((run) =>
-        `<li><span class="pill">${escapeHtml(run.name || "playbook")}@${escapeHtml(run.version || "")}</span> quality ${escapeHtml(String(run.quality_score ?? 0))} · ${run.tokens || 0} tokens · ${escapeHtml(run.status || "")}</li>`
+        `<li><span class="pill">${escapeHtml(run.name || "playbook")}@${escapeHtml(run.version || "")}</span> quality ${escapeHtml(String(run.quality_score ?? 0))} · ${escapeHtml(run.tokens || 0)} tokens · ${escapeHtml(run.status || "")}</li>`
       ).join("") || '<li class="status">No playbook runs recorded.</li>';
     }
 
@@ -2221,7 +2223,7 @@
         const benchmarks = Array.isArray(payload?.benchmarks) ? payload.benchmarks : [];
         playbookBenchmarksStatus.textContent = `${benchmarks.length} measured playbook versions.`;
         playbookBenchmarksList.innerHTML = benchmarks.map((item) =>
-          `<li><span class="pill">${escapeHtml(item.name || "playbook")}@${escapeHtml(item.version || "")}</span> quality ${item.average_quality ?? 0} · ${item.total_tokens || 0} tokens · ${item.tokens_per_quality || 0} tokens/quality</li>`
+          `<li><span class="pill">${escapeHtml(item.name || "playbook")}@${escapeHtml(item.version || "")}</span> quality ${escapeHtml(item.average_quality ?? 0)} · ${escapeHtml(item.total_tokens || 0)} tokens · ${escapeHtml(item.tokens_per_quality || 0)} tokens/quality</li>`
         ).join("") || '<li class="status">No measured playbook runs.</li>';
       } catch (error) {
         playbookBenchmarksStatus.textContent = `Unable to load benchmarks: ${error.message}`;
@@ -2231,13 +2233,21 @@
 
     async function loadMemory(taskId = currentTaskId) {
       if (!taskId) return;
+      const memoryTaskId = String(taskId);
+      const memoryGeneration = projectionGeneration;
       const query = memoryQuery.value.trim();
       const suffix = query ? `?q=${encodeURIComponent(query)}` : "";
       try {
-        renderMemory(await fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/memory${suffix}`));
+        const payload = await fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/memory${suffix}`);
+        if (!isCurrentTaskRequest(memoryTaskId, memoryGeneration)) {
+          return;
+        }
+        renderMemory(payload);
       } catch (error) {
-        memoryStatus.textContent = `Unable to load memory: ${error.message}`;
-        memoryStatus.classList.add("error");
+        if (isCurrentTaskRequest(memoryTaskId, memoryGeneration)) {
+          memoryStatus.textContent = `Unable to load memory: ${error.message}`;
+          memoryStatus.classList.add("error");
+        }
       }
     }
 
@@ -2269,10 +2279,11 @@
     }
 
     function renderEvents(payload, options = {}) {
-      const events = Array.isArray(payload.events) ? payload.events : [];
-      nextEventsCursor = payload.next_cursor || null;
-      loadMoreEventsButton.disabled = !payload.has_more || !nextEventsCursor;
-      const pageText = payload.has_more ? " More events are available." : "";
+      const safePayload = payload || {};
+      const events = Array.isArray(safePayload.events) ? safePayload.events : [];
+      nextEventsCursor = safePayload.next_cursor || null;
+      loadMoreEventsButton.disabled = !safePayload.has_more || !nextEventsCursor;
+      const pageText = safePayload.has_more ? " More events are available." : "";
       eventsStatus.textContent = events.length ? `${events.length} audit event${events.length === 1 ? "" : "s"} loaded.${pageText}` : "No events are available for this task.";
       const markup = events.map((event) => `
         <li>
@@ -2288,7 +2299,7 @@
       } else {
         eventFeed.innerHTML = markup;
       }
-      renderRawReasoningRefs(payload);
+      renderRawReasoningRefs(safePayload);
     }
 
     function displayValue(value) {
@@ -2406,6 +2417,7 @@
     }
 
     function renderRunObservatory(task, graph, eventsPayload, inspectorPayload, qualityPayload, checkpointsPayload, budgetPayload, memoryPayload, economicsPayload) {
+      task = task || {};
       const summary = graph && graph.summary ? graph.summary : {};
       const events = eventsPayload && Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
       const inspector = inspectorPayload && inspectorPayload.inspector ? inspectorPayload.inspector : {};
@@ -2449,7 +2461,8 @@
     }
 
     function renderRawReasoningRefs(payload) {
-      const refs = Array.isArray(payload.raw_reasoning_refs) ? payload.raw_reasoning_refs : [];
+      const safePayload = payload || {};
+      const refs = Array.isArray(safePayload.raw_reasoning_refs) ? safePayload.raw_reasoning_refs : [];
       rawReasoningStatus.textContent = refs.length ? `${refs.length} raw reasoning ref${refs.length === 1 ? "" : "s"} available.` : "No raw reasoning refs are available for this task.";
       rawReasoningRefs.innerHTML = refs.map((ref) => `
         <li>
@@ -2463,7 +2476,7 @@
     }
 
     function renderRecentTasks(payload) {
-      const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+      const tasks = Array.isArray(payload?.tasks) ? payload.tasks : [];
       recentTasks.innerHTML = tasks.map((task) => `
         <li>
           <button type="button" class="task-link" data-task-id="${escapeHtml(task.task_id)}">${escapeHtml(task.status)}</button>
@@ -2474,7 +2487,7 @@
     }
 
     function renderApprovalQueue(payload) {
-      const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+      const tasks = Array.isArray(payload?.tasks) ? payload.tasks : [];
       approvalsStatus.textContent = tasks.length ? `${tasks.length} task${tasks.length === 1 ? "" : "s"} waiting approval.` : "No tasks are waiting approval.";
       approvalQueue.innerHTML = tasks.map((task) => `
         <li>
@@ -2556,17 +2569,26 @@
       if (!currentTaskId || !window.confirm("Create a new trace and send it to approval?")) {
         return;
       }
+      const replayTaskId = String(currentTaskId);
+      const replayGeneration = projectionGeneration;
       try {
-        const replay = await postJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/replay`, {
+        const replay = await postJson(`/v1/tasks/${encodeURIComponent(replayTaskId)}/replay`, {
           from_event_id: eventId,
           requested_by: "ui-operator",
           reason: "Replay requested from Run Observatory",
         });
+        if (!isCurrentTaskRequest(replayTaskId, replayGeneration)) {
+          return;
+        }
         await loadTask(replay.task_id);
-        taskStatus.textContent = `Replay ${replay.task_id}: waiting for approval`;
+        if (currentTaskId === String(replay.task_id)) {
+          taskStatus.textContent = `Replay ${replay.task_id}: waiting for approval`;
+        }
       } catch (error) {
-        observatoryInspector.textContent = `Unable to create replay: ${error.message}`;
-        observatoryInspector.classList.add("error");
+        if (isCurrentTaskRequest(replayTaskId, replayGeneration)) {
+          observatoryInspector.textContent = `Unable to create replay: ${error.message}`;
+          observatoryInspector.classList.add("error");
+        }
       }
     }
 
@@ -2672,7 +2694,9 @@
           taskStatus.classList.add("error");
         }
       } finally {
-        runDemoFlowButton.disabled = false;
+        if (isCurrentProjectionRequest(requestToken)) {
+          runDemoFlowButton.disabled = false;
+        }
       }
     }
 
@@ -2694,38 +2718,66 @@
     }
 
     async function approveTask(taskId) {
+      const approvalTaskId = String(taskId);
+      const approvalGeneration = projectionGeneration;
       approvalsStatus.classList.remove("error");
-      approvalsStatus.textContent = `Approving ${taskId}...`;
+      approvalsStatus.textContent = `Approving ${approvalTaskId}...`;
       try {
-        await postJson(`/v1/tasks/${encodeURIComponent(taskId)}/approve`, { approved: true, approved_by: "local-ui" });
-        await Promise.all([loadApprovalQueue(), loadRecentTasks()]);
-        if (currentTaskId === taskId) {
-          await loadTask(taskId);
+        await postJson(`/v1/tasks/${encodeURIComponent(approvalTaskId)}/approve`, { approved: true, approved_by: "local-ui" });
+        if (!isCurrentProjectionRequest(approvalGeneration)) {
+          return;
         }
+        await postJson(`/v1/tasks/${encodeURIComponent(approvalTaskId)}/run_async`, {});
+        if (!isCurrentProjectionRequest(approvalGeneration)) {
+          return;
+        }
+        await Promise.all([loadApprovalQueue(), loadRecentTasks()]);
+        if (!isCurrentProjectionRequest(approvalGeneration)) {
+          return;
+        }
+        currentTaskId = approvalTaskId;
+        if (!isCurrentTaskRequest(approvalTaskId, approvalGeneration)) {
+          return;
+        }
+        approveTaskButton.disabled = false;
+        await loadTask(approvalTaskId);
       } catch (error) {
-        approvalsStatus.textContent = `Unable to approve task: ${error.message}`;
-        approvalsStatus.classList.add("error");
+        if (isCurrentProjectionRequest(approvalGeneration)) {
+          approvalsStatus.textContent = `Unable to approve task: ${error.message}`;
+          approvalsStatus.classList.add("error");
+        }
+      } finally {
+        if (isCurrentProjectionRequest(approvalGeneration)) {
+          approveTaskButton.disabled = false;
+        }
       }
     }
 
     async function revealRawReasoning(eventId) {
+      const rawReasoningTaskId = String(currentTaskId);
+      const rawReasoningGeneration = projectionGeneration;
       rawReasoningStatus.classList.remove("error");
       rawReasoningOutput.textContent = "";
-      if (!currentTaskId) {
+      if (!rawReasoningTaskId) {
         rawReasoningStatus.textContent = "Load a task before revealing raw reasoning.";
         rawReasoningStatus.classList.add("error");
         return;
       }
       try {
         const result = await postJson(
-          `/v1/tasks/${encodeURIComponent(currentTaskId)}/raw-reasoning/${encodeURIComponent(eventId)}/reveal`,
+          `/v1/tasks/${encodeURIComponent(rawReasoningTaskId)}/raw-reasoning/${encodeURIComponent(eventId)}/reveal`,
           { acknowledge_sensitive: rawReasoningAck.checked, requested_by: "local-ui" }
         );
+        if (!isCurrentTaskRequest(rawReasoningTaskId, rawReasoningGeneration)) {
+          return;
+        }
         rawReasoningStatus.textContent = `Revealed ${result.event_id} from ${result.agent_id || "agent"}.`;
         rawReasoningOutput.textContent = result.raw_reasoning_content;
       } catch (error) {
-        rawReasoningStatus.textContent = `Unable to reveal raw reasoning: ${error.message}`;
-        rawReasoningStatus.classList.add("error");
+        if (isCurrentTaskRequest(rawReasoningTaskId, rawReasoningGeneration)) {
+          rawReasoningStatus.textContent = `Unable to reveal raw reasoning: ${error.message}`;
+          rawReasoningStatus.classList.add("error");
+        }
       }
     }
 
@@ -2761,13 +2813,14 @@
     }
 
     async function loadProjectionEvents(taskId) {
-      let payload = await fetchEventsPage(taskId, null, "desc");
+      const firstPage = await fetchEventsPage(taskId, null, "desc");
+      let payload = firstPage || {};
       const events = Array.isArray(payload.events) ? [...payload.events] : [];
       let cursor = payload.next_cursor || null;
       let pageCount = 1;
       while (payload.has_more && cursor && pageCount < MAX_LATEST_EVENT_PAGES && pageCount < MAX_PROJECTION_EVENT_PAGES) {
         try {
-          payload = await fetchEventsPage(taskId, cursor, "desc");
+          payload = (await fetchEventsPage(taskId, cursor, "desc")) || {};
         } catch (error) {
           break;
         }
@@ -2777,7 +2830,7 @@
       }
       return {
         ...payload,
-        events: events.reverse(),
+        events: events,
         has_more: Boolean(payload.has_more && cursor),
         next_cursor: cursor
       };
@@ -2818,10 +2871,11 @@
       }
       try {
         const task = await fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}`);
+        const selectedTask = task || { task_id: requestedTaskId, status: "unknown" };
         if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
           return;
         }
-        taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
+        taskStatus.textContent = `Task ${selectedTask.task_id}: ${selectedTask.status}`;
         const [graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan, researchEvidence, parameterInfluence, resourceUsage, economics, playbookRuns, recommendations] = await Promise.all([
           fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/swarm-graph`),
           fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/thinking-summary`),
@@ -2847,7 +2901,7 @@
         if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
           return;
         }
-        renderGraph(graph, { task, inspector, events: events.events || [] });
+        renderGraph(graph, { task: selectedTask, inspector, events: events.events || [] });
         renderThinking(thinking);
         renderMemory(memory);
         renderMemoryGraph(memoryGraph);
@@ -2857,8 +2911,8 @@
         renderResourceUsage({...resourceUsage, summary: resourceUsage?.summary || economics?.usage, economics});
         renderPlaybookRuns(playbookRuns);
         renderDecisionHeuristics(recommendations);
-        renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory, economics);
-        if (terminalStatuses.has(task.status)) {
+        renderRunObservatory(selectedTask, graph, events, inspector, quality, checkpoints, budget, memory, economics);
+        if (terminalStatuses.has(selectedTask.status)) {
           stopEventPolling();
         }
       } catch (error) {
@@ -2907,7 +2961,8 @@
         if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
           return;
         }
-        taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
+        const selectedTask = task || { task_id: requestedTaskId, status: "unknown" };
+        taskStatus.textContent = `Task ${selectedTask.task_id}: ${selectedTask.status}`;
         renderThinking(thinking);
         renderMemory(memory);
         renderMemoryGraph(memoryGraph);
@@ -2922,9 +2977,9 @@
         if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
           return;
         }
-        renderGraph(graph, { task, inspector, events: events.events || [] });
-        renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory, economics);
-        if (!terminalStatuses.has(task.status)) {
+        renderGraph(graph, { task: selectedTask, inspector, events: events.events || [] });
+        renderRunObservatory(selectedTask, graph, events, inspector, quality, checkpoints, budget, memory, economics);
+        if (!terminalStatuses.has(selectedTask.status)) {
           startEventPolling();
         } else {
           stopEventPolling();
@@ -2979,6 +3034,8 @@
         if (!isCurrentTaskRequest(created.task_id, requestToken)) {
           return;
         }
+        createTaskButton.disabled = false;
+        createRunTaskButton.disabled = false;
         if (runAfterCreate) {
           await runCurrentTask();
         } else {
@@ -2990,8 +3047,10 @@
           taskStatus.classList.add("error");
         }
       } finally {
-        createTaskButton.disabled = false;
-        createRunTaskButton.disabled = false;
+        if (isCurrentProjectionRequest(requestToken)) {
+          createTaskButton.disabled = false;
+          createRunTaskButton.disabled = false;
+        }
       }
     }
 

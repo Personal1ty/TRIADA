@@ -197,6 +197,7 @@ async def test_get_local_swarm_ui():
     assert "http://127.0.0.1:8000/ui" in response.text
     assert "/v1/swarm/contracts" in response.text
     assert "/run_async" in response.text
+    assert 'await postJson(`/v1/tasks/${encodeURIComponent(approvalTaskId)}/run_async`, {});' in response.text
     runs_view = response.text.partition('id="runs-view"')[2].partition('id="thinking-view"')[0]
     assert 'id="graph"' in runs_view
     assert 'id="events"' in runs_view
@@ -225,12 +226,24 @@ async def test_get_local_swarm_ui():
     assert 'params.set("order", order);' in response.text
     assert 'fetchEventsPage(taskId, null, "desc")' in response.text
     assert 'const MAX_LATEST_EVENT_PAGES = 1;' in response.text
+    assert "events: events," in response.text
+    assert "events: events.reverse()" not in response.text
+    assert ".filter((event) => types.has(event.event_type))" in response.text
     assert "projectionGeneration" in response.text
     assert "isCurrentTaskRequest" in response.text
     assert "const requestToken = beginProjectionRequest();" in response.text
     assert "isCurrentTaskRequest(requestedTaskId, requestGeneration)" in response.text
     assert "isCurrentTaskRequest(created.task_id, requestToken)" in response.text
     assert "isCurrentTaskRequest(result.task.task_id, requestToken)" in response.text
+    assert "const replayTaskId = String(currentTaskId);" in response.text
+    assert "const replayGeneration = projectionGeneration;" in response.text
+    assert "const rawReasoningTaskId = String(currentTaskId);" in response.text
+    assert "const memoryTaskId = String(taskId);" in response.text
+    assert "const approvalGeneration = projectionGeneration;" in response.text
+    assert "isCurrentTaskRequest(replayTaskId, replayGeneration)" in response.text
+    assert "isCurrentTaskRequest(rawReasoningTaskId, rawReasoningGeneration)" in response.text
+    assert "isCurrentTaskRequest(memoryTaskId, memoryGeneration)" in response.text
+    assert "isCurrentProjectionRequest(approvalGeneration)" in response.text
     assert "shortGraphLabel" in response.text
     assert "<title>${escapeHtml(node.id)}" in response.text
     assert 'data-node-id="${escapeHtml(node.id)}"' in response.text
@@ -243,6 +256,17 @@ async def test_get_local_swarm_ui():
     assert "Array.isArray(payload?.notes)" in response.text
     assert 'thinkingStatus.textContent = "Not available for this run."' in response.text
     assert 'memoryStatus.textContent = "Not available for this run."' in response.text
+    assert "const safePayload = payload || {};" in response.text
+    assert "Array.isArray(safePayload.events)" in response.text
+    assert "Array.isArray(safePayload.raw_reasoning_refs)" in response.text
+    assert "const firstPage = await fetchEventsPage(taskId, null, \"desc\");" in response.text
+    assert 'const selectedTask = task || { task_id: requestedTaskId, status: "unknown" };' in response.text
+    assert 'escapeHtml(item.tokens || 0)' in response.text
+    assert 'escapeHtml(item.average_quality ?? 0)' in response.text
+    assert 'escapeHtml(item.total_tokens || 0)' in response.text
+    assert 'escapeHtml(item.tokens_per_quality || 0)' in response.text
+    assert 'escapeHtml(item.duration_ms || 0)' in response.text
+    assert 'escapeHtml(item.estimated_cost ?? 0)' in response.text
     assert '"task_recovered"' in response.text
     assert 'Recovered terminal state' in response.text
 
