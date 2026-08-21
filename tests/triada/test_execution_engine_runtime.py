@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.agents.orchestrator import Orchestrator
+from app.agents.orchestrator import LLMUnavailableError, Orchestrator
 from app.agents.auditor import Auditor
 from app.config import get_settings
 from app.llm.codex_bridge import CodexBridgeProvider
@@ -86,6 +86,19 @@ class WorkerHangingLLM:
 class PlanningHangingLLM:
     async def complete_json(self, prompt: str, *, schema_name: str):
         await asyncio.Event().wait()
+
+
+class CancellationResistantPlanningLLM:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            await asyncio.Event().wait()
+
+
+class SelfCancellingPlanningLLM:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        raise asyncio.CancelledError
 
 
 class AuditHangingLLM:
@@ -447,6 +460,28 @@ async def test_task_service_exits_running_when_orchestrator_model_times_out(tmp_
 
     assert blocked.status == "blocked"
     assert any(event["event_type"] == "llm_unavailable" for event in emitter.events)
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_timeout_returns_when_provider_ignores_cancellation():
+    orchestrator = Orchestrator(
+        CancellationResistantPlanningLLM(),
+        llm_timeout_seconds=0.01,
+    )
+
+    with pytest.raises(LLMUnavailableError, match="orchestrator LLM timed out"):
+        await asyncio.wait_for(
+            orchestrator.plan_task("Inspect repository", ["git"], []),
+            timeout=0.1,
+        )
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_converts_provider_cancellation_to_unavailable():
+    orchestrator = Orchestrator(SelfCancellingPlanningLLM())
+
+    with pytest.raises(LLMUnavailableError, match="orchestrator LLM cancelled"):
+        await orchestrator.plan_task("Inspect repository", ["git"], [])
 
 
 @pytest.mark.asyncio

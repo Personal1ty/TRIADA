@@ -195,17 +195,31 @@ class Orchestrator:
             ]
         )
         try:
-            response = await asyncio.wait_for(
-                self.llm.complete_json(prompt, schema_name="plan"),
-                timeout=self.llm_timeout_seconds,
-            )
-        except TimeoutError:
-            raise LLMUnavailableError(
-                f"orchestrator LLM timed out after {self.llm_timeout_seconds:g} seconds"
-            ) from None
+            response = await self._complete_json_with_hard_timeout(prompt)
         except Exception as exc:
+            if isinstance(exc, LLMUnavailableError):
+                raise
             raise LLMUnavailableError(str(exc)) from None
         return response if isinstance(response, dict) else {}
+
+    async def _complete_json_with_hard_timeout(self, prompt: str) -> dict[str, Any]:
+        request = asyncio.create_task(self.llm.complete_json(prompt, schema_name="plan"))
+        done, _ = await asyncio.wait({request}, timeout=self.llm_timeout_seconds)
+        if not done:
+            request.cancel()
+            request.add_done_callback(self._consume_detached_result)
+            raise LLMUnavailableError(
+                f"orchestrator LLM timed out after {self.llm_timeout_seconds:g} seconds"
+            )
+        try:
+            return request.result()
+        except asyncio.CancelledError:
+            raise LLMUnavailableError("orchestrator LLM cancelled") from None
+
+    @staticmethod
+    def _consume_detached_result(request: asyncio.Task[Any]) -> None:
+        if not request.cancelled():
+            request.exception()
 
     def _model_summary_delta(self, provider_response: dict[str, Any]) -> dict[str, Any] | None:
         value = provider_response.get("thinking_summary_delta")
