@@ -602,6 +602,33 @@
       margin: 6px 0 0;
     }
 
+    .result-artifacts {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .result-artifact {
+      margin: 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #ffffff;
+    }
+
+    .result-artifact h4 {
+      margin: 0 0 6px;
+      font-size: 13px;
+    }
+
+    .result-artifact pre {
+      max-height: 360px;
+      margin: 0;
+      overflow: auto;
+      white-space: pre-wrap;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
     .contract-projection-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -984,6 +1011,9 @@
             <strong id="result-state">Not available for this run.</strong>
             <p id="result-summary" class="result-empty">Not available for this run.</p>
             <p id="result-latest-event" class="status">Not available for this run.</p>
+            <div id="result-artifacts" class="result-artifacts">
+              <p class="result-empty">No research artifacts available for this run.</p>
+            </div>
           </div>
         </div>
       </section>
@@ -1459,6 +1489,7 @@
     const resultState = document.getElementById("result-state");
     const resultSummary = document.getElementById("result-summary");
     const resultLatestEvent = document.getElementById("result-latest-event");
+    const resultArtifacts = document.getElementById("result-artifacts");
     const selectedResearchContract = document.getElementById("selected-research-contract");
     const selectedExecutionContract = document.getElementById("selected-execution-contract");
     const selectedContextSources = document.getElementById("selected-context-sources");
@@ -2587,6 +2618,12 @@
       resultLatestEvent.innerHTML = latestResult
         ? `Latest event: ${escapeHtml(latestResult.event_type)} · sequence ${escapeHtml(latestResult.sequence)}${phase ? ` · phase ${escapeHtml(phase)}` : ""}`
         : "Not available for this run.";
+      const report = latestEvent(events, "research_report_created");
+      const artifacts = Array.isArray(report?.payload?.artifacts) ? report.payload.artifacts : [];
+      resultArtifacts.innerHTML = artifacts.map((artifact) => {
+        const content = artifact?.metadata?.content || artifact?.content || "No content available.";
+        return `<article class="result-artifact"><h4>${escapeHtml(artifact?.name || "Research artifact")}</h4><pre>${escapeHtml(content)}</pre></article>`;
+      }).join("") || '<p class="result-empty">No research artifacts available for this run.</p>';
     }
 
     function renderRunObservatory(task, graph, eventsPayload, inspectorPayload, qualityPayload, checkpointsPayload, budgetPayload, memoryPayload, economicsPayload) {
@@ -2611,7 +2648,7 @@
       observatoryInspector.textContent = agents.length
         ? `${inspector.phase || "unknown phase"}: ${agents.map((agent) => `${agent.agent_id}=${agent.status}`).join(" · ")}`
         : "No agent state is available yet.";
-      const lifecycle = ["task_created", "planning_started", "worker_step_started", "audit_verdict", "chief_audit_verdict", "human_review_packet_created"];
+      const lifecycle = ["task_created", "planning_started", "worker_step_started", "audit_verdict", "chief_audit_verdict", "research_report_created", "human_review_packet_created"];
       const present = new Set(events.map((event) => event.event_type));
       observatoryTimeline.innerHTML = lifecycle.map((eventType) => `<li>${present.has(eventType) ? "✓" : "○"} ${escapeHtml(eventType)}</li>`).join("");
       const replayPoints = Array.isArray(quality.replay_points) ? quality.replay_points : [];

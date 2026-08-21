@@ -9,6 +9,7 @@ from uuid import uuid4
 from app.agents.auditor import Auditor
 from app.agents.orchestrator import LLMUnavailableError, Orchestrator, PlanStep, TaskPlan
 from app.agents.worker import Worker, WorkerResult
+from app.audit.redaction import redact_payload
 from app.config import get_settings
 from app.contracts.execution import ResourceBudgetContract
 from app.contracts.loader import load_default_swarm_contract
@@ -367,7 +368,12 @@ class ExecutionEngine:
             await self._emit(
                 task,
                 "research_report_created",
-                {"artifact_names": [artifact.name for artifact in artifacts]},
+                {
+                    "artifact_names": [artifact.name for artifact in artifacts],
+                    "artifacts": redact_payload(
+                        [artifact.model_dump(mode="json", exclude_none=True) for artifact in artifacts]
+                    ),
+                },
                 agent_id="orchestrator",
             )
         return artifacts

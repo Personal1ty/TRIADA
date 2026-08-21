@@ -176,3 +176,12 @@ async def test_research_run_synthesizes_required_report_after_audited_evidence(t
 
     assert completed.status == "completed"
     assert not any(event["event_type"] == "completion_gate_failed" for event in events)
+    report_event = next(event for event in events if event["event_type"] == "research_report_created")
+    assert report_event["payload"]["artifacts"] == [
+        {
+            "name": "research_report",
+            "artifact_type": "markdown",
+            "content_type": "text/markdown",
+            "metadata": {"content": "Audited report"},
+        }
+    ]

@@ -89,6 +89,8 @@ async def test_get_local_swarm_ui():
     assert response.text.count('id="execution-graph"') == 1
     assert 'id="run-observatory"' in response.text
     assert 'id="result-panel"' in response.text
+    assert 'id="result-artifacts"' in response.text
+    assert 'research_report_created' in response.text
     assert 'id="runs-panel"' in response.text
     assert 'id="observatory-timeline"' in response.text
     assert 'id="observatory-inspector"' in response.text
