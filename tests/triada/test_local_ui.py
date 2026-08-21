@@ -34,10 +34,26 @@ async def test_get_local_swarm_ui():
     assert "grid-template-columns: 260px minmax(0, 1fr) 320px" in response.text
     assert "@media (max-width: 1100px)" in response.text
     assert "@media (max-width: 720px)" in response.text
-    assert 'id="open-llm-config" type="button">LLM API' in response.text
-    assert 'id="new-task" type="button">+ New task' in response.text
+    assert 'id="open-llm-config" type="button" aria-controls="llm-config" aria-expanded="false">LLM API' in response.text
+    assert 'id="new-task" type="button" aria-controls="create-task-form" aria-expanded="false">+ New task' in response.text
     assert 'id="approve-task" type="button" hidden>Approve action' in response.text
-    assert 'id="advanced-drawer"' in response.text
+    assert 'class="advanced-drawer" id="advanced-drawer" hidden' in response.text
+    assert '<nav class="tabs" aria-label="TRIADA dashboard views" hidden>' in response.text
+    assert '<section id="llm-config" hidden>' in response.text
+    assert '<form id="create-task-form" class="form-grid" hidden>' in response.text
+    assert 'id="raw-reasoning-view" hidden' in response.text
+    assert 'id="contracts-view" hidden' in response.text
+    assert 'id="approvals-view" hidden' in response.text
+    assert 'id="toggle-contracts"' in response.text
+    assert 'aria-controls="contracts-panel"' in response.text
+    assert '#contracts-panel {\n        display: none;' in response.text
+    assert '.contracts-toggle {\n        display: inline-flex;' in response.text
+    assert 'min-width: 720px' not in response.text
+    assert 'preserveAspectRatio="xMidYMin meet"' in response.text
+    assert 'function setPanelOpen' in response.text
+    assert 'panel.hidden = !open;' in response.text
+    assert 'trigger.setAttribute("aria-expanded", String(open));' in response.text
+    assert 'trigger.focus();' in response.text
     assert "/v1/tasks/" in response.text
     assert "/swarm-graph" in response.text
     assert "TRIADA Swarm" in response.text

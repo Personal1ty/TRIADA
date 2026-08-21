@@ -141,6 +141,10 @@
       min-width: 0;
     }
 
+    .contracts-toggle {
+      display: none;
+    }
+
     #llm-config {
       position: fixed;
       top: 70px;
@@ -507,7 +511,8 @@
     }
 
     .graph-wrap {
-      overflow: auto;
+      overflow-x: hidden;
+      overflow-y: auto;
       min-height: 300px;
     }
 
@@ -532,7 +537,8 @@
     svg {
       display: block;
       width: 100%;
-      min-width: 720px;
+      max-width: 100%;
+      height: auto;
     }
 
     .node rect {
@@ -747,9 +753,24 @@
         grid-template-columns: 240px minmax(0, 1fr);
         grid-template-areas:
           "runs graph"
+          "contracts-toggle contracts-toggle"
           "contracts contracts"
           "result result"
           "events events";
+      }
+
+      #contracts-panel {
+        display: none;
+      }
+
+      #contracts-panel.is-open {
+        display: block;
+      }
+
+      .contracts-toggle {
+        display: inline-flex;
+        grid-area: contracts-toggle;
+        justify-self: start;
       }
     }
 
@@ -782,6 +803,7 @@
         grid-template-areas:
           "graph"
           "runs"
+          "contracts-toggle"
           "contracts"
           "result"
           "events";
@@ -806,8 +828,8 @@
         <span class="shell-status">Autonomous runtime · append-only audit</span>
       </div>
       <div class="primary-actions" aria-label="Operator actions">
-        <button id="open-llm-config" type="button">LLM API</button>
-        <button id="new-task" type="button">+ New task</button>
+        <button id="open-llm-config" type="button" aria-controls="llm-config" aria-expanded="false">LLM API</button>
+        <button id="new-task" type="button" aria-controls="create-task-form" aria-expanded="false">+ New task</button>
         <button id="approve-task" type="button" hidden>Approve action</button>
       </div>
     </header>
@@ -822,7 +844,7 @@
 
     <main>
       <div class="stack tab-panel desktop-workspace" id="runs-view">
-      <section id="llm-config">
+      <section id="llm-config" hidden>
         <h2>LLM Provider</h2>
         <div class="panel-body">
           <form class="form-grid" id="llm-form">
@@ -884,7 +906,7 @@
       <section id="task-runner">
         <h2>Runs</h2>
         <div class="panel-body">
-          <form class="form-grid" id="create-task-form">
+          <form id="create-task-form" class="form-grid" hidden>
             <div class="field">
               <label for="demo-template-select">Demo template</label>
               <select id="demo-template-select" name="demo-template-select"></select>
@@ -943,6 +965,7 @@
           <ul class="event-feed" id="event-feed"></ul>
         </div>
       </section>
+        <button id="toggle-contracts" class="contracts-toggle" type="button" aria-controls="contracts-panel" aria-expanded="false">Contracts</button>
         <section id="contracts-panel">
           <h2>Contracts</h2>
           <div class="panel-body">
@@ -1272,6 +1295,8 @@
     const newTaskButton = document.getElementById("new-task");
     const approveTaskButton = document.getElementById("approve-task");
     const llmConfigPanel = document.getElementById("llm-config");
+    const contractsToggleButton = document.getElementById("toggle-contracts");
+    const contractsPanel = document.getElementById("contracts-panel");
     const contractsSummaryStatus = document.getElementById("contracts-summary-status");
     const createTaskForm = document.getElementById("create-task-form");
     const taskGoal = document.getElementById("task-goal");
@@ -1759,21 +1784,21 @@
         human: "Human"
       };
       const grouped = roleOrder.map((role) => nodes.filter((node) => node.role === role));
-      const laneWidth = 190;
-      const width = Math.max(920, roleOrder.length * laneWidth);
+      const laneWidth = Math.max(128, Math.min(190, Math.floor((graphBody.clientWidth || 960) / roleOrder.length)));
+      const width = 112 + (roleOrder.length - 1) * laneWidth;
       const maxLaneNodes = Math.max(...grouped.map((items) => items.length), 1);
-      const height = Math.max(360, 140 + maxLaneNodes * 92);
+      const height = Math.max(320, 120 + maxLaneNodes * 84);
       const positions = new Map();
       grouped.forEach((items, roleIndex) => {
-        const x = 90 + roleIndex * laneWidth;
-        const startY = Math.max(120, (height - (items.length - 1) * 92) / 2);
+        const x = 56 + roleIndex * laneWidth;
+        const startY = Math.max(100, (height - (items.length - 1) * 84) / 2);
         items.forEach((node, index) => {
-          positions.set(node.id, { x, y: startY + index * 92 });
+          positions.set(node.id, { x, y: startY + index * 84 });
         });
       });
 
       const lanes = roleOrder.map((role, index) => {
-        const x = 90 + index * laneWidth;
+        const x = 56 + index * laneWidth;
         return `
           <text class="graph-lane-label" x="${x}" y="32">${escapeHtml(roleLabels[role] || role)}</text>
           <line class="graph-lane" x1="${x}" y1="48" x2="${x}" y2="${height - 24}"></line>
@@ -1824,7 +1849,7 @@
 
       graphBody.innerHTML = `
         <p class="graph-summary" id="graph-summary">${escapeHtml(summary.node_count ?? nodes.length)} agents, ${escapeHtml(summary.edge_count ?? edges.length)} selected route${edges.length === 1 ? "" : "s"}.</p>
-        <svg viewBox="0 0 ${width} ${height}" style="height: ${height}px" role="img" aria-label="Task swarm route graph">
+        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMin meet" role="img" aria-label="Task swarm route graph">
           <defs>
             <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
               <path d="M 0 0 L 8 4 L 0 8 z" fill="#64748b"></path>
@@ -2573,15 +2598,44 @@
       }
     });
 
+    function setPanelOpen(trigger, panel, open) {
+      panel.hidden = !open;
+      panel.classList.toggle("is-open", open);
+      trigger.setAttribute("aria-expanded", String(open));
+      if (!open) {
+        trigger.focus();
+      }
+    }
+
+    const contractsMediaQuery = window.matchMedia("(max-width: 1100px)");
+    function syncContractsPanel() {
+      if (contractsMediaQuery.matches) {
+        if (!contractsPanel.classList.contains("is-open")) {
+          contractsPanel.hidden = true;
+        }
+      } else {
+        contractsPanel.hidden = false;
+        contractsPanel.classList.remove("is-open");
+        contractsToggleButton.setAttribute("aria-expanded", "false");
+      }
+    }
+    syncContractsPanel();
+    contractsMediaQuery.addEventListener("change", syncContractsPanel);
+
     openLlmConfigButton.addEventListener("click", () => {
-      llmConfigPanel.classList.toggle("is-open");
+      setPanelOpen(openLlmConfigButton, llmConfigPanel, llmConfigPanel.hidden);
     });
 
     newTaskButton.addEventListener("click", () => {
-      createTaskForm.classList.toggle("is-open");
-      if (createTaskForm.classList.contains("is-open")) {
+      const open = createTaskForm.hidden;
+      setPanelOpen(newTaskButton, createTaskForm, open);
+      if (open) {
         taskGoal.focus();
       }
+    });
+
+    contractsToggleButton.addEventListener("click", () => {
+      setPanelOpen(contractsToggleButton, contractsPanel, contractsPanel.hidden);
     });
 
     approveTaskButton.addEventListener("click", () => {
