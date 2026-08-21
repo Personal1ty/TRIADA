@@ -2620,6 +2620,9 @@
         : "Not available for this run.";
       const report = latestEvent(events, "research_report_created");
       const artifacts = Array.isArray(report?.payload?.artifacts) ? report.payload.artifacts : [];
+      if (artifacts.length && !summary) {
+        resultSummary.innerHTML = escapeHtml(`Research report created: ${artifacts.length} artifact${artifacts.length === 1 ? "" : "s"}.`);
+      }
       resultArtifacts.innerHTML = artifacts.map((artifact) => {
         const content = artifact?.metadata?.content || artifact?.content || "No content available.";
         return `<article class="result-artifact"><h4>${escapeHtml(artifact?.name || "Research artifact")}</h4><pre>${escapeHtml(content)}</pre></article>`;
