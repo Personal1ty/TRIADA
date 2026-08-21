@@ -99,10 +99,10 @@
     .desktop-workspace {
       min-height: 0;
       display: grid;
-      grid-template-columns: 260px minmax(0, 1fr) 320px;
+      grid-template-columns: 260px minmax(0, 1fr);
       grid-template-rows: minmax(0, 1fr) auto auto;
       grid-template-areas:
-        "runs graph contracts"
+        "runs graph"
         "result result result"
         "events events events";
       gap: 12px;
@@ -134,15 +134,6 @@
 
     #events {
       grid-area: events;
-    }
-
-    #contracts-panel {
-      grid-area: contracts;
-      min-width: 0;
-    }
-
-    .contracts-toggle {
-      display: none;
     }
 
     #llm-config {
@@ -846,7 +837,7 @@
 
     @media (min-width: 1101px) {
       .desktop-workspace {
-        grid-template-columns: 260px minmax(0, 1fr) 320px;
+        grid-template-columns: 260px minmax(0, 1fr);
       }
     }
 
@@ -855,24 +846,8 @@
         grid-template-columns: 240px minmax(0, 1fr);
         grid-template-areas:
           "runs graph"
-          "contracts-toggle contracts-toggle"
-          "contracts contracts"
           "result result"
           "events events";
-      }
-
-      #contracts-panel {
-        display: none;
-      }
-
-      #contracts-panel.is-open {
-        display: block;
-      }
-
-      .contracts-toggle {
-        display: inline-flex;
-        grid-area: contracts-toggle;
-        justify-self: start;
       }
     }
 
@@ -905,8 +880,6 @@
         grid-template-areas:
           "graph"
           "runs"
-          "contracts-toggle"
-          "contracts"
           "result"
           "events";
         height: auto;
@@ -936,12 +909,13 @@
       </div>
     </header>
 
-    <nav class="tabs" aria-label="TRIADA dashboard views" hidden>
+    <nav class="tabs" aria-label="TRIADA dashboard views">
       <button class="tab-button" id="runs-tab" type="button" data-tab-target="runs-view" aria-selected="true">Runs</button>
-      <button class="tab-button" id="thinking-tab" type="button" data-tab-target="thinking-view" aria-selected="false">Thinking</button>
-      <button class="tab-button" id="raw-reasoning-tab" type="button" data-tab-target="raw-reasoning-view" aria-selected="false">Raw Reasoning</button>
-      <button class="tab-button" id="contracts-tab" type="button" data-tab-target="contracts-view" aria-selected="false">Contracts</button>
-      <button class="tab-button" id="approvals-tab" type="button" data-tab-target="approvals-view" aria-selected="false">Approvals</button>
+      <button class="tab-button" id="run-contracts-tab" type="button" data-tab-target="run-contracts-view" aria-selected="false">Contracts</button>
+      <button class="tab-button" id="thinking-tab" type="button" data-tab-target="thinking-view" aria-selected="false" hidden>Thinking</button>
+      <button class="tab-button" id="raw-reasoning-tab" type="button" data-tab-target="raw-reasoning-view" aria-selected="false" hidden>Raw Reasoning</button>
+      <button class="tab-button" id="contracts-tab" type="button" data-tab-target="contracts-view" aria-selected="false" hidden>Swarm Contract Editor</button>
+      <button class="tab-button" id="approvals-tab" type="button" data-tab-target="approvals-view" aria-selected="false" hidden>Approvals</button>
     </nav>
 
     <main>
@@ -1086,9 +1060,11 @@
           </div>
         </div>
       </section>
-        <button id="toggle-contracts" class="contracts-toggle" type="button" aria-controls="contracts-panel" aria-expanded="false">Contracts</button>
+      </div>
+
+      <div class="stack tab-panel" id="run-contracts-view" hidden>
         <section id="contracts-panel" data-observatory-panel="contracts-panel">
-          <h2>Contracts</h2>
+          <h2>Contracts for selected run</h2>
           <div class="panel-body">
             <div class="contract-summary">
               <div><strong>Execution contract</strong><br><span>Active contract projection for the selected run.</span></div>
@@ -1455,8 +1431,6 @@
       "[href]",
       "[tabindex]:not([tabindex='-1'])"
     ].join(", ");
-    const contractsToggleButton = document.getElementById("toggle-contracts");
-    const contractsPanel = document.getElementById("contracts-panel");
     const contractsSummaryStatus = document.getElementById("contracts-summary-status");
     const createTaskForm = document.getElementById("create-task-form");
     const taskGoal = document.getElementById("task-goal");
@@ -3511,22 +3485,6 @@
       }
     }
 
-    const contractsMediaQuery = window.matchMedia("(max-width: 1100px)");
-    function syncContractsPanel() {
-      if (contractsMediaQuery.matches) {
-        if (!contractsPanel.classList.contains("is-open")) {
-          contractsPanel.hidden = true;
-          contractsToggleButton.setAttribute("aria-expanded", "false");
-        }
-      } else {
-        contractsPanel.hidden = false;
-        contractsPanel.classList.remove("is-open");
-        contractsToggleButton.setAttribute("aria-expanded", "true");
-      }
-    }
-    syncContractsPanel();
-    contractsMediaQuery.addEventListener("change", syncContractsPanel);
-
     openLlmConfigButton.addEventListener("click", () => {
       setPanelOpen(openLlmConfigButton, llmConfigPanel, llmConfigPanel.hidden);
     });
@@ -3561,10 +3519,6 @@
       if (open) {
         taskGoal.focus();
       }
-    });
-
-    contractsToggleButton.addEventListener("click", () => {
-      setPanelOpen(contractsToggleButton, contractsPanel, contractsPanel.hidden);
     });
 
     approveTaskButton.addEventListener("click", () => {

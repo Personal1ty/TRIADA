@@ -31,7 +31,7 @@ async def test_get_local_swarm_ui():
     assert "Result" in response.text
     assert 'class="desktop-shell"' in response.text
     assert "desktop-workspace" in response.text
-    assert "grid-template-columns: 260px minmax(0, 1fr) 320px" in response.text
+    assert "grid-template-columns: 260px minmax(0, 1fr)" in response.text
     assert "@media (max-width: 1100px)" in response.text
     assert "@media (max-width: 720px)" in response.text
     assert 'id="open-llm-config" type="button" aria-controls="llm-config" aria-expanded="false">LLM API' in response.text
@@ -43,7 +43,7 @@ async def test_get_local_swarm_ui():
     assert 'display: none !important;' in hidden_css
     assert 'id="toggle-advanced" type="button" aria-controls="advanced-drawer" aria-expanded="false">Advanced</button>' in response.text
     assert 'advancedToggleButton.addEventListener("click"' in response.text
-    assert '<nav class="tabs" aria-label="TRIADA dashboard views" hidden>' in response.text
+    assert '<nav class="tabs" aria-label="TRIADA dashboard views">' in response.text
     assert '<section id="llm-config" role="dialog" aria-modal="true" aria-labelledby="llm-config-title" hidden>' in response.text
     assert '<form id="create-task-form" class="form-grid" hidden>' in response.text
     assert '<h2 id="llm-config-title">LLM Provider</h2>' in response.text
@@ -64,10 +64,8 @@ async def test_get_local_swarm_ui():
     assert 'id="raw-reasoning-view" hidden' in response.text
     assert 'id="contracts-view" hidden' in response.text
     assert 'id="approvals-view" hidden' in response.text
-    assert 'id="toggle-contracts"' in response.text
-    assert 'aria-controls="contracts-panel"' in response.text
-    assert '#contracts-panel {\n        display: none;' in response.text
-    assert '.contracts-toggle {\n        display: inline-flex;' in response.text
+    assert 'id="toggle-contracts"' not in response.text
+    assert 'id="run-contracts-tab"' in response.text
     assert 'min-width: 720px' not in response.text
     assert 'preserveAspectRatio="xMidYMin meet"' in response.text
     assert 'function setPanelOpen' in response.text
@@ -162,9 +160,7 @@ async def test_get_local_swarm_ui():
     assert 'id="contract-diff-from"' in response.text
     assert 'id="contract-diff-to"' in response.text
     assert 'id="compare-contracts"' in response.text
-    contracts_sync = response.text.partition('function syncContractsPanel()')[2].partition('syncContractsPanel();')[0]
-    assert 'contractsToggleButton.setAttribute("aria-expanded", "true");' in contracts_sync
-    assert 'contractsToggleButton.setAttribute("aria-expanded", "false");' in contracts_sync
+    assert 'id="run-contracts-view"' in response.text
     assert "contract/diff?from_version=" in response.text
     assert 'id="contract-version"' in response.text
     assert 'id="contract-author"' in response.text
@@ -198,6 +194,10 @@ async def test_get_local_swarm_ui():
     assert 'id="create-task-form"' in response.text
     assert "Tool policy / Ограничения инструментов" not in response.text
     assert 'id="task-tools"' not in response.text
+    assert 'id="run-contracts-view"' in response.text
+    assert 'data-tab-target="run-contracts-view"' in response.text
+    assert '<nav class="tabs" aria-label="TRIADA dashboard views" hidden>' not in response.text
+    assert response.text.index('id="contracts-panel"') > response.text.index('id="run-contracts-view"')
     assert 'id="demo-template-select"' in response.text
     assert 'id="load-demo-template"' in response.text
     assert 'id="run-demo-flow"' in response.text
