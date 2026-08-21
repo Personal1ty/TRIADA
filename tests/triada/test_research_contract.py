@@ -36,6 +36,20 @@ class NumericDepthProvider:
         }
 
 
+class ResearchSynthesisProvider:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        if schema_name == "plan":
+            return {
+                "answer": {
+                    "steps": [{"id": "step-1", "title": "Inspect", "description": "Inspect", "allowed_tools": ["echo"], "command": ["echo", "evidence"]}],
+                    "research_contract": {"min_tool_executions": 1, "required_artifacts": ["research_report"]},
+                }
+            }
+        if schema_name == "research_report":
+            return {"answer": {"artifacts": [{"name": "research_report", "content": "Audited report"}]}}
+        return {"answer": {}}
+
+
 def _tool_record():
     return ToolExecutionRecord(tool="shell", command=["git", "status"], exit_code=0)
 
@@ -137,3 +151,28 @@ async def test_research_run_cannot_complete_after_only_git_status(tmp_path):
 
     assert failed.status == "failed"
     assert any(event["event_type"] == "completion_gate_failed" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_research_run_synthesizes_required_report_after_audited_evidence(tmp_path):
+    events = []
+
+    class Emitter:
+        async def emit(self, **kwargs):
+            events.append(kwargs)
+
+    engine = ExecutionEngine(
+        emitter=Emitter(),
+        workspace=tmp_path,
+        orchestrator=Orchestrator(ResearchSynthesisProvider()),
+    )
+    service = TaskService(emitter=engine._emitter, execution_engine=engine)
+    task = await service.create_task(
+        goal="Проведи архитектурный анализ TRIADA",
+        allowed_tools=["echo"],
+    )
+
+    completed = await service.run_task_once(task.id)
+
+    assert completed.status == "completed"
+    assert not any(event["event_type"] == "completion_gate_failed" for event in events)

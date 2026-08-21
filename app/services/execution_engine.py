@@ -13,7 +13,7 @@ from app.config import get_settings
 from app.contracts.execution import ResourceBudgetContract
 from app.contracts.loader import load_default_swarm_contract
 from app.contracts.swarm import AgentEndpoint, RouteMapEntry, SwarmContract
-from app.events.models import AuditVerdict, ToolExecutionRecord
+from app.events.models import ArtifactRecord, AuditVerdict, ToolExecutionRecord
 from app.llm.codex_bridge import CodexBridgeProvider
 from app.llm.fake import FakeLLMProvider
 from app.llm.openai_compatible import OpenAICompatibleProvider
@@ -46,7 +46,7 @@ class ExecutionEngine:
         self._llm_config_service = llm_config_service
         self._owns_agents = orchestrator is None
         self._llm = orchestrator.llm if orchestrator is not None else self._build_llm_provider()
-        self._orchestrator = orchestrator or Orchestrator(self._llm)
+        self._orchestrator = orchestrator or Orchestrator(self._llm, workspace=self._workspace)
         self._auditor = auditor or Auditor(self._llm)
         if getattr(self._auditor, "llm", None) is None:
             self._auditor.llm = self._llm
@@ -215,6 +215,18 @@ class ExecutionEngine:
             final_status = "retrying"
 
         if final_status == "completed":
+            if plan.research_contract.mode.value == "research":
+                synthesized = await self._synthesize_research_artifacts(
+                    task,
+                    plan,
+                    worker_results,
+                    tool_records,
+                    verdicts,
+                )
+                for result in worker_results:
+                    if result.status == "succeeded":
+                        result.artifacts.extend(synthesized)
+                        break
             completion = self._completion_gate.evaluate(
                 plan.research_contract,
                 worker_results=worker_results,
@@ -298,6 +310,68 @@ class ExecutionEngine:
             target_agent_id="human",
         )
         return final_status
+
+    async def _synthesize_research_artifacts(
+        self,
+        task: Any,
+        plan: TaskPlan,
+        worker_results: list[WorkerResult],
+        tool_records: list[ToolExecutionRecord],
+        verdicts: list[tuple[str, Any]],
+    ) -> list[ArtifactRecord]:
+        required = plan.research_contract.required_artifacts
+        if not required or self._llm is None or not hasattr(self._llm, "complete_json"):
+            return []
+        prompt = "\n".join(
+            [
+                "Produce a research report artifact from audited public evidence.",
+                f"Goal: {task.goal}",
+                f"Required artifact names: {required}",
+                f"Worker summaries: {[result.summary for result in worker_results]}",
+                f"Tool evidence count: {len(tool_records)}",
+                f"Passing audits: {sum(verdict.verdict == AuditVerdictValue.PASS for _, verdict in verdicts)}",
+                "Return JSON: {\"answer\": {\"artifacts\": [{\"name\": ..., \"content\": ...}]}}.",
+                "Use exactly the required names and do not claim evidence absent from the inputs.",
+            ]
+        )
+        try:
+            response = await asyncio.wait_for(
+                self._llm.complete_json(prompt, schema_name="research_report"),
+                timeout=self._orchestrator_llm_timeout_seconds,
+            )
+        except Exception as exc:
+            await self._emit(
+                task,
+                "research_synthesis_failed",
+                {"status": "failed", "reason": str(exc)},
+                agent_id="orchestrator",
+            )
+            return []
+        answer = response.get("answer", {}) if isinstance(response, dict) else {}
+        raw_artifacts = answer.get("artifacts", []) if isinstance(answer, dict) else []
+        if not isinstance(raw_artifacts, list):
+            return []
+        artifacts = []
+        for item in raw_artifacts:
+            if not isinstance(item, dict) or item.get("name") not in required:
+                continue
+            artifacts.append(
+                ArtifactRecord(
+                    name=item["name"],
+                    artifact_type="markdown",
+                    content_type="text/markdown",
+                    metadata={"content": str(item.get("content", ""))[:20_000]},
+                )
+            )
+        if artifacts:
+            await self._emit(
+                task,
+                "research_report_created",
+                {"artifact_names": [artifact.name for artifact in artifacts]},
+                agent_id="orchestrator",
+            )
+        return artifacts
+
 
     async def _run_plan_steps(
         self,
