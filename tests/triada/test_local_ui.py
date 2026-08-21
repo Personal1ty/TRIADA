@@ -216,12 +216,28 @@ async def test_get_local_swarm_ui():
     assert 'let requestedContractVersion = "";' in response.text
     assert 'function isCurrentContractLoad' in response.text
     assert 'function clearContractProjection' in response.text
+    contract_versions_loader = response.text.partition('async function loadContractVersions()')[2].partition('async function compareContracts')[0]
+    assert 'const previousVersion = contractVersionSelect.value;' in contract_versions_loader
+    assert 'versions.includes(previousVersion)' in contract_versions_loader
+    assert 'const selectedVersion =' in contract_versions_loader
+    assert 'contractVersionSelect.value = selectedVersion;' in contract_versions_loader
+    assert 'loadSelectedContractVersion();' in contract_versions_loader
+    default_contract_loader = response.text.partition('async function loadContract()')[2].partition('async function loadContractVersions')[0]
+    assert 'clearContractProjection' in default_contract_loader
     contract_loader = response.text.partition('async function loadSelectedContractVersion()')[2].partition('async function saveContract')[0]
     assert 'try {' in contract_loader
     assert 'const contractRequest = beginContractLoad(version);' in contract_loader
     assert 'isCurrentContractLoad(contractRequest)' in contract_loader
     assert 'clearContractProjection' in contract_loader
     assert 'Unable to load contract version:' in contract_loader
+    assert 'let eventPageInFlight = false;' in response.text
+    assert 'async function loadMoreEvents()' in response.text
+    pagination_loader = response.text.partition('async function loadMoreEvents()')[2].partition('eventAutoRefresh.addEventListener')[0]
+    assert 'if (eventPageInFlight) {' in pagination_loader
+    assert 'eventPageInFlight = true;' in pagination_loader
+    assert 'loadMoreEventsButton.disabled = true;' in pagination_loader
+    assert 'eventPageInFlight = false;' in pagination_loader
+    assert 'loadMoreEvents();' in response.text
     assert 'id="event-feed"' in response.text
     assert 'id="events-panel"' in response.text
     assert 'data-observatory-panel="events-panel"' in response.text

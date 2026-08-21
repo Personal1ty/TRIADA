@@ -1544,6 +1544,7 @@
     let refreshSequence = 0;
     let contractLoadSequence = 0;
     let requestedContractVersion = "";
+    let eventPageInFlight = false;
     const MAX_PROJECTION_EVENT_PAGES = 10;
     const MAX_LATEST_EVENT_PAGES = 1;
     const terminalStatuses = new Set(["completed", "failed", "blocked", "cancelled", "corrections_required", "timed_out"]);
@@ -1921,6 +1922,7 @@
       contractJson.value = JSON.stringify(contract, null, 2);
       renderContractForm(contract);
       renderContractBodies(contract);
+      contractStatus.classList.remove("error");
       contractStatus.textContent = `Loaded contract ${contract.contract_version || "unknown"}.`;
       routeMap.innerHTML = routes.map((route) => `
         <li class="route">
@@ -2622,9 +2624,7 @@
         if (!isCurrentContractLoad(contractRequest)) {
           return;
         }
-        contractStatus.textContent = `Unable to load ${contractUrl}: ${error.message}`;
-        contractStatus.classList.add("error");
-        routeMap.innerHTML = `<li class="status error">Unable to load ${contractUrl}: ${escapeHtml(error.message)}</li>`;
+        clearContractProjection(`Unable to load ${contractUrl}: ${error.message}`);
       }
     }
 
@@ -2632,9 +2632,14 @@
       try {
         const payload = await fetchJson("/v1/swarm/contracts");
         const versions = Array.isArray(payload.versions) ? payload.versions : [];
+        const previousVersion = contractVersionSelect.value;
         contractVersionSelect.innerHTML = versions.map((version) => `
           <option value="${escapeHtml(version)}"${version === payload.active_version ? " selected" : ""}>${escapeHtml(version)}</option>
         `).join("");
+        const selectedVersion = versions.includes(previousVersion)
+          ? previousVersion
+          : payload.active_version || "";
+        contractVersionSelect.value = selectedVersion;
         const options = versions.map((version) => `<option value="${escapeHtml(version)}">${escapeHtml(version)}</option>`).join("");
         contractDiffFrom.innerHTML = options;
         contractDiffTo.innerHTML = options;
@@ -2642,6 +2647,15 @@
           contractDiffTo.value = payload.active_version;
           const previous = versions.find((version) => version !== payload.active_version);
           if (previous) contractDiffFrom.value = previous;
+        }
+        if (previousVersion && selectedVersion !== previousVersion) {
+          const message = selectedVersion
+            ? `Contract version ${previousVersion} is no longer available; loading ${selectedVersion}.`
+            : `Contract version ${previousVersion} is no longer available.`;
+          clearContractProjection(message);
+          if (selectedVersion) {
+            loadSelectedContractVersion();
+          }
         }
       } catch (error) {
         contractStatus.textContent = `Unable to load contract versions: ${error.message}`;
@@ -2947,6 +2961,31 @@
           eventsStatus.classList.add("error");
         }
         return { events: [] };
+      }
+    }
+
+    async function loadMoreEvents() {
+      if (eventPageInFlight) {
+        return;
+      }
+      if (!currentTaskId || !nextEventsCursor) {
+        return;
+      }
+      const taskId = currentTaskId;
+      const generation = projectionGeneration;
+      eventPageInFlight = true;
+      loadMoreEventsButton.disabled = true;
+      try {
+        await loadEvents(taskId, {
+          after_event_id: nextEventsCursor,
+          append: true,
+          generation
+        });
+      } finally {
+        eventPageInFlight = false;
+        if (isCurrentTaskRequest(taskId, generation)) {
+          loadMoreEventsButton.disabled = !nextEventsCursor;
+        }
       }
     }
 
@@ -3367,15 +3406,7 @@
     });
 
     loadMoreEventsButton.addEventListener("click", () => {
-      if (currentTaskId && nextEventsCursor) {
-        const taskId = currentTaskId;
-        const generation = projectionGeneration;
-        loadEvents(taskId, {
-          after_event_id: nextEventsCursor,
-          append: true,
-          generation
-        });
-      }
+      loadMoreEvents();
     });
 
     eventAutoRefresh.addEventListener("change", () => {
