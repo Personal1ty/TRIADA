@@ -116,14 +116,17 @@ class Worker:
                 check_name="llm_prepare_timeout",
             )
         except Exception as exc:
-            return self._failed_before_tool(
-                task_id,
-                step_id,
-                title,
-                command,
-                f"LLM preparation failed: {exc}",
-                check_name="llm_prepare",
-            )
+            if "429" in str(exc):
+                model_response = {}
+            else:
+                return self._failed_before_tool(
+                    task_id,
+                    step_id,
+                    title,
+                    command,
+                    f"LLM preparation failed: {exc}",
+                    check_name="llm_prepare",
+                )
         request = ToolRequest(
             command=command,
             working_dir=self.workspace,

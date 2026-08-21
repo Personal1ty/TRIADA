@@ -92,6 +92,11 @@ class TransientRateLimitProvider(RecordingProvider):
         return await super().complete_json(prompt, schema_name=schema_name)
 
 
+class AlwaysRateLimitProvider:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        raise RuntimeError("429 Too Many Requests")
+
+
 class StringSummaryProvider:
     async def complete_json(self, prompt: str, *, schema_name: str):
         return {
@@ -403,6 +408,20 @@ async def test_worker_retries_transient_rate_limit_before_running_tool(tmp_path)
 
     assert result.status == "succeeded"
     assert provider.attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_worker_runs_read_only_tool_when_rate_limit_exhausted(tmp_path):
+    result = await Worker(worker_id="worker-1", workspace=tmp_path, llm=AlwaysRateLimitProvider()).run_step(
+        task_id="task-1",
+        step_id="step-1",
+        title="Echo current step",
+        allowed_tools=["echo"],
+        command=["echo", "hello"],
+    )
+
+    assert result.status == "succeeded"
+    assert result.tool_results[0].exit_code == 0
 
 
 @pytest.mark.asyncio
