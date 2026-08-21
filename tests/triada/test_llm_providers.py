@@ -432,6 +432,26 @@ async def test_openai_provider_bounds_stream_waiting_for_first_chunk():
 
 
 @pytest.mark.asyncio
+async def test_openai_provider_bounds_non_stream_response_body_duration():
+    class SilentResponse:
+        async def aread(self):
+            await asyncio.Event().wait()
+            return b"never"
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://llm.example.test",
+        api_key=None,
+        model="corp-coder",
+    )
+
+    with pytest.raises(RuntimeError, match="response exceeded maximum duration"):
+        await provider._read_non_streaming_body(
+            SilentResponse(),
+            max_duration_seconds=0.01,
+        )
+
+
+@pytest.mark.asyncio
 async def test_openai_provider_enables_deepseek_thinking_mode():
     seen_request = None
 

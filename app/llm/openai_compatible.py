@@ -177,7 +177,9 @@ class OpenAICompatibleProvider(LLMProvider):
                             response,
                             max_duration_seconds=30.0,
                         )
-                    body = (await response.aread()).decode("utf-8", errors="replace")
+                    body = (await self._read_non_streaming_body(response)).decode(
+                        "utf-8", errors="replace"
+                    )
                     try:
                         data = json.loads(body)
                     except json.JSONDecodeError:
@@ -193,6 +195,22 @@ class OpenAICompatibleProvider(LLMProvider):
             "has_reasoning_content": self._has_reasoning_content(data),
             "raw_reasoning_content": self._extract_reasoning_content(data),
         }
+
+    async def _read_non_streaming_body(
+        self,
+        response: httpx.Response,
+        *,
+        max_duration_seconds: float = 30.0,
+    ) -> bytes:
+        try:
+            return await asyncio.wait_for(
+                response.aread(),
+                timeout=max_duration_seconds,
+            )
+        except TimeoutError:
+            raise RuntimeError(
+                "OpenAI-compatible LLM response exceeded maximum duration"
+            ) from None
 
     def _read_streaming_text(self, body: str) -> dict[str, Any]:
         content_parts: list[str] = []
