@@ -224,7 +224,7 @@ async def test_get_local_swarm_ui():
     assert "pageCount < MAX_PROJECTION_EVENT_PAGES" in response.text
     assert 'new URLSearchParams({ limit: "100", order })' in response.text
     assert 'params.set("order", order);' in response.text
-    assert 'fetchEventsPage(taskId, null, "desc")' in response.text
+    assert 'fetchEventsPage(projectionTaskId, null, "desc")' in response.text
     assert 'const MAX_LATEST_EVENT_PAGES = 1;' in response.text
     assert "events: events," in response.text
     assert "events: events.reverse()" not in response.text
@@ -259,7 +259,10 @@ async def test_get_local_swarm_ui():
     assert "const safePayload = payload || {};" in response.text
     assert "Array.isArray(safePayload.events)" in response.text
     assert "Array.isArray(safePayload.raw_reasoning_refs)" in response.text
-    assert "const firstPage = await fetchEventsPage(taskId, null, \"desc\");" in response.text
+    assert "const firstPage = await fetchEventsPage(projectionTaskId, null, \"desc\");" in response.text
+    assert 'if (currentTaskId == null || currentTaskId === "")' in response.text
+    assert "function emptyEventsProjection()" in response.text
+    assert 'const projectionTaskId = String(requestedTaskId);' in response.text
     assert 'const selectedTask = task || { task_id: requestedTaskId, status: "unknown" };' in response.text
     assert 'escapeHtml(item.tokens || 0)' in response.text
     assert 'escapeHtml(item.average_quality ?? 0)' in response.text
