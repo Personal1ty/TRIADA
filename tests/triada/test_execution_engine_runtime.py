@@ -119,6 +119,11 @@ class ShortExecutionEngine:
         return "completed"
 
 
+class ExplodingExecutionEngine:
+    async def run_once(self, task):
+        raise RuntimeError("unexpected execution failure")
+
+
 @pytest.mark.asyncio
 async def test_task_service_closes_run_when_execution_is_cancelled():
     emitter = MemoryEmitter()
@@ -145,6 +150,26 @@ async def test_task_service_can_start_background_run_without_http_request_lifeti
 
     assert accepted.status == "running"
     assert (await service.get_task(task.id)).status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_task_service_marks_background_run_failed_on_unexpected_exception():
+    emitter = MemoryEmitter()
+    service = TaskService(
+        emitter=emitter,
+        execution_engine=ExplodingExecutionEngine(),
+    )
+    task = await service.create_task(goal="Fail safely")
+
+    accepted = await service.start_task_once(task.id)
+    await asyncio.sleep(0.03)
+
+    assert accepted.status == "running"
+    failed = await service.get_task(task.id)
+    assert failed is not None
+    assert failed.status == "failed"
+    assert emitter.events[-1]["event_type"] == "task_failed"
+    assert emitter.events[-1]["payload"]["reason"] == "unexpected execution failure"
 
 
 class HangingExecutionEngine:

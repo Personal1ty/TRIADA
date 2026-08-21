@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.audit.redaction import redact_text
 from app.config import get_settings
 
 
@@ -228,6 +229,16 @@ class TaskService:
                 status="cancelled",
                 event_type="task_cancelled",
                 payload={"status": "cancelled", "reason": "execution_cancelled"},
+            )
+        except Exception as exc:
+            return await self._transition_task(
+                running.id,
+                status="failed",
+                event_type="task_failed",
+                payload={
+                    "status": "failed",
+                    "reason": redact_text(str(exc)) or "unexpected execution failure",
+                },
             )
         await self._persist_runtime_metadata(running)
         final_event_type = {
