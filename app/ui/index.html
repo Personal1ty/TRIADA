@@ -621,6 +621,10 @@
       dominant-baseline: middle;
     }
 
+    .node .graph-node-label {
+      font-size: 11px;
+    }
+
     .edge {
       fill: none;
       stroke: #64748b;
@@ -965,7 +969,7 @@
 
       <section id="task-runner" data-observatory-panel="runs-panel">
         <h2>Runs</h2>
-        <div class="panel-body">
+        <div id="runs-panel" class="panel-body">
           <form id="create-task-form" class="form-grid" hidden>
             <div class="field">
               <label for="demo-template-select">Demo template</label>
@@ -1003,26 +1007,30 @@
 
       <section id="graph" data-observatory-panel="execution-graph-panel">
         <h2>Execution graph</h2>
-        <div class="panel-body graph-wrap" id="graph-body">
-          <p class="graph-summary" id="graph-summary">No route graph loaded.</p>
-          <ul class="graph-route-list" id="graph-route-list"></ul>
-          <p class="status">Enter a task id to load /v1/tasks/{task_id}/swarm-graph.</p>
+        <div id="execution-graph-panel">
+          <div class="panel-body graph-wrap" id="graph-body">
+            <p class="graph-summary" id="graph-summary">No route graph loaded.</p>
+            <ul class="graph-route-list" id="graph-route-list"></ul>
+            <p class="status">Enter a task id to load /v1/tasks/{task_id}/swarm-graph.</p>
+          </div>
         </div>
       </section>
 
       <section id="events" data-observatory-panel="events-panel">
         <h2>Event Feed</h2>
-        <div class="panel-body">
-          <div class="inline-controls">
-            <label class="controls" for="event-auto-refresh">
-              <input id="event-auto-refresh" name="event-auto-refresh" type="checkbox" checked>
-              <span>Auto-refresh</span>
-            </label>
-            <button id="refresh-events" type="button">Refresh now</button>
-            <button id="load-more-events" type="button" disabled>Load more</button>
+        <div id="events-panel">
+          <div class="panel-body">
+            <div class="inline-controls">
+              <label class="controls" for="event-auto-refresh">
+                <input id="event-auto-refresh" name="event-auto-refresh" type="checkbox" checked>
+                <span>Auto-refresh</span>
+              </label>
+              <button id="refresh-events" type="button">Refresh now</button>
+              <button id="load-more-events" type="button" disabled>Load more</button>
+            </div>
+            <p class="status" id="events-status">Create, run, or load a task to inspect audit events.</p>
+            <ul class="event-feed" id="event-feed"></ul>
           </div>
-          <p class="status" id="events-status">Create, run, or load a task to inspect audit events.</p>
-          <ul class="event-feed" id="event-feed"></ul>
         </div>
       </section>
         <button id="toggle-contracts" class="contracts-toggle" type="button" aria-controls="contracts-panel" aria-expanded="false">Contracts</button>
@@ -1465,7 +1473,9 @@
     let nextEventsCursor = null;
     let currentContract = null;
     let demoTemplates = [];
-    const terminalStatuses = new Set(["completed", "failed", "blocked", "cancelled", "timed_out"]);
+    let projectionGeneration = 0;
+    const MAX_PROJECTION_EVENT_PAGES = 10;
+    const terminalStatuses = new Set(["completed", "failed", "blocked", "cancelled", "corrections_required", "timed_out"]);
 
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -1858,6 +1868,10 @@
       return [...(Array.isArray(events) ? events : [])].reverse().find((event) => types.has(event.event_type)) || null;
     }
 
+    function isCurrentTaskRequest(taskId, generation) {
+      return currentTaskId === taskId && projectionGeneration === generation;
+    }
+
     function graphNodeState(node, agentStates, taskStatus) {
       const status = agentStates.get(node.id);
       if (status === "running") {
@@ -1942,6 +1956,11 @@
       return { height, laneWidth, positions, roleLabels, roleOrder, width };
     }
 
+    function shortGraphLabel(node) {
+      const label = String(node.label || node.id || "agent");
+      return label.length > 18 ? `${label.slice(0, 17)}…` : label;
+    }
+
     function renderGraph(graph, context = {}) {
       const projection = projectExecutionGraph(graph, context);
       const nodes = projection.nodes;
@@ -1984,12 +2003,13 @@
 
       const nodeMarkup = nodes.map((node) => {
         const position = positions.get(node.id);
-        const label = node.label || node.id;
+        const label = shortGraphLabel(node);
         const meta = node.pair_id || `${node.incoming_count || 0} in / ${node.outgoing_count || 0} out`;
         return `
           <g class="node node-${escapeHtml(node.role || "agent")}" data-node-id="${escapeHtml(node.id)}" data-node-role="${escapeHtml(node.role || "agent")}" data-node-state="${escapeHtml(node.state)}">
             <rect x="${position.x - 55}" y="${position.y - 22}" width="110" height="44" rx="7"></rect>
-            <text x="${position.x}" y="${position.y - 10}">${escapeHtml(label)} · ${escapeHtml(node.id)}</text>
+            <title>${escapeHtml(node.id)} · ${escapeHtml(node.role || "agent")}</title>
+            <text class="graph-node-label" x="${position.x}" y="${position.y - 10}">${escapeHtml(label)}</text>
             <text class="graph-node-meta" x="${position.x}" y="${position.y + 2}">${escapeHtml(node.role || "agent")} · ${escapeHtml(meta)}</text>
             <text class="graph-node-state" x="${position.x}" y="${position.y + 14}">${escapeHtml(node.state)}</text>
           </g>
@@ -2011,7 +2031,7 @@
 
       graphBody.innerHTML = `
         <p class="graph-summary" id="graph-summary">${escapeHtml(summary.node_count ?? nodes.length)} agents, ${escapeHtml(summary.edge_count ?? edges.length)} selected route${edges.length === 1 ? "" : "s"}.</p>
-        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMin meet" role="img" aria-label="Task swarm route graph">
+        <svg id="execution-graph" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMin meet" role="img" aria-label="Task swarm route graph">
           <defs>
             <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
               <path d="M 0 0 L 8 4 L 0 8 z" fill="#64748b"></path>
@@ -2274,6 +2294,18 @@
         : "Not available for this run.";
     }
 
+    function hasPendingApproval(task, eventsPayload) {
+      if (task?.status !== "waiting_approval") {
+        return false;
+      }
+      const events = eventsPayload && Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
+      const pending = latestEvent(events, ["approval_required", "replay_waiting_approval"]);
+      const approved = latestEvent(events, "task_approved");
+      return Boolean(
+        pending && (!approved || Number(pending.sequence || 0) > Number(approved.sequence || 0))
+      );
+    }
+
     function renderSelectedContracts(task, eventsPayload, memoryPayload, budgetPayload, economicsPayload) {
       const events = eventsPayload && Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
       const planning = latestEvent(events, "planning_completed");
@@ -2294,11 +2326,11 @@
           }))
         : [];
       const approved = latestEvent(events, "task_approved");
-      const waiting = latestEvent(events, ["task_waiting_approval", "replay_waiting_approval"]);
+      const pendingApproval = hasPendingApproval(task, eventsPayload);
       let approval = null;
       if (approved) {
         approval = { status: "approved", approved_by: approved.payload?.approved_by || "Not available for this run" };
-      } else if (task?.status === "waiting_approval" || waiting) {
+      } else if (pendingApproval) {
         approval = { status: "waiting" };
       } else if (planning && planningPayload.requires_approval === false) {
         approval = { status: "not_required" };
@@ -2379,8 +2411,9 @@
       `).join("") || '<li class="status">No checkpoints.</li>';
       renderSelectedResult(task, eventsPayload, inspectorPayload);
       renderSelectedContracts(task, eventsPayload, memoryPayload, budgetPayload, economicsPayload);
-      approveTaskButton.hidden = task.status !== "waiting_approval";
-      contractsSummaryStatus.textContent = task.status === "waiting_approval"
+      approveTaskButton.hidden = !hasPendingApproval(task, eventsPayload);
+      const actionableApproval = !approveTaskButton.hidden;
+      contractsSummaryStatus.textContent = actionableApproval
         ? "Approval is required before the run can continue."
         : `Selected run status: ${task.status || "unknown"}.`;
     }
@@ -2659,20 +2692,52 @@
       rawReasoningOutput.textContent = "";
     }
 
+    async function fetchEventsPage(taskId, afterEventId = null) {
+      const params = new URLSearchParams({ limit: "100" });
+      if (afterEventId) {
+        params.set("after_event_id", afterEventId);
+      }
+      return fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/events?${params.toString()}`);
+    }
+
     async function loadEvents(taskId, options = {}) {
       try {
-        const params = new URLSearchParams({ limit: "100" });
-        if (options.after_event_id) {
-          params.set("after_event_id", options.after_event_id);
+        const payload = await fetchEventsPage(taskId, options.after_event_id || null);
+        if (options.generation != null && !isCurrentTaskRequest(taskId, options.generation)) {
+          return payload;
         }
-        const payload = await fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/events?${params.toString()}`);
         renderEvents(payload, { append: Boolean(options.append) });
         return payload;
       } catch (error) {
-        eventsStatus.textContent = `Unable to load events: ${error.message}`;
-        eventsStatus.classList.add("error");
+        if (options.generation == null || isCurrentTaskRequest(taskId, options.generation)) {
+          eventsStatus.textContent = `Unable to load events: ${error.message}`;
+          eventsStatus.classList.add("error");
+        }
         return { events: [] };
       }
+    }
+
+    async function loadProjectionEvents(taskId, seedPayload = null) {
+      let payload = seedPayload || await fetchEventsPage(taskId);
+      const events = Array.isArray(payload.events) ? [...payload.events] : [];
+      let cursor = payload.next_cursor || null;
+      let pageCount = 1;
+      while (payload.has_more && cursor && pageCount < MAX_PROJECTION_EVENT_PAGES) {
+        try {
+          payload = await fetchEventsPage(taskId, cursor);
+        } catch (error) {
+          break;
+        }
+        events.push(...(Array.isArray(payload.events) ? payload.events : []));
+        cursor = payload.next_cursor || null;
+        pageCount += 1;
+      }
+      return {
+        ...payload,
+        events,
+        has_more: Boolean(payload.has_more && cursor),
+        next_cursor: cursor
+      };
     }
 
     function stopEventPolling() {
@@ -2687,36 +2752,58 @@
       if (!eventAutoRefresh.checked || !currentTaskId) {
         return;
       }
+      const pollingTaskId = currentTaskId;
+      const pollingGeneration = projectionGeneration;
       eventPollTimer = setInterval(() => {
-        refreshCurrentTask({ quiet: true });
+        if (!isCurrentTaskRequest(pollingTaskId, pollingGeneration)) {
+          stopEventPolling();
+          return;
+        }
+        refreshCurrentTask({
+          quiet: true,
+          taskId: pollingTaskId,
+          generation: pollingGeneration
+        });
       }, 2000);
     }
 
     async function refreshCurrentTask(options = {}) {
-      if (!currentTaskId) {
+      const requestedTaskId = options.taskId || currentTaskId;
+      const requestGeneration = options.generation ?? projectionGeneration;
+      if (!requestedTaskId || !isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
         return;
       }
       try {
-        const task = await fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}`);
+        const task = await fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}`);
+        if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
+          return;
+        }
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
         const [graph, thinking, inspector, quality, checkpoints, budget, memory, memoryGraph, researchPlan, researchEvidence, parameterInfluence, resourceUsage, economics, playbookRuns, recommendations] = await Promise.all([
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/swarm-graph`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/thinking-summary`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/inspector`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/quality`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/checkpoints`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/budget`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/memory`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/memory/graph`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research/evidence`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research/influence`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/usage`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/economics`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/playbook/runs`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/research/recommendations`)
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/swarm-graph`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/thinking-summary`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/inspector`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/quality`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/checkpoints`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/budget`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/memory`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/memory/graph`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/research`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/research/evidence`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/research/influence`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/usage`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/economics`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/playbook/runs`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/research/recommendations`)
         ]);
-        const events = await loadEvents(currentTaskId);
+        if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
+          return;
+        }
+        const visibleEvents = await loadEvents(requestedTaskId, { generation: requestGeneration });
+        const events = await loadProjectionEvents(requestedTaskId, visibleEvents);
+        if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
+          return;
+        }
         renderGraph(graph, { task, inspector, events: events.events || [] });
         renderThinking(thinking);
         renderMemory(memory);
@@ -2732,7 +2819,7 @@
           stopEventPolling();
         }
       } catch (error) {
-        if (!options.quiet) {
+        if (!options.quiet && isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
           eventsStatus.textContent = `Unable to refresh task: ${error.message}`;
           eventsStatus.classList.add("error");
         }
@@ -2740,13 +2827,15 @@
     }
 
     async function loadTask(taskId) {
-      currentTaskId = taskId;
+      const requestedTaskId = String(taskId);
+      const requestGeneration = ++projectionGeneration;
+      currentTaskId = requestedTaskId;
       clearRawReasoningReveal();
-      taskInput.value = taskId;
+      taskInput.value = requestedTaskId;
       runTaskButton.disabled = false;
-      const graphUrl = `/v1/tasks/${encodeURIComponent(taskId)}/swarm-graph`;
-      const thinkingUrl = `/v1/tasks/${encodeURIComponent(taskId)}/thinking-summary`;
-      const taskUrl = `/v1/tasks/${encodeURIComponent(taskId)}`;
+      const graphUrl = `/v1/tasks/${encodeURIComponent(requestedTaskId)}/swarm-graph`;
+      const thinkingUrl = `/v1/tasks/${encodeURIComponent(requestedTaskId)}/thinking-summary`;
+      const taskUrl = `/v1/tasks/${encodeURIComponent(requestedTaskId)}`;
       loadTaskButton.disabled = true;
       graphBody.innerHTML = `<p class="status">Loading ${escapeHtml(graphUrl)}...</p>`;
       thinkingStatus.textContent = `Loading ${thinkingUrl}...`;
@@ -2756,20 +2845,23 @@
           fetchJson(taskUrl),
           fetchJson(graphUrl),
           fetchJson(thinkingUrl),
-          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/inspector`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/quality`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/checkpoints`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/budget`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/memory`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/memory/graph`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/research`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/research/evidence`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/research/influence`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/usage`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/economics`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/playbook/runs`),
-          fetchJson(`/v1/tasks/${encodeURIComponent(taskId)}/research/recommendations`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/inspector`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/quality`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/checkpoints`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/budget`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/memory`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/memory/graph`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/research`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/research/evidence`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/research/influence`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/usage`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/economics`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/playbook/runs`),
+          fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}/research/recommendations`),
         ]);
+        if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
+          return;
+        }
         taskStatus.textContent = `Task ${task.task_id}: ${task.status}`;
         renderThinking(thinking);
         renderMemory(memory);
@@ -2780,7 +2872,11 @@
         renderResourceUsage({...resourceUsage, summary: resourceUsage?.summary || economics?.usage, economics});
         renderPlaybookRuns(playbookRuns);
         renderDecisionHeuristics(recommendations);
-        const events = await loadEvents(taskId);
+        const visibleEvents = await loadEvents(requestedTaskId, { generation: requestGeneration });
+        const events = await loadProjectionEvents(requestedTaskId, visibleEvents);
+        if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
+          return;
+        }
         renderGraph(graph, { task, inspector, events: events.events || [] });
         renderRunObservatory(task, graph, events, inspector, quality, checkpoints, budget, memory, economics);
         if (!terminalStatuses.has(task.status)) {
@@ -2789,10 +2885,14 @@
           stopEventPolling();
         }
       } catch (error) {
-        graphBody.innerHTML = `<p class="status error">Unable to load task: ${escapeHtml(error.message)}</p>`;
-        thinkingStatus.textContent = "Task load failed.";
+        if (isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
+          graphBody.innerHTML = `<p class="status error">Unable to load task: ${escapeHtml(error.message)}</p>`;
+          thinkingStatus.textContent = "Task load failed.";
+        }
       } finally {
-        loadTaskButton.disabled = false;
+        if (isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
+          loadTaskButton.disabled = false;
+        }
       }
     }
 
@@ -2839,19 +2939,28 @@
         taskStatus.classList.add("error");
         return;
       }
+      const runTaskId = currentTaskId;
+      const runGeneration = projectionGeneration;
       runTaskButton.disabled = true;
       taskStatus.classList.remove("error");
-      taskStatus.textContent = `Running ${currentTaskId}...`;
+      taskStatus.textContent = `Running ${runTaskId}...`;
       try {
         startEventPolling();
-        const result = await postJson(`/v1/tasks/${encodeURIComponent(currentTaskId)}/run_async`, {});
+        const result = await postJson(`/v1/tasks/${encodeURIComponent(runTaskId)}/run_async`, {});
+        if (!isCurrentTaskRequest(runTaskId, runGeneration)) {
+          return;
+        }
         taskStatus.textContent = `Task ${result.task_id}: ${result.status}`;
-        await Promise.all([loadTask(currentTaskId), loadRecentTasks(), loadApprovalQueue()]);
+        await Promise.all([loadTask(runTaskId), loadRecentTasks(), loadApprovalQueue()]);
       } catch (error) {
-        taskStatus.textContent = `Unable to run task: ${error.message}`;
-        taskStatus.classList.add("error");
+        if (isCurrentTaskRequest(runTaskId, runGeneration)) {
+          taskStatus.textContent = `Unable to run task: ${error.message}`;
+          taskStatus.classList.add("error");
+        }
       } finally {
-        runTaskButton.disabled = false;
+        if (isCurrentTaskRequest(runTaskId, runGeneration)) {
+          runTaskButton.disabled = false;
+        }
       }
     }
 
@@ -2936,7 +3045,13 @@
 
     loadMoreEventsButton.addEventListener("click", () => {
       if (currentTaskId && nextEventsCursor) {
-        loadEvents(currentTaskId, { after_event_id: nextEventsCursor, append: true });
+        const taskId = currentTaskId;
+        const generation = projectionGeneration;
+        loadEvents(taskId, {
+          after_event_id: nextEventsCursor,
+          append: true,
+          generation
+        });
       }
     });
 

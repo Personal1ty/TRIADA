@@ -61,9 +61,12 @@ async def test_get_local_swarm_ui():
     assert "/v1/llm/config" in response.text
     assert "/v1/llm/test" in response.text
     assert 'id="graph"' in response.text
+    assert 'id="execution-graph-panel"' in response.text
     assert 'data-observatory-panel="execution-graph-panel"' in response.text
+    assert 'id="execution-graph"' in response.text
     assert 'id="run-observatory"' in response.text
     assert 'id="result-panel"' in response.text
+    assert 'id="runs-panel"' in response.text
     assert 'id="observatory-timeline"' in response.text
     assert 'id="observatory-inspector"' in response.text
     assert 'id="observatory-evidence"' in response.text
@@ -73,9 +76,9 @@ async def test_get_local_swarm_ui():
     assert 'id="observatory-checkpoint-list"' in response.text
     assert 'class="replay-task"' in response.text
     assert "/replay" in response.text
-    assert "/v1/tasks/${encodeURIComponent(currentTaskId)}/quality" in response.text
-    assert "/v1/tasks/${encodeURIComponent(currentTaskId)}/checkpoints" in response.text
-    assert "/v1/tasks/${encodeURIComponent(currentTaskId)}/inspector" in response.text
+    assert "/v1/tasks/${encodeURIComponent(requestedTaskId)}/quality" in response.text
+    assert "/v1/tasks/${encodeURIComponent(requestedTaskId)}/checkpoints" in response.text
+    assert "/v1/tasks/${encodeURIComponent(requestedTaskId)}/inspector" in response.text
     assert "renderRunObservatory" in response.text
     assert 'id="graph-summary"' in response.text
     assert 'id="graph-route-list"' in response.text
@@ -174,10 +177,11 @@ async def test_get_local_swarm_ui():
     assert 'id="run-demo-flow"' in response.text
     assert 'id="run-task"' in response.text
     assert 'id="event-feed"' in response.text
+    assert 'id="events-panel"' in response.text
     assert 'data-observatory-panel="events-panel"' in response.text
     assert 'id="event-auto-refresh"' in response.text
     assert 'id="event-auto-refresh" name="event-auto-refresh" type="checkbox" checked' in response.text
-    assert 'const terminalStatuses = new Set(["completed", "failed", "blocked", "cancelled", "timed_out"])' in response.text
+    assert 'const terminalStatuses = new Set(["completed", "failed", "blocked", "cancelled", "corrections_required", "timed_out"])' in response.text
     assert 'id="refresh-events"' in response.text
     assert 'id="load-more-events"' in response.text
     assert "after_event_id" in response.text
@@ -208,6 +212,23 @@ async def test_get_local_swarm_ui():
     assert "renderSelectedContracts" in response.text
     assert "renderSelectedResult" in response.text
     assert "Not available for this run" in response.text
+    assert "function hasPendingApproval(task, eventsPayload)" in response.text
+    assert '["approval_required", "replay_waiting_approval"]' in response.text
+    assert 'task?.status !== "waiting_approval"' in response.text
+    assert "approveTaskButton.hidden = !hasPendingApproval(task, eventsPayload);" in response.text
+    assert "MAX_PROJECTION_EVENT_PAGES" in response.text
+    assert "loadProjectionEvents" in response.text
+    assert "pageCount < MAX_PROJECTION_EVENT_PAGES" in response.text
+    assert "projectionGeneration" in response.text
+    assert "isCurrentTaskRequest" in response.text
+    assert "shortGraphLabel" in response.text
+    assert "<title>${escapeHtml(node.id)}" in response.text
+    assert 'data-node-id="${escapeHtml(node.id)}"' in response.text
+    assert 'data-edge-purpose="${escapeHtml(edge.purpose)}"' in response.text
+    assert "Array.isArray(graph?.nodes) ? graph.nodes : []" in response.text
+    assert "Array.isArray(graph?.edges) ? graph.edges : []" in response.text
+    assert "escapeHtml(displayValue(value))" in response.text
+    assert "Math.max(128, Math.min(190" in response.text
 
 
 def test_local_swarm_ui_is_packaged():
