@@ -34,7 +34,7 @@ ExecutionEngine
 Orchestrator
 - plans bounded steps
 - classifies risk_policy
-- keeps tools inside allowed_tools
+- selects read-only tools from the server-owned automatic catalog; legacy `allowed_tools` ceilings remain supported for API clients and write capabilities stay approval-gated
       |
       +-------------------------------+
       | LLM unavailable?              |
@@ -221,7 +221,6 @@ TRIADA API уже запущена на http://127.0.0.1:8000 с LLM_PROVIDER=co
 
 Создай TRIADA-задачу через API:
 goal="Проверь текущее состояние git-репозитория TRIADA через git status и покажи, что thinking оркестратора и воркера записался в БД"
-allowed_tools=["git"]
 acceptance_criteria=["получен git status","thinking оркестратора записан в audit_events","thinking воркера записан в audit_events"]
 
 Потом запусти /run_once, покажи /thinking-summary и SQL из triada.db по trace_id.
@@ -378,7 +377,7 @@ Example:
 ```bash
 curl -sS -X POST http://127.0.0.1:8000/v1/tasks \
   -H 'content-type: application/json' \
-  -d '{"goal":"inspect repository status","allowed_tools":["git"],"acceptance_criteria":["return status"]}'
+  -d '{"goal":"inspect repository status","acceptance_criteria":["return status"]}'
 ```
 
 ## CLI
@@ -395,7 +394,8 @@ python3 -m app.cli verify-trace TRACE_UUID
 ```
 
 `run-task` accepts JSON with `goal` or `task` or `description`, plus optional
-`allowed_tools` and `acceptance_criteria` lists.
+`acceptance_criteria` and legacy `allowed_tools` lists. When `allowed_tools` is
+omitted, TRIADA uses the server-owned automatic read-only tool catalog.
 
 ## Validation Commands
 

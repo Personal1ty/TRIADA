@@ -1037,11 +1037,6 @@
                   <input id="task-risk" name="task-risk" type="text" autocomplete="off" placeholder="Leave empty for server policy">
                 </div>
                 <div class="field">
-                  <label for="task-tools">Tool policy / Ограничения инструментов</label>
-                  <input id="task-tools" name="task-tools" type="text" autocomplete="off" value="git" placeholder="git, rg, cat" aria-describedby="task-tools-help">
-                  <small class="muted" id="task-tools-help">Ограничения для Orchestrator: он сможет выбрать только эти инструменты.</small>
-                </div>
-                <div class="field">
                   <label for="demo-template-select">Demo template</label>
                   <select id="demo-template-select" name="demo-template-select"></select>
                 </div>
@@ -1465,7 +1460,6 @@
     const contractsSummaryStatus = document.getElementById("contracts-summary-status");
     const createTaskForm = document.getElementById("create-task-form");
     const taskGoal = document.getElementById("task-goal");
-    const taskTools = document.getElementById("task-tools");
     const taskRisk = document.getElementById("task-risk");
     const taskCriteria = document.getElementById("task-criteria");
     const demoTemplateSelect = document.getElementById("demo-template-select");
@@ -2946,7 +2940,6 @@
         return;
       }
       taskGoal.value = template.goal || "";
-      taskTools.value = Array.isArray(template.allowed_tools) ? template.allowed_tools.join(", ") : "";
       taskCriteria.value = Array.isArray(template.acceptance_criteria) ? template.acceptance_criteria.join(", ") : "";
       taskStatus.classList.remove("error");
       taskStatus.textContent = `Loaded demo template: ${template.name || template.id}.`;
@@ -3398,7 +3391,6 @@
         const created = await postJson("/v1/tasks", {
           goal,
           risk: taskRisk.value.trim() || null,
-          allowed_tools: parseList(taskTools.value),
           acceptance_criteria: parseList(taskCriteria.value)
         });
         createdTaskId = String(created.task_id);

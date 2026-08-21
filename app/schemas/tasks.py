@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.audit.redaction import contains_secret
+from app.tools.catalog import AUTO_TOOL_CATALOG
 
 
 class ResourceBudgetRequest(BaseModel):
@@ -130,7 +131,7 @@ class CreateTaskRequest(BaseModel):
     goal: str = Field(min_length=1, max_length=20_000)
     risk: str | None = Field(default=None, max_length=64)
     constraints: dict[str, Any] = Field(default_factory=dict)
-    allowed_tools: list[str] = Field(default_factory=list)
+    allowed_tools: list[str] = Field(default_factory=lambda: list(AUTO_TOOL_CATALOG))
     acceptance_criteria: list[str] = Field(default_factory=list)
     timeout_seconds: int | None = Field(default=None, ge=1)
     retry_limit: int = Field(default=0, ge=0)

@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 from app.audit.redaction import redact_text
 from app.config import get_settings
+from app.tools.catalog import AUTO_TOOL_CATALOG
 
 
 @dataclass
@@ -94,7 +95,11 @@ class TaskService:
             goal=goal,
             risk=risk,
             constraints=deepcopy(constraints) if constraints is not None else {},
-            allowed_tools=list(allowed_tools) if allowed_tools is not None else [],
+            allowed_tools=(
+                list(allowed_tools)
+                if allowed_tools is not None
+                else list(AUTO_TOOL_CATALOG)
+            ),
             acceptance_criteria=list(acceptance_criteria) if acceptance_criteria is not None else [],
             timeout_seconds=timeout_seconds,
             retry_limit=retry_limit,

@@ -743,6 +743,20 @@ async def test_create_task_rejects_blank_strings():
 
 
 @pytest.mark.asyncio
+async def test_create_task_without_manual_tools_uses_automatic_catalog():
+    async with _client() as client:
+        created = await client.post("/v1/tasks", json={"goal": "Inspect repository"})
+        task_id = created.json()["task_id"]
+        summaries = await client.get("/v1/tasks")
+
+    assert summaries.status_code == 200
+    summary = next(item for item in summaries.json()["tasks"] if item["task_id"] == task_id)
+    assert "git" in summary["allowed_tools"]
+    assert "ls" in summary["allowed_tools"]
+    assert "write_file" not in summary["allowed_tools"]
+
+
+@pytest.mark.asyncio
 async def test_mvp_read_endpoints_are_available():
     async with _client() as client:
         created = await client.post("/v1/tasks", json={"goal": "Inspect"})
