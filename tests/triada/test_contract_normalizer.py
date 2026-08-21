@@ -47,3 +47,13 @@ def test_normalizer_accepts_non_research_draft_without_forcing_research():
 
     assert contract.mode == ResearchMode.NONE
     assert contract.required_artifacts == []
+
+
+def test_normalizer_preserves_model_requested_evidence_budget():
+    contract = ContractNormalizer().research(
+        {"min_tool_executions": 20},
+        goal="Analyze TRIADA",
+        acceptance_criteria=[],
+    )
+
+    assert contract.min_tool_executions == 20

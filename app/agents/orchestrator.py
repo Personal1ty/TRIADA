@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -45,9 +46,15 @@ class LLMUnavailableError(RuntimeError):
 
 
 class Orchestrator:
-    def __init__(self, llm: Any, llm_timeout_seconds: float = 60.0) -> None:
+    def __init__(
+        self,
+        llm: Any,
+        llm_timeout_seconds: float = 60.0,
+        workspace: str | Path | None = None,
+    ) -> None:
         self.llm = llm
         self.llm_timeout_seconds = llm_timeout_seconds
+        self.workspace = Path(workspace or Path.cwd()).resolve()
         self._contract_normalizer = ContractNormalizer()
 
     async def plan_task(
@@ -183,6 +190,9 @@ class Orchestrator:
             [
                 f"Goal: {goal}",
                 f"Allowed tools: {', '.join(allowed_tools)}",
+                f"Workspace root: {self.workspace}",
+                f"Workspace top-level entries: {', '.join(sorted(path.name for path in self.workspace.iterdir()))}",
+                "Use paths that exist under this workspace; do not invent src/, ui/, or Rust layouts.",
                 "Return JSON with answer.steps.",
                 "Each step must include id, title, description, allowed_tools, and command.",
                 "command must be an argv array using only allowed tools.",

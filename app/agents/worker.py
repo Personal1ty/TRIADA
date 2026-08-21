@@ -341,7 +341,15 @@ class Worker:
                 "Return JSON with a public thinking_summary_delta and answer.",
             ]
         )
-        response = await self.llm.complete_json(prompt, schema_name="worker_result")
+        response = None
+        for attempt in range(3):
+            try:
+                response = await self.llm.complete_json(prompt, schema_name="worker_result")
+                break
+            except Exception as exc:
+                if "429" not in str(exc) or attempt == 2:
+                    raise
+                await asyncio.sleep(0.05 * (attempt + 1))
         return response if isinstance(response, dict) else {}
 
     def _blocked(

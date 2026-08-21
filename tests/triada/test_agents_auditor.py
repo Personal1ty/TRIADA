@@ -80,6 +80,18 @@ class RecordingProvider:
         }
 
 
+class TransientRateLimitProvider(RecordingProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.attempts = 0
+
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        self.attempts += 1
+        if self.attempts == 1:
+            raise RuntimeError("429 Too Many Requests")
+        return await super().complete_json(prompt, schema_name=schema_name)
+
+
 class StringSummaryProvider:
     async def complete_json(self, prompt: str, *, schema_name: str):
         return {
@@ -376,6 +388,21 @@ async def test_worker_fails_when_model_preparation_times_out(tmp_path):
     assert result.validation_results[0].check_name == "llm_prepare_timeout"
     assert "timed out after 0.01 seconds" in result.errors[0]
     assert result.tool_results == []
+
+
+@pytest.mark.asyncio
+async def test_worker_retries_transient_rate_limit_before_running_tool(tmp_path):
+    provider = TransientRateLimitProvider()
+    result = await Worker(worker_id="worker-1", workspace=tmp_path, llm=provider).run_step(
+        task_id="task-1",
+        step_id="step-1",
+        title="Echo current step",
+        allowed_tools=["echo"],
+        command=["echo", "hello"],
+    )
+
+    assert result.status == "succeeded"
+    assert provider.attempts == 2
 
 
 @pytest.mark.asyncio
