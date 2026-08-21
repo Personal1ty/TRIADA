@@ -214,9 +214,15 @@ async def test_get_local_swarm_ui():
     assert 'refreshInFlight = false;' in refresh_loader
     assert 'let contractLoadSequence = 0;' in response.text
     assert 'let requestedContractVersion = "";' in response.text
+    assert 'let contractVersionsInFlight = false;' in response.text
+    assert 'let contractVersionsSequence = 0;' in response.text
     assert 'function isCurrentContractLoad' in response.text
     assert 'function clearContractProjection' in response.text
     contract_versions_loader = response.text.partition('async function loadContractVersions()')[2].partition('async function compareContracts')[0]
+    assert 'if (contractVersionsInFlight) {' in contract_versions_loader
+    assert 'const versionsRequestSequence = ++contractVersionsSequence;' in contract_versions_loader
+    assert 'if (versionsRequestSequence !== contractVersionsSequence)' in contract_versions_loader
+    assert 'contractVersionsInFlight = false;' in contract_versions_loader
     assert 'const previousVersion = contractVersionSelect.value;' in contract_versions_loader
     assert 'versions.includes(previousVersion)' in contract_versions_loader
     assert 'const selectedVersion =' in contract_versions_loader
@@ -231,13 +237,45 @@ async def test_get_local_swarm_ui():
     assert 'clearContractProjection' in contract_loader
     assert 'Unable to load contract version:' in contract_loader
     assert 'let eventPageInFlight = false;' in response.text
+    assert 'let eventProjectionSequence = 0;' in response.text
+    assert 'function beginEventProjectionRequest' in response.text
+    assert 'function isCurrentEventProjectionRequest' in response.text
     assert 'async function loadMoreEvents()' in response.text
     pagination_loader = response.text.partition('async function loadMoreEvents()')[2].partition('eventAutoRefresh.addEventListener')[0]
     assert 'if (eventPageInFlight) {' in pagination_loader
     assert 'eventPageInFlight = true;' in pagination_loader
+    assert 'const eventRequestSequence = beginEventProjectionRequest();' in pagination_loader
+    assert 'eventProjectionSequence: eventRequestSequence' in pagination_loader
     assert 'loadMoreEventsButton.disabled = true;' in pagination_loader
     assert 'eventPageInFlight = false;' in pagination_loader
+    assert 'isCurrentEventProjectionRequest(taskId, generation, eventRequestSequence)' in pagination_loader
+    refresh_loader = response.text.partition('async function refreshCurrentTask(options = {})')[2].partition('async function loadTask')[0]
+    assert 'const eventRequestSequence = beginEventProjectionRequest();' in refresh_loader
+    assert 'eventProjectionSequence: eventRequestSequence' in refresh_loader
+    assert 'isCurrentEventProjectionRequest(requestedTaskId, requestGeneration, eventRequestSequence)' in refresh_loader
+    events_loader = response.text.partition('async function loadEvents(taskId, options = {})')[2].partition('async function loadMoreEvents')[0]
+    assert 'options.eventProjectionSequence != null' in events_loader
+    assert 'isCurrentEventProjectionRequest(taskId, options.generation, options.eventProjectionSequence)' in events_loader
     assert 'loadMoreEvents();' in response.text
+    assert 'let contractActionInFlight = false;' in response.text
+    assert 'let contractActionSequence = 0;' in response.text
+    contract_save_loader = response.text.partition('async function saveContract()')[2].partition('function renderDemoTemplates')[0]
+    assert 'if (contractActionInFlight) {' in contract_save_loader
+    assert 'const actionSequence = ++contractActionSequence;' in contract_save_loader
+    assert 'if (actionSequence !== contractActionSequence)' in contract_save_loader
+    assert 'saveContractButton.disabled = true;' in contract_save_loader
+    assert 'saveContractButton.disabled = false;' in contract_save_loader
+    assert 'let llmActionInFlight = false;' in response.text
+    assert 'let llmActionSequence = 0;' in response.text
+    llm_save_loader = response.text.partition('async function saveLlmConfig()')[2].partition('async function testLlmConfig')[0]
+    llm_test_loader = response.text.partition('async function testLlmConfig()')[2].partition('function contractRef')[0]
+    for action_loader in (llm_save_loader, llm_test_loader):
+        assert 'if (llmActionInFlight) {' in action_loader
+        assert 'const actionSequence = ++llmActionSequence;' in action_loader
+        assert 'if (actionSequence !== llmActionSequence)' in action_loader
+    assert 'function setLlmActionBusy(busy)' in response.text
+    assert 'saveLlmButton.disabled = busy;' in response.text
+    assert 'testLlmButton.disabled = busy;' in response.text
     assert 'id="event-feed"' in response.text
     assert 'id="events-panel"' in response.text
     assert 'data-observatory-panel="events-panel"' in response.text

@@ -1544,7 +1544,14 @@
     let refreshSequence = 0;
     let contractLoadSequence = 0;
     let requestedContractVersion = "";
+    let contractVersionsInFlight = false;
+    let contractVersionsSequence = 0;
+    let contractActionInFlight = false;
+    let contractActionSequence = 0;
     let eventPageInFlight = false;
+    let eventProjectionSequence = 0;
+    let llmActionInFlight = false;
+    let llmActionSequence = 0;
     const MAX_PROJECTION_EVENT_PAGES = 10;
     const MAX_LATEST_EVENT_PAGES = 1;
     const terminalStatuses = new Set(["completed", "failed", "blocked", "cancelled", "corrections_required", "timed_out"]);
@@ -1614,43 +1621,82 @@
     }
 
     async function loadLlmConfig() {
+      const actionSequence = ++llmActionSequence;
       try {
-        renderLlmConfig(await fetchJson(llmConfigUrl));
+        const config = await fetchJson(llmConfigUrl);
+        if (actionSequence !== llmActionSequence) {
+          return;
+        }
+        renderLlmConfig(config);
       } catch (error) {
-        llmStatus.textContent = `Unable to load ${llmConfigUrl}: ${error.message}`;
-        llmStatus.classList.add("error");
+        if (actionSequence === llmActionSequence) {
+          llmStatus.textContent = `Unable to load ${llmConfigUrl}: ${error.message}`;
+          llmStatus.classList.add("error");
+        }
       }
     }
 
+    function setLlmActionBusy(busy) {
+      saveLlmButton.disabled = busy;
+      testLlmButton.disabled = busy;
+    }
+
     async function saveLlmConfig() {
-      saveLlmButton.disabled = true;
+      if (llmActionInFlight) {
+        return;
+      }
+      const actionSequence = ++llmActionSequence;
+      llmActionInFlight = true;
+      setLlmActionBusy(true);
       llmStatus.classList.remove("error");
       llmStatus.textContent = `Saving ${llmConfigUrl}...`;
       try {
-        renderLlmConfig(await postJson(llmConfigUrl, llmFormPayload()));
+        const config = await postJson(llmConfigUrl, llmFormPayload());
+        if (actionSequence !== llmActionSequence) {
+          return;
+        }
+        renderLlmConfig(config);
       } catch (error) {
-        llmStatus.textContent = `Unable to save LLM config: ${error.message}`;
-        llmStatus.classList.add("error");
+        if (actionSequence === llmActionSequence) {
+          llmStatus.textContent = `Unable to save LLM config: ${error.message}`;
+          llmStatus.classList.add("error");
+        }
       } finally {
-        saveLlmButton.disabled = false;
+        if (actionSequence === llmActionSequence) {
+          llmActionInFlight = false;
+          setLlmActionBusy(false);
+        }
       }
     }
 
     async function testLlmConfig() {
-      testLlmButton.disabled = true;
+      if (llmActionInFlight) {
+        return;
+      }
+      const actionSequence = ++llmActionSequence;
+      llmActionInFlight = true;
+      setLlmActionBusy(true);
       llmStatus.classList.remove("error");
       llmStatus.textContent = `Testing ${llmTestUrl}...`;
       try {
         const result = await postJson(llmTestUrl, {});
+        if (actionSequence !== llmActionSequence) {
+          return;
+        }
         llmStatus.textContent = result.ok
           ? `Connection ok: ${result.provider} / ${result.model}`
           : `Connection failed: ${result.error || "provider unavailable"}`;
         llmStatus.classList.toggle("error", !result.ok);
       } catch (error) {
-        llmStatus.textContent = `Unable to test LLM config: ${error.message}`;
-        llmStatus.classList.add("error");
+        if (actionSequence === llmActionSequence) {
+          llmStatus.textContent = `Unable to test LLM config: ${error.message}`;
+          llmStatus.classList.add("error");
+        }
       } finally {
-        testLlmButton.disabled = false;
+        if (actionSequence === llmActionSequence) {
+          llmActionInFlight = false;
+          setLlmActionBusy(false);
+        }
       }
     }
 
@@ -1979,9 +2025,19 @@
       return refreshSequence === sequence && isCurrentTaskRequest(taskId, generation);
     }
 
+    function beginEventProjectionRequest() {
+      eventProjectionSequence += 1;
+      return eventProjectionSequence;
+    }
+
+    function isCurrentEventProjectionRequest(taskId, generation, sequence) {
+      return eventProjectionSequence === sequence && isCurrentTaskRequest(taskId, generation);
+    }
+
     function beginProjectionRequest(taskId = null) {
       projectionGeneration += 1;
       refreshSequence += 1;
+      beginEventProjectionRequest();
       if (taskId !== null) {
         currentTaskId = String(taskId);
       }
@@ -2629,8 +2685,16 @@
     }
 
     async function loadContractVersions() {
+      if (contractVersionsInFlight) {
+        return;
+      }
+      const versionsRequestSequence = ++contractVersionsSequence;
+      contractVersionsInFlight = true;
       try {
         const payload = await fetchJson("/v1/swarm/contracts");
+        if (versionsRequestSequence !== contractVersionsSequence) {
+          return;
+        }
         const versions = Array.isArray(payload.versions) ? payload.versions : [];
         const previousVersion = contractVersionSelect.value;
         contractVersionSelect.innerHTML = versions.map((version) => `
@@ -2658,8 +2722,14 @@
           }
         }
       } catch (error) {
-        contractStatus.textContent = `Unable to load contract versions: ${error.message}`;
-        contractStatus.classList.add("error");
+        if (versionsRequestSequence === contractVersionsSequence) {
+          contractStatus.textContent = `Unable to load contract versions: ${error.message}`;
+          contractStatus.classList.add("error");
+        }
+      } finally {
+        if (versionsRequestSequence === contractVersionsSequence) {
+          contractVersionsInFlight = false;
+        }
       }
     }
 
@@ -2734,6 +2804,14 @@
     }
 
     async function saveContract() {
+      if (contractActionInFlight) {
+        return;
+      }
+      const actionSequence = ++contractActionSequence;
+      contractActionInFlight = true;
+      saveContractButton.disabled = true;
+      contractLoadSequence += 1;
+      requestedContractVersion = "";
       contractStatus.classList.remove("error");
       try {
         const payload = contractFromForm();
@@ -2744,14 +2822,25 @@
           contractStatus.classList.add("error");
           return;
         }
-        renderContract(await postJson("/v1/swarm/contract", {
+        const savedContract = await postJson("/v1/swarm/contract", {
           ...payload,
           __metadata: contractMetadataFromForm()
-        }));
+        });
+        if (actionSequence !== contractActionSequence) {
+          return;
+        }
+        renderContract(savedContract);
         await loadContractVersions();
       } catch (error) {
-        contractStatus.textContent = `Unable to save contract: ${error.message}`;
-        contractStatus.classList.add("error");
+        if (actionSequence === contractActionSequence) {
+          contractStatus.textContent = `Unable to save contract: ${error.message}`;
+          contractStatus.classList.add("error");
+        }
+      } finally {
+        if (actionSequence === contractActionSequence) {
+          contractActionInFlight = false;
+          saveContractButton.disabled = false;
+        }
       }
     }
 
@@ -2950,13 +3039,18 @@
     async function loadEvents(taskId, options = {}) {
       try {
         const payload = await fetchEventsPage(taskId, options.after_event_id || null);
+        if (options.eventProjectionSequence != null && !isCurrentEventProjectionRequest(taskId, options.generation, options.eventProjectionSequence)) {
+          return payload;
+        }
         if (options.generation != null && !isCurrentTaskRequest(taskId, options.generation)) {
           return payload;
         }
         renderEvents(payload, { append: Boolean(options.append) });
         return payload;
       } catch (error) {
-        if (options.generation == null || isCurrentTaskRequest(taskId, options.generation)) {
+        const currentEventRequest = options.eventProjectionSequence == null
+          || isCurrentEventProjectionRequest(taskId, options.generation, options.eventProjectionSequence);
+        if (currentEventRequest && (options.generation == null || isCurrentTaskRequest(taskId, options.generation))) {
           eventsStatus.textContent = `Unable to load events: ${error.message}`;
           eventsStatus.classList.add("error");
         }
@@ -2973,17 +3067,19 @@
       }
       const taskId = currentTaskId;
       const generation = projectionGeneration;
+      const eventRequestSequence = beginEventProjectionRequest();
       eventPageInFlight = true;
       loadMoreEventsButton.disabled = true;
       try {
         await loadEvents(taskId, {
           after_event_id: nextEventsCursor,
           append: true,
-          generation
+          generation,
+          eventProjectionSequence: eventRequestSequence
         });
       } finally {
         eventPageInFlight = false;
-        if (isCurrentTaskRequest(taskId, generation)) {
+        if (isCurrentEventProjectionRequest(taskId, generation, eventRequestSequence)) {
           loadMoreEventsButton.disabled = !nextEventsCursor;
         }
       }
@@ -3062,6 +3158,7 @@
         return;
       }
       const refreshRequestSequence = ++refreshSequence;
+      const eventRequestSequence = beginEventProjectionRequest();
       refreshInFlight = true;
       try {
         const task = await fetchJson(`/v1/tasks/${encodeURIComponent(requestedTaskId)}`);
@@ -3090,9 +3187,13 @@
         if (!isCurrentRefreshRequest(requestedTaskId, requestGeneration, refreshRequestSequence)) {
           return;
         }
-        const visibleEvents = await loadEvents(requestedTaskId, { generation: requestGeneration });
+        const visibleEvents = await loadEvents(requestedTaskId, {
+          generation: requestGeneration,
+          eventProjectionSequence: eventRequestSequence
+        });
         const events = await loadProjectionEvents(requestedTaskId);
-        if (!isCurrentRefreshRequest(requestedTaskId, requestGeneration, refreshRequestSequence)) {
+        if (!isCurrentRefreshRequest(requestedTaskId, requestGeneration, refreshRequestSequence)
+          || !isCurrentEventProjectionRequest(requestedTaskId, requestGeneration, eventRequestSequence)) {
           return;
         }
         renderGraph(graph, { task: selectedTask, inspector, events: events.events || [] });
