@@ -13,6 +13,7 @@ class CompletionDecision:
     reason: str
     missing_artifacts: list[str] = field(default_factory=list)
     missing_evidence: list[str] = field(default_factory=list)
+    next_action: str = "stop"
 
 
 class CompletionGate:
@@ -51,6 +52,7 @@ class CompletionGate:
             reason="research_contract_satisfied" if passed else "research_contract_not_satisfied",
             missing_artifacts=missing_artifacts,
             missing_evidence=missing_evidence,
+            next_action="stop" if passed else "replan_research",
         )
 
     def _artifacts_from(self, result: Any) -> list[Any]:

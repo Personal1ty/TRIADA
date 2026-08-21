@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.contracts.execution import ExecutionContract, WriteMode
+from app.contracts.normalizer import ContractNormalizer
 from app.contracts.research import ResearchContract, ResearchMode
 from app.schemas.enums import RiskPolicy
 
@@ -47,6 +48,7 @@ class Orchestrator:
     def __init__(self, llm: Any, llm_timeout_seconds: float = 60.0) -> None:
         self.llm = llm
         self.llm_timeout_seconds = llm_timeout_seconds
+        self._contract_normalizer = ContractNormalizer()
 
     async def plan_task(
         self,
@@ -127,25 +129,17 @@ class Orchestrator:
             "сравни",
         )
         if not any(term in normalized for term in research_terms):
-            return ResearchContract(acceptance_criteria=acceptance_criteria)
-        defaults = {
-            "mode": ResearchMode.RESEARCH,
-            "research_questions": [goal],
-            "depth": "standard",
-            "required_evidence": ["tool_execution", "audit_verdict"],
-            "required_artifacts": ["research_report"],
-            "output_schema": "research_report",
-            "min_tool_executions": 3,
-            "acceptance_criteria": acceptance_criteria,
-        }
+            return self._contract_normalizer.research(
+                {"mode": ResearchMode.NONE},
+                goal=goal,
+                acceptance_criteria=acceptance_criteria,
+            )
         proposed = answer.get("research_contract") if isinstance(answer, dict) else None
-        if isinstance(proposed, dict):
-            defaults.update(proposed)
-        if not isinstance(defaults.get("output_schema"), str) or not defaults["output_schema"].strip():
-            defaults["output_schema"] = "research_report"
-        if not isinstance(defaults.get("depth"), str):
-            defaults["depth"] = str(defaults["depth"])
-        return ResearchContract.model_validate(defaults)
+        return self._contract_normalizer.research(
+            proposed,
+            goal=goal,
+            acceptance_criteria=acceptance_criteria,
+        )
 
     def _build_execution_contract(
         self,

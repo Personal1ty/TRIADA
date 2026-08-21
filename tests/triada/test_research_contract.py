@@ -91,6 +91,7 @@ def test_completion_gate_rejects_successful_tool_without_research_artifact():
     assert result.passed is False
     assert "research_report" in result.missing_artifacts
     assert result.reason == "research_contract_not_satisfied"
+    assert result.next_action == "replan_research"
 
 
 def test_completion_gate_accepts_research_artifact_and_minimum_evidence():

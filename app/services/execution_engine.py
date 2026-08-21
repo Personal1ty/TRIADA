@@ -230,6 +230,7 @@ class ExecutionEngine:
                         "reason": completion.reason,
                         "missing_artifacts": completion.missing_artifacts,
                         "missing_evidence": completion.missing_evidence,
+                        "next_action": completion.next_action,
                     },
                     agent_id="orchestrator",
                 )
