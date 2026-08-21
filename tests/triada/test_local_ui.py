@@ -29,6 +29,15 @@ async def test_get_local_swarm_ui():
     assert "Execution graph" in response.text
     assert "Contracts" in response.text
     assert "Result" in response.text
+    assert 'class="desktop-shell"' in response.text
+    assert "desktop-workspace" in response.text
+    assert "grid-template-columns: 260px minmax(0, 1fr) 320px" in response.text
+    assert "@media (max-width: 1100px)" in response.text
+    assert "@media (max-width: 720px)" in response.text
+    assert 'id="open-llm-config" type="button">LLM API' in response.text
+    assert 'id="new-task" type="button">+ New task' in response.text
+    assert 'id="approve-task" type="button" hidden>Approve action' in response.text
+    assert 'id="advanced-drawer"' in response.text
     assert "/v1/tasks/" in response.text
     assert "/swarm-graph" in response.text
     assert "TRIADA Swarm" in response.text

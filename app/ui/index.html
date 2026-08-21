@@ -22,8 +22,14 @@
       box-sizing: border-box;
     }
 
+    html,
+    body {
+      min-height: 100%;
+    }
+
     body {
       margin: 0;
+      min-width: 0;
       overflow-x: hidden;
       background: var(--bg);
       color: var(--text);
@@ -32,14 +38,39 @@
       line-height: 1.45;
     }
 
+    .desktop-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+
     header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      padding: 18px 24px;
+      min-width: 0;
+      padding: 14px 16px;
       border-bottom: 1px solid var(--line);
       background: var(--panel);
+    }
+
+    .shell-identity,
+    .primary-actions {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      gap: 10px;
+    }
+
+    .shell-identity {
+      flex: 1;
+    }
+
+    .shell-status {
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
     }
 
     h1 {
@@ -50,13 +81,119 @@
     }
 
     main {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      gap: 16px;
-      padding: 16px 24px 24px;
       width: 100%;
-      max-width: 1840px;
-      margin: 0 auto;
+      max-width: none;
+      margin: 0;
+      min-height: 0;
+      padding: 12px;
+    }
+
+    footer {
+      padding: 8px 16px;
+      border-top: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .desktop-workspace {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr) 320px;
+      grid-template-rows: minmax(0, 1fr) auto auto;
+      grid-template-areas:
+        "runs graph contracts"
+        "result result result"
+        "events events events";
+      gap: 12px;
+      width: 100%;
+      height: 100%;
+    }
+
+    .desktop-workspace > section {
+      min-width: 0;
+    }
+
+    #task-runner {
+      grid-area: runs;
+      min-height: 0;
+    }
+
+    #task-runner .panel-body {
+      min-height: 0;
+    }
+
+    #run-observatory {
+      grid-area: result;
+    }
+
+    #graph {
+      grid-area: graph;
+      min-height: 0;
+    }
+
+    #events {
+      grid-area: events;
+    }
+
+    #contracts-panel {
+      grid-area: contracts;
+      min-width: 0;
+    }
+
+    #llm-config {
+      position: fixed;
+      top: 70px;
+      right: 16px;
+      z-index: 20;
+      width: min(440px, calc(100vw - 32px));
+      max-height: calc(100vh - 86px);
+      overflow: auto;
+      box-shadow: 0 18px 44px rgba(15, 23, 42, 0.18);
+    }
+
+    #llm-config,
+    #create-task-form {
+      display: none;
+    }
+
+    #create-task-form.is-open {
+      display: grid;
+    }
+
+    #llm-config.is-open {
+      display: block;
+    }
+
+    .advanced-drawer,
+    .advanced-drawer[hidden],
+    .tabs[hidden] {
+      display: none;
+    }
+
+    #events .inline-controls {
+      display: none;
+    }
+
+    #observatory-replay,
+    #observatory-checkpoint-list {
+      display: none;
+    }
+
+    .result-empty {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .contract-summary {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .contract-summary strong {
+      color: var(--text);
     }
 
     .tab-panel {
@@ -598,28 +735,93 @@
         max-height: 330px;
       }
     }
+
+    @media (min-width: 1101px) {
+      .desktop-workspace {
+        grid-template-columns: 260px minmax(0, 1fr) 320px;
+      }
+    }
+
+    @media (max-width: 1100px) {
+      .desktop-workspace {
+        grid-template-columns: 240px minmax(0, 1fr);
+        grid-template-areas:
+          "runs graph"
+          "contracts contracts"
+          "result result"
+          "events events";
+      }
+    }
+
+    @media (max-width: 720px) {
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .shell-identity,
+      .primary-actions {
+        width: 100%;
+      }
+
+      .primary-actions {
+        flex-wrap: wrap;
+      }
+
+      .primary-actions button {
+        flex: 1 1 140px;
+      }
+
+      .shell-status {
+        white-space: normal;
+      }
+
+      .desktop-workspace {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto;
+        grid-template-areas:
+          "graph"
+          "runs"
+          "contracts"
+          "result"
+          "events";
+        height: auto;
+      }
+
+      #graph {
+        min-height: 280px;
+      }
+
+      main {
+        padding: 8px;
+      }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>TRIADA Swarm</h1>
-    <form class="controls" id="task-form">
-      <label for="task-id">Task id</label>
-      <input id="task-id" name="task-id" type="text" autocomplete="off" placeholder="UUID">
-      <button id="load-task" type="submit">Load Task</button>
-    </form>
-  </header>
+  <div class="desktop-shell">
+    <header>
+      <div class="shell-identity">
+        <h1>TRIADA Observatory</h1>
+        <span class="shell-status">Autonomous runtime · append-only audit</span>
+      </div>
+      <div class="primary-actions" aria-label="Operator actions">
+        <button id="open-llm-config" type="button">LLM API</button>
+        <button id="new-task" type="button">+ New task</button>
+        <button id="approve-task" type="button" hidden>Approve action</button>
+      </div>
+    </header>
 
-  <nav class="tabs" aria-label="TRIADA dashboard views">
-    <button class="tab-button" id="runs-tab" type="button" data-tab-target="runs-view" aria-selected="true">Runs</button>
-    <button class="tab-button" id="thinking-tab" type="button" data-tab-target="thinking-view" aria-selected="false">Thinking</button>
-    <button class="tab-button" id="raw-reasoning-tab" type="button" data-tab-target="raw-reasoning-view" aria-selected="false">Raw Reasoning</button>
-    <button class="tab-button" id="contracts-tab" type="button" data-tab-target="contracts-view" aria-selected="false">Contracts</button>
-    <button class="tab-button" id="approvals-tab" type="button" data-tab-target="approvals-view" aria-selected="false">Approvals</button>
-  </nav>
+    <nav class="tabs" aria-label="TRIADA dashboard views" hidden>
+      <button class="tab-button" id="runs-tab" type="button" data-tab-target="runs-view" aria-selected="true">Runs</button>
+      <button class="tab-button" id="thinking-tab" type="button" data-tab-target="thinking-view" aria-selected="false">Thinking</button>
+      <button class="tab-button" id="raw-reasoning-tab" type="button" data-tab-target="raw-reasoning-view" aria-selected="false">Raw Reasoning</button>
+      <button class="tab-button" id="contracts-tab" type="button" data-tab-target="contracts-view" aria-selected="false">Contracts</button>
+      <button class="tab-button" id="approvals-tab" type="button" data-tab-target="approvals-view" aria-selected="false">Approvals</button>
+    </nav>
 
-  <main>
-    <div class="stack tab-panel" id="runs-view">
+    <main>
+      <div class="stack tab-panel desktop-workspace" id="runs-view">
       <section id="llm-config">
         <h2>LLM Provider</h2>
         <div class="panel-body">
@@ -659,7 +861,7 @@
       </section>
 
       <section id="run-observatory">
-        <h2>Run Observatory</h2>
+        <h2>Result</h2>
         <div class="panel-body">
           <div class="observatory-grid">
             <div class="observatory-card"><span class="muted">Status</span><strong id="observatory-status">No task selected</strong></div>
@@ -680,7 +882,7 @@
       </section>
 
       <section id="task-runner">
-        <h2>Task Runner</h2>
+        <h2>Runs</h2>
         <div class="panel-body">
           <form class="form-grid" id="create-task-form">
             <div class="field">
@@ -718,7 +920,7 @@
       </section>
 
       <section id="graph">
-        <h2>Swarm Graph</h2>
+        <h2>Execution graph</h2>
         <div class="panel-body graph-wrap" id="graph-body">
           <p class="graph-summary" id="graph-summary">No route graph loaded.</p>
           <ul class="graph-route-list" id="graph-route-list"></ul>
@@ -741,9 +943,25 @@
           <ul class="event-feed" id="event-feed"></ul>
         </div>
       </section>
-    </div>
+        <section id="contracts-panel">
+          <h2>Contracts</h2>
+          <div class="panel-body">
+            <div class="contract-summary">
+              <div><strong>Execution contract</strong><br><span>Active contract projection for the selected run.</span></div>
+              <div><strong>Policy state</strong><br><span>Server-side risk and approval gates remain authoritative.</span></div>
+              <p class="result-empty" id="contracts-summary-status">Select a run to inspect active contracts.</p>
+            </div>
+          </div>
+        </section>
+      </div>
 
-    <div class="stack tab-panel" id="thinking-view" hidden>
+      <div class="advanced-drawer" id="advanced-drawer" hidden>
+      <form class="controls" id="task-form" hidden>
+        <label for="task-id">Task id</label>
+        <input id="task-id" name="task-id" type="text" autocomplete="off" placeholder="UUID">
+        <button id="load-task" type="submit">Load Task</button>
+      </form>
+      <div class="stack tab-panel" id="thinking-view" hidden>
       <section id="thinking">
         <h2>Thinking Summaries</h2>
         <div class="panel-body">
@@ -980,7 +1198,7 @@
       </section>
     </div>
 
-    <div class="stack tab-panel" id="approvals-view" hidden>
+      <div class="stack tab-panel" id="approvals-view" hidden>
       <section id="approvals">
         <h2>Approvals</h2>
         <div class="panel-body">
@@ -991,8 +1209,12 @@
           <ul class="approval-list" id="approval-queue"></ul>
         </div>
       </section>
-    </div>
-  </main>
+      </div>
+      </div>
+    </main>
+
+    <footer>TRIADA Observatory · Worker execution and Auditor verification remain server-controlled.</footer>
+  </div>
 
   <script>
     if (window.location.protocol === "file:") {
@@ -1046,6 +1268,11 @@
     const taskForm = document.getElementById("task-form");
     const taskInput = document.getElementById("task-id");
     const loadTaskButton = document.getElementById("load-task");
+    const openLlmConfigButton = document.getElementById("open-llm-config");
+    const newTaskButton = document.getElementById("new-task");
+    const approveTaskButton = document.getElementById("approve-task");
+    const llmConfigPanel = document.getElementById("llm-config");
+    const contractsSummaryStatus = document.getElementById("contracts-summary-status");
     const createTaskForm = document.getElementById("create-task-form");
     const taskGoal = document.getElementById("task-goal");
     const taskTools = document.getElementById("task-tools");
@@ -1864,6 +2091,10 @@
       observatoryCheckpointList.innerHTML = checkpoints.slice(-8).map((checkpoint) => `
         <li><span class="event-type">Checkpoint ${escapeHtml(checkpoint.sequence)}</span> ${escapeHtml(checkpoint.phase)} · ${checkpoint.resumable ? "resumable" : "terminal"}</li>
       `).join("") || '<li class="status">No checkpoints.</li>';
+      approveTaskButton.hidden = task.status !== "waiting_approval";
+      contractsSummaryStatus.textContent = task.status === "waiting_approval"
+        ? "Approval is required before the run can continue."
+        : `Selected run status: ${task.status || "unknown"}.`;
     }
 
     function renderRawReasoningRefs(payload) {
@@ -2339,6 +2570,23 @@
       const taskId = taskInput.value.trim();
       if (taskId) {
         loadTask(taskId);
+      }
+    });
+
+    openLlmConfigButton.addEventListener("click", () => {
+      llmConfigPanel.classList.toggle("is-open");
+    });
+
+    newTaskButton.addEventListener("click", () => {
+      createTaskForm.classList.toggle("is-open");
+      if (createTaskForm.classList.contains("is-open")) {
+        taskGoal.focus();
+      }
+    });
+
+    approveTaskButton.addEventListener("click", () => {
+      if (currentTaskId) {
+        approveTask(currentTaskId);
       }
     });
 
