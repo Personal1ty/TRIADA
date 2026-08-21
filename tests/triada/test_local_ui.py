@@ -64,6 +64,7 @@ async def test_get_local_swarm_ui():
     assert 'id="execution-graph-panel"' in response.text
     assert 'data-observatory-panel="execution-graph-panel"' in response.text
     assert 'id="execution-graph"' in response.text
+    assert response.text.count('id="execution-graph"') == 1
     assert 'id="run-observatory"' in response.text
     assert 'id="result-panel"' in response.text
     assert 'id="runs-panel"' in response.text
@@ -217,10 +218,19 @@ async def test_get_local_swarm_ui():
     assert 'task?.status !== "waiting_approval"' in response.text
     assert "approveTaskButton.hidden = !hasPendingApproval(task, eventsPayload);" in response.text
     assert "MAX_PROJECTION_EVENT_PAGES" in response.text
+    assert 'const MAX_PROJECTION_EVENT_PAGES = 10;' in response.text
     assert "loadProjectionEvents" in response.text
     assert "pageCount < MAX_PROJECTION_EVENT_PAGES" in response.text
+    assert 'new URLSearchParams({ limit: "100", order })' in response.text
+    assert 'params.set("order", order);' in response.text
+    assert 'fetchEventsPage(taskId, null, "desc")' in response.text
+    assert 'const MAX_LATEST_EVENT_PAGES = 1;' in response.text
     assert "projectionGeneration" in response.text
     assert "isCurrentTaskRequest" in response.text
+    assert "const requestToken = beginProjectionRequest();" in response.text
+    assert "isCurrentTaskRequest(requestedTaskId, requestGeneration)" in response.text
+    assert "isCurrentTaskRequest(created.task_id, requestToken)" in response.text
+    assert "isCurrentTaskRequest(result.task.task_id, requestToken)" in response.text
     assert "shortGraphLabel" in response.text
     assert "<title>${escapeHtml(node.id)}" in response.text
     assert 'data-node-id="${escapeHtml(node.id)}"' in response.text
@@ -229,6 +239,12 @@ async def test_get_local_swarm_ui():
     assert "Array.isArray(graph?.edges) ? graph.edges : []" in response.text
     assert "escapeHtml(displayValue(value))" in response.text
     assert "Math.max(128, Math.min(190" in response.text
+    assert "Array.isArray(payload?.deltas)" in response.text
+    assert "Array.isArray(payload?.notes)" in response.text
+    assert 'thinkingStatus.textContent = "Not available for this run."' in response.text
+    assert 'memoryStatus.textContent = "Not available for this run."' in response.text
+    assert '"task_recovered"' in response.text
+    assert 'Recovered terminal state' in response.text
 
 
 def test_local_swarm_ui_is_packaged():

@@ -1010,6 +1010,9 @@
         <div id="execution-graph-panel">
           <div class="panel-body graph-wrap" id="graph-body">
             <p class="graph-summary" id="graph-summary">No route graph loaded.</p>
+            <svg id="execution-graph" viewBox="0 0 640 320" preserveAspectRatio="xMidYMin meet" role="img" aria-label="Task swarm route graph">
+              <text class="status" x="320" y="160" text-anchor="middle">No route graph loaded.</text>
+            </svg>
             <ul class="graph-route-list" id="graph-route-list"></ul>
             <p class="status">Enter a task id to load /v1/tasks/{task_id}/swarm-graph.</p>
           </div>
@@ -1422,6 +1425,9 @@
     const selectedResourceBudget = document.getElementById("selected-resource-budget");
     const recentTasks = document.getElementById("recent-tasks");
     const graphBody = document.getElementById("graph-body");
+    const graphSummary = document.getElementById("graph-summary");
+    const executionGraph = document.getElementById("execution-graph");
+    const graphRouteList = document.getElementById("graph-route-list");
     const thinkingStatus = document.getElementById("thinking-status");
     const thinkingList = document.getElementById("thinking-list");
     const memoryQuery = document.getElementById("memory-query");
@@ -1475,6 +1481,7 @@
     let demoTemplates = [];
     let projectionGeneration = 0;
     const MAX_PROJECTION_EVENT_PAGES = 10;
+    const MAX_LATEST_EVENT_PAGES = 1;
     const terminalStatuses = new Set(["completed", "failed", "blocked", "cancelled", "corrections_required", "timed_out"]);
 
     function escapeHtml(value) {
@@ -1872,6 +1879,18 @@
       return currentTaskId === taskId && projectionGeneration === generation;
     }
 
+    function beginProjectionRequest(taskId = null) {
+      projectionGeneration += 1;
+      if (taskId !== null) {
+        currentTaskId = String(taskId);
+      }
+      return projectionGeneration;
+    }
+
+    function isCurrentProjectionRequest(generation) {
+      return projectionGeneration === generation;
+    }
+
     function graphNodeState(node, agentStates, taskStatus) {
       const status = agentStates.get(node.id);
       if (status === "running") {
@@ -1966,11 +1985,10 @@
       const nodes = projection.nodes;
       const edges = projection.edges;
       if (!nodes.length) {
-        graphBody.innerHTML = `
-          <p class="graph-summary" id="graph-summary">No route graph loaded.</p>
-          <ul class="graph-route-list" id="graph-route-list"></ul>
-          <p class="status">No swarm route graph events are available for this task.</p>
-        `;
+        graphSummary.textContent = "No route graph loaded.";
+        executionGraph.setAttribute("viewBox", "0 0 640 320");
+        executionGraph.innerHTML = `<text class="status" x="320" y="160" text-anchor="middle">No swarm route graph events are available for this task.</text>`;
+        graphRouteList.innerHTML = "";
         return;
       }
 
@@ -2029,9 +2047,9 @@
         </li>
       `).join("");
 
-      graphBody.innerHTML = `
-        <p class="graph-summary" id="graph-summary">${escapeHtml(summary.node_count ?? nodes.length)} agents, ${escapeHtml(summary.edge_count ?? edges.length)} selected route${edges.length === 1 ? "" : "s"}.</p>
-        <svg id="execution-graph" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMin meet" role="img" aria-label="Task swarm route graph">
+      graphSummary.textContent = `${summary.node_count ?? nodes.length} agents, ${summary.edge_count ?? edges.length} selected route${edges.length === 1 ? "" : "s"}.`;
+      executionGraph.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      executionGraph.innerHTML = `
           <defs>
             <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
               <path d="M 0 0 L 8 4 L 0 8 z" fill="#64748b"></path>
@@ -2040,13 +2058,17 @@
           ${lanes}
           ${edgeMarkup}
           ${nodeMarkup}
-        </svg>
-        <ul class="graph-route-list" id="graph-route-list">${routeList}</ul>
       `;
+      graphRouteList.innerHTML = routeList;
     }
 
     function renderThinking(payload) {
-      const deltas = Array.isArray(payload.deltas) ? payload.deltas : [];
+      if (payload == null) {
+        thinkingStatus.textContent = "Not available for this run.";
+        thinkingList.innerHTML = "";
+        return;
+      }
+      const deltas = Array.isArray(payload?.deltas) ? payload.deltas : [];
       thinkingStatus.textContent = deltas.length ? `${deltas.length} public summary delta${deltas.length === 1 ? "" : "s"}.` : "No public thinking summaries are available for this task.";
       thinkingList.innerHTML = deltas.map((delta) => `
         <li>
@@ -2061,7 +2083,12 @@
     }
 
     function renderMemory(payload) {
-      const notes = Array.isArray(payload.notes) ? payload.notes : [];
+      if (payload == null) {
+        memoryStatus.textContent = "Not available for this run.";
+        memoryList.innerHTML = "";
+        return;
+      }
+      const notes = Array.isArray(payload?.notes) ? payload.notes : [];
       memoryStatus.textContent = notes.length ? `${notes.length} memory note${notes.length === 1 ? "" : "s"}.` : "No matching memory notes.";
       memoryList.innerHTML = notes.map((note) => `
         <li>
@@ -2360,11 +2387,14 @@
         "task_blocked",
         "task_waiting_approval",
         "task_timeout",
-        "task_cancelled"
+        "task_cancelled",
+        "task_recovered"
       ]);
       const payload = latestResult?.payload || {};
       const verdict = payload.chief_auditor_verdict;
-      const summary = payload.summary || verdict?.summary || payload.reason;
+      const summary = latestResult?.event_type === "task_recovered"
+        ? `Recovered terminal state: ${payload.status || task?.status || "timed_out"}${payload.reason ? ` (${payload.reason})` : ""}.`
+        : payload.summary || verdict?.summary || payload.reason;
       const phase = inspectorPayload?.inspector?.phase;
       resultState.innerHTML = escapeHtml(task?.status || "Not available for this run.");
       resultSummary.innerHTML = summary
@@ -2605,12 +2635,19 @@
         taskStatus.classList.add("error");
         return;
       }
+      const requestToken = beginProjectionRequest();
       runDemoFlowButton.disabled = true;
       taskStatus.classList.remove("error");
       taskStatus.textContent = `Running demo flow ${templateId}...`;
       try {
         const result = await postJson("/v1/demo/run", { template_id: templateId });
+        if (!isCurrentProjectionRequest(requestToken)) {
+          return;
+        }
         currentTaskId = result.task.task_id;
+        if (!isCurrentTaskRequest(result.task.task_id, requestToken)) {
+          return;
+        }
         taskInput.value = currentTaskId;
         runTaskButton.disabled = false;
         taskStatus.textContent = `Demo flow ${templateId}: ${result.task.status} (${result.actions.join(" -> ")})`;
@@ -2621,14 +2658,19 @@
         renderSelectedResult(result.task, result.events || { events: [] }, {});
         renderSelectedContracts(result.task, result.events || { events: [] }, {}, {}, {});
         await Promise.all([loadRecentTasks(), loadApprovalQueue()]);
+        if (!isCurrentTaskRequest(result.task.task_id, requestToken)) {
+          return;
+        }
         if (!terminalStatuses.has(result.task.status)) {
           startEventPolling();
         } else {
           stopEventPolling();
         }
       } catch (error) {
-        taskStatus.textContent = `Unable to run demo flow: ${error.message}`;
-        taskStatus.classList.add("error");
+        if (isCurrentProjectionRequest(requestToken)) {
+          taskStatus.textContent = `Unable to run demo flow: ${error.message}`;
+          taskStatus.classList.add("error");
+        }
       } finally {
         runDemoFlowButton.disabled = false;
       }
@@ -2692,8 +2734,9 @@
       rawReasoningOutput.textContent = "";
     }
 
-    async function fetchEventsPage(taskId, afterEventId = null) {
-      const params = new URLSearchParams({ limit: "100" });
+    async function fetchEventsPage(taskId, afterEventId = null, order = "asc") {
+      const params = new URLSearchParams({ limit: "100", order });
+      params.set("order", order);
       if (afterEventId) {
         params.set("after_event_id", afterEventId);
       }
@@ -2717,14 +2760,14 @@
       }
     }
 
-    async function loadProjectionEvents(taskId, seedPayload = null) {
-      let payload = seedPayload || await fetchEventsPage(taskId);
+    async function loadProjectionEvents(taskId) {
+      let payload = await fetchEventsPage(taskId, null, "desc");
       const events = Array.isArray(payload.events) ? [...payload.events] : [];
       let cursor = payload.next_cursor || null;
       let pageCount = 1;
-      while (payload.has_more && cursor && pageCount < MAX_PROJECTION_EVENT_PAGES) {
+      while (payload.has_more && cursor && pageCount < MAX_LATEST_EVENT_PAGES && pageCount < MAX_PROJECTION_EVENT_PAGES) {
         try {
-          payload = await fetchEventsPage(taskId, cursor);
+          payload = await fetchEventsPage(taskId, cursor, "desc");
         } catch (error) {
           break;
         }
@@ -2734,7 +2777,7 @@
       }
       return {
         ...payload,
-        events,
+        events: events.reverse(),
         has_more: Boolean(payload.has_more && cursor),
         next_cursor: cursor
       };
@@ -2800,7 +2843,7 @@
           return;
         }
         const visibleEvents = await loadEvents(requestedTaskId, { generation: requestGeneration });
-        const events = await loadProjectionEvents(requestedTaskId, visibleEvents);
+        const events = await loadProjectionEvents(requestedTaskId);
         if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
           return;
         }
@@ -2828,8 +2871,7 @@
 
     async function loadTask(taskId) {
       const requestedTaskId = String(taskId);
-      const requestGeneration = ++projectionGeneration;
-      currentTaskId = requestedTaskId;
+      const requestGeneration = beginProjectionRequest(requestedTaskId);
       clearRawReasoningReveal();
       taskInput.value = requestedTaskId;
       runTaskButton.disabled = false;
@@ -2837,7 +2879,10 @@
       const thinkingUrl = `/v1/tasks/${encodeURIComponent(requestedTaskId)}/thinking-summary`;
       const taskUrl = `/v1/tasks/${encodeURIComponent(requestedTaskId)}`;
       loadTaskButton.disabled = true;
-      graphBody.innerHTML = `<p class="status">Loading ${escapeHtml(graphUrl)}...</p>`;
+      graphSummary.textContent = `Loading ${graphUrl}...`;
+      executionGraph.setAttribute("viewBox", "0 0 640 320");
+      executionGraph.innerHTML = `<text class="status" x="320" y="160" text-anchor="middle">Loading ${escapeHtml(graphUrl)}...</text>`;
+      graphRouteList.innerHTML = "";
       thinkingStatus.textContent = `Loading ${thinkingUrl}...`;
       thinkingList.innerHTML = "";
       try {
@@ -2873,7 +2918,7 @@
         renderPlaybookRuns(playbookRuns);
         renderDecisionHeuristics(recommendations);
         const visibleEvents = await loadEvents(requestedTaskId, { generation: requestGeneration });
-        const events = await loadProjectionEvents(requestedTaskId, visibleEvents);
+        const events = await loadProjectionEvents(requestedTaskId);
         if (!isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
           return;
         }
@@ -2886,7 +2931,10 @@
         }
       } catch (error) {
         if (isCurrentTaskRequest(requestedTaskId, requestGeneration)) {
-          graphBody.innerHTML = `<p class="status error">Unable to load task: ${escapeHtml(error.message)}</p>`;
+          graphSummary.textContent = "Task load failed.";
+          executionGraph.setAttribute("viewBox", "0 0 640 320");
+          executionGraph.innerHTML = `<text class="status error" x="320" y="160" text-anchor="middle">Unable to load task: ${escapeHtml(error.message)}</text>`;
+          graphRouteList.innerHTML = "";
           thinkingStatus.textContent = "Task load failed.";
         }
       } finally {
@@ -2905,6 +2953,8 @@
       }
       createTaskButton.disabled = true;
       createRunTaskButton.disabled = true;
+      const requestToken = beginProjectionRequest();
+      let createdTaskId = "";
       taskStatus.classList.remove("error");
       taskStatus.textContent = "Creating task...";
       try {
@@ -2913,20 +2963,32 @@
           allowed_tools: parseList(taskTools.value),
           acceptance_criteria: parseList(taskCriteria.value)
         });
-        currentTaskId = created.task_id;
-        taskInput.value = created.task_id;
+        if (!isCurrentProjectionRequest(requestToken)) {
+          return;
+        }
+        createdTaskId = String(created.task_id);
+        currentTaskId = createdTaskId;
+        if (!isCurrentTaskRequest(created.task_id, requestToken)) {
+          return;
+        }
+        taskInput.value = createdTaskId;
         runTaskButton.disabled = false;
         taskStatus.textContent = `Task ${created.task_id}: ${created.status}`;
         startEventPolling();
         await Promise.all([loadRecentTasks(), loadApprovalQueue()]);
+        if (!isCurrentTaskRequest(created.task_id, requestToken)) {
+          return;
+        }
         if (runAfterCreate) {
           await runCurrentTask();
         } else {
-          await loadTask(created.task_id);
+          await loadTask(createdTaskId);
         }
       } catch (error) {
-        taskStatus.textContent = `Unable to create task: ${error.message}`;
-        taskStatus.classList.add("error");
+        if (isCurrentProjectionRequest(requestToken)) {
+          taskStatus.textContent = `Unable to create task: ${error.message}`;
+          taskStatus.classList.add("error");
+        }
       } finally {
         createTaskButton.disabled = false;
         createRunTaskButton.disabled = false;
@@ -2940,7 +3002,7 @@
         return;
       }
       const runTaskId = currentTaskId;
-      const runGeneration = projectionGeneration;
+      const runGeneration = beginProjectionRequest(runTaskId);
       runTaskButton.disabled = true;
       taskStatus.classList.remove("error");
       taskStatus.textContent = `Running ${runTaskId}...`;

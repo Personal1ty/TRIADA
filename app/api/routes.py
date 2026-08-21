@@ -333,6 +333,7 @@ async def list_task_events(
     agent_id: str | None = Query(default=None, min_length=1, max_length=255),
     trace_id: UUID | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=200),
+    order: str = Query(default="asc", pattern="^(asc|desc)$"),
     after_event_id: UUID | None = Query(default=None),
 ) -> TaskEventsResponse:
     task = await _get_task_or_404(task_id, request)
@@ -345,6 +346,8 @@ async def list_task_events(
         events = [event for event in events if event.event_type == event_type]
     if agent_id is not None:
         events = [event for event in events if event.agent_id == agent_id]
+    if order == "desc":
+        events = list(reversed(events))
     if after_event_id is not None:
         after_id = str(after_event_id)
         for index, event in enumerate(events):
