@@ -162,6 +162,9 @@ async def test_get_local_swarm_ui():
     assert 'id="contract-diff-from"' in response.text
     assert 'id="contract-diff-to"' in response.text
     assert 'id="compare-contracts"' in response.text
+    contracts_sync = response.text.partition('function syncContractsPanel()')[2].partition('syncContractsPanel();')[0]
+    assert 'contractsToggleButton.setAttribute("aria-expanded", "true");' in contracts_sync
+    assert 'contractsToggleButton.setAttribute("aria-expanded", "false");' in contracts_sync
     assert "contract/diff?from_version=" in response.text
     assert 'id="contract-version"' in response.text
     assert 'id="contract-author"' in response.text
@@ -318,6 +321,7 @@ async def test_get_local_swarm_ui():
     assert 'id="refresh-events"' in advanced_drawer
     assert 'id="load-more-events"' in response.text
     assert "after_event_id" in response.text
+    assert 'fetchEventsPage(taskId, options.after_event_id || null, "desc")' in response.text
     assert '"waiting_approval"' not in response.text.partition("const terminalStatuses = new Set(")[2].partition(");")[0]
     assert "/v1/tasks" in response.text
     assert "/v1/tasks?status=waiting_approval" in response.text
@@ -372,6 +376,13 @@ async def test_get_local_swarm_ui():
     assert "isCurrentTaskRequest(created.task_id, requestToken)" in response.text
     assert "isCurrentTaskRequest(result.task.task_id, requestToken)" in response.text
     assert "const replayTaskId = String(currentTaskId);" in response.text
+    assert 'let replayInFlight = false;' in response.text
+    replay_loader = response.text.partition('async function requestReplay(eventId)')[2].partition('async function loadSelectedContractVersion')[0]
+    assert 'if (replayInFlight) {' in replay_loader
+    assert 'replayInFlight = true;' in replay_loader
+    assert 'replayInFlight = false;' in replay_loader
+    assert 'replayButton.disabled = true;' in replay_loader
+    assert 'replayButton.disabled = false;' in replay_loader
     assert "const replayGeneration = projectionGeneration;" in response.text
     assert "const rawReasoningTaskId = String(currentTaskId);" in response.text
     assert "const memoryTaskId = String(taskId);" in response.text
@@ -380,6 +391,11 @@ async def test_get_local_swarm_ui():
     assert "isCurrentTaskRequest(rawReasoningTaskId, rawReasoningGeneration)" in response.text
     assert "isCurrentTaskRequest(memoryTaskId, memoryGeneration)" in response.text
     assert "isCurrentProjectionRequest(approvalGeneration)" in response.text
+    assert 'let runInFlight = false;' in response.text
+    run_loader = response.text.partition('async function runCurrentTask()')[2].partition('taskForm.addEventListener')[0]
+    assert 'if (runInFlight) {' in run_loader
+    assert 'runInFlight = true;' in run_loader
+    assert 'runInFlight = false;' in run_loader
     create_loader = response.text.partition('async function createTask(runAfterCreate)')[2].partition('async function runCurrentTask')[0]
     create_lifecycle = create_loader.partition('const created = await postJson("/v1/tasks", {')[2].partition('await postJson(`/v1/tasks/${encodeURIComponent(createdTaskId)}/run_async`, {});')[0]
     assert 'createdTaskId = String(created.task_id);' in create_lifecycle

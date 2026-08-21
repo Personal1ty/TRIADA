@@ -1555,6 +1555,8 @@
     let projectionGeneration = 0;
     let taskCreateInFlight = false;
     let approvalInFlight = false;
+    let runInFlight = false;
+    let replayInFlight = false;
     let refreshInFlight = false;
     let refreshSequence = 0;
     let contractLoadSequence = 0;
@@ -2813,11 +2815,19 @@
     }
 
     async function requestReplay(eventId) {
+      if (replayInFlight) {
+        return;
+      }
       if (!currentTaskId || !window.confirm("Create a new trace and send it to approval?")) {
         return;
       }
       const replayTaskId = String(currentTaskId);
       const replayGeneration = projectionGeneration;
+      const replayButton = document.querySelector(`.replay-task[data-event-id="${CSS.escape(String(eventId))}"]`);
+      replayInFlight = true;
+      if (replayButton) {
+        replayButton.disabled = true;
+      }
       try {
         const replay = await postJson(`/v1/tasks/${encodeURIComponent(replayTaskId)}/replay`, {
           from_event_id: eventId,
@@ -2835,6 +2845,11 @@
         if (isCurrentTaskRequest(replayTaskId, replayGeneration)) {
           observatoryInspector.textContent = `Unable to create replay: ${error.message}`;
           observatoryInspector.classList.add("error");
+        }
+      } finally {
+        replayInFlight = false;
+        if (replayButton) {
+          replayButton.disabled = false;
         }
       }
     }
@@ -3104,7 +3119,7 @@
 
     async function loadEvents(taskId, options = {}) {
       try {
-        const payload = await fetchEventsPage(taskId, options.after_event_id || null);
+        const payload = await fetchEventsPage(taskId, options.after_event_id || null, "desc");
         if (options.eventProjectionSequence != null && !isCurrentEventProjectionRequest(taskId, options.generation, options.eventProjectionSequence)) {
           return payload;
         }
@@ -3425,6 +3440,9 @@
     }
 
     async function runCurrentTask() {
+      if (runInFlight) {
+        return;
+      }
       if (!currentTaskId) {
         taskStatus.textContent = "Load or create a task first.";
         taskStatus.classList.add("error");
@@ -3432,6 +3450,7 @@
       }
       const runTaskId = currentTaskId;
       const runGeneration = beginProjectionRequest(runTaskId);
+      runInFlight = true;
       runTaskButton.disabled = true;
       taskStatus.classList.remove("error");
       taskStatus.textContent = `Running ${runTaskId}...`;
@@ -3449,6 +3468,7 @@
           taskStatus.classList.add("error");
         }
       } finally {
+        runInFlight = false;
         if (isCurrentTaskRequest(runTaskId, runGeneration)) {
           runTaskButton.disabled = false;
         }
@@ -3504,11 +3524,12 @@
       if (contractsMediaQuery.matches) {
         if (!contractsPanel.classList.contains("is-open")) {
           contractsPanel.hidden = true;
+          contractsToggleButton.setAttribute("aria-expanded", "false");
         }
       } else {
         contractsPanel.hidden = false;
         contractsPanel.classList.remove("is-open");
-        contractsToggleButton.setAttribute("aria-expanded", "false");
+        contractsToggleButton.setAttribute("aria-expanded", "true");
       }
     }
     syncContractsPanel();
