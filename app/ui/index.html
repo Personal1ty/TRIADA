@@ -1076,7 +1076,6 @@
                 <input id="event-auto-refresh" name="event-auto-refresh" type="checkbox" checked>
                 <span>Auto-refresh</span>
               </label>
-              <button id="refresh-events" type="button">Refresh now</button>
               <button id="load-more-events" type="button" disabled>Load more</button>
             </div>
             <p class="status" id="events-status">Create, run, or load a task to inspect audit events.</p>
@@ -1120,6 +1119,9 @@
       </div>
 
       <div class="advanced-drawer" id="advanced-drawer" hidden>
+        <div class="inline-controls">
+          <button id="refresh-events" type="button">Refresh now</button>
+        </div>
       <form class="controls" id="task-form" hidden>
         <label for="task-id">Task id</label>
         <input id="task-id" name="task-id" type="text" autocomplete="off" placeholder="UUID">
@@ -1546,6 +1548,7 @@
     let requestedContractVersion = "";
     let contractVersionsInFlight = false;
     let contractVersionsSequence = 0;
+    let contractDiffSequence = 0;
     let contractActionInFlight = false;
     let contractActionSequence = 0;
     let eventPageInFlight = false;
@@ -2008,6 +2011,28 @@
       routeMap.innerHTML = `<li class="status error">${escapeHtml(message)}</li>`;
       contractStatus.textContent = message;
       contractStatus.classList.add("error");
+    }
+
+    function invalidateContractVersionsRequest() {
+      contractVersionsSequence += 1;
+      contractVersionsInFlight = false;
+    }
+
+    function syncContractVersionSelection(contract) {
+      const version = String(contract?.contract_version || "").trim();
+      if (!version) {
+        return;
+      }
+      [contractVersionSelect, contractDiffFrom, contractDiffTo].forEach((select) => {
+        if (![...select.options].some((option) => option.value === version)) {
+          const option = document.createElement("option");
+          option.value = version;
+          option.textContent = version;
+          select.append(option);
+        }
+      });
+      contractVersionSelect.value = version;
+      contractDiffTo.value = version;
     }
 
     function latestEvent(events, eventTypes) {
@@ -2684,8 +2709,11 @@
       }
     }
 
-    async function loadContractVersions() {
+    async function loadContractVersions(preferredVersionOverride = "", allowDuringContractAction = false) {
       if (contractVersionsInFlight) {
+        return;
+      }
+      if (contractActionInFlight && !allowDuringContractAction) {
         return;
       }
       const versionsRequestSequence = ++contractVersionsSequence;
@@ -2697,11 +2725,12 @@
         }
         const versions = Array.isArray(payload.versions) ? payload.versions : [];
         const previousVersion = contractVersionSelect.value;
+        const preferredVersion = preferredVersionOverride || previousVersion;
         contractVersionSelect.innerHTML = versions.map((version) => `
           <option value="${escapeHtml(version)}"${version === payload.active_version ? " selected" : ""}>${escapeHtml(version)}</option>
         `).join("");
-        const selectedVersion = versions.includes(previousVersion)
-          ? previousVersion
+        const selectedVersion = versions.includes(preferredVersion)
+          ? preferredVersion
           : payload.active_version || "";
         contractVersionSelect.value = selectedVersion;
         const options = versions.map((version) => `<option value="${escapeHtml(version)}">${escapeHtml(version)}</option>`).join("");
@@ -2712,7 +2741,7 @@
           const previous = versions.find((version) => version !== payload.active_version);
           if (previous) contractDiffFrom.value = previous;
         }
-        if (previousVersion && selectedVersion !== previousVersion) {
+        if (!preferredVersionOverride && previousVersion && selectedVersion !== previousVersion) {
           const message = selectedVersion
             ? `Contract version ${previousVersion} is no longer available; loading ${selectedVersion}.`
             : `Contract version ${previousVersion} is no longer available.`;
@@ -2734,6 +2763,7 @@
     }
 
     async function compareContracts() {
+      const diffRequestSequence = ++contractDiffSequence;
       const fromVersion = contractDiffFrom.value;
       const toVersion = contractDiffTo.value;
       if (!fromVersion || !toVersion || fromVersion === toVersion) {
@@ -2743,14 +2773,19 @@
       }
       try {
         const payload = await fetchJson(`/v1/swarm/contract/diff?from_version=${encodeURIComponent(fromVersion)}&to_version=${encodeURIComponent(toVersion)}`);
+        if (diffRequestSequence !== contractDiffSequence) {
+          return;
+        }
         const changes = Array.isArray(payload.changes) ? payload.changes : [];
         contractDiffStatus.textContent = changes.length ? `${changes.length} changed path${changes.length === 1 ? "" : "s"}.` : "No behavioral changes.";
         contractDiffOutput.innerHTML = changes.map((change) => `
           <li><code>${escapeHtml(change.path)}</code><small>${escapeHtml(JSON.stringify(change.before))} → ${escapeHtml(JSON.stringify(change.after))}</small></li>
         `).join("") || '<li class="status">No changes.</li>';
       } catch (error) {
-        contractDiffStatus.textContent = `Unable to compare contracts: ${error.message}`;
-        contractDiffStatus.classList.add("error");
+        if (diffRequestSequence === contractDiffSequence) {
+          contractDiffStatus.textContent = `Unable to compare contracts: ${error.message}`;
+          contractDiffStatus.classList.add("error");
+        }
       }
     }
 
@@ -2810,6 +2845,7 @@
       const actionSequence = ++contractActionSequence;
       contractActionInFlight = true;
       saveContractButton.disabled = true;
+      invalidateContractVersionsRequest();
       contractLoadSequence += 1;
       requestedContractVersion = "";
       contractStatus.classList.remove("error");
@@ -2829,8 +2865,12 @@
         if (actionSequence !== contractActionSequence) {
           return;
         }
+        await loadContractVersions(savedContract.contract_version, true);
+        if (actionSequence !== contractActionSequence) {
+          return;
+        }
+        syncContractVersionSelection(savedContract);
         renderContract(savedContract);
-        await loadContractVersions();
       } catch (error) {
         if (actionSequence === contractActionSequence) {
           contractStatus.textContent = `Unable to save contract: ${error.message}`;

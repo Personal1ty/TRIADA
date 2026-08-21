@@ -216,18 +216,22 @@ async def test_get_local_swarm_ui():
     assert 'let requestedContractVersion = "";' in response.text
     assert 'let contractVersionsInFlight = false;' in response.text
     assert 'let contractVersionsSequence = 0;' in response.text
+    assert 'let contractDiffSequence = 0;' in response.text
     assert 'function isCurrentContractLoad' in response.text
     assert 'function clearContractProjection' in response.text
-    contract_versions_loader = response.text.partition('async function loadContractVersions()')[2].partition('async function compareContracts')[0]
+    contract_versions_loader = response.text.partition('async function loadContractVersions(preferredVersionOverride = "", allowDuringContractAction = false)')[2].partition('async function compareContracts')[0]
     assert 'if (contractVersionsInFlight) {' in contract_versions_loader
+    assert 'if (contractActionInFlight && !allowDuringContractAction)' in contract_versions_loader
     assert 'const versionsRequestSequence = ++contractVersionsSequence;' in contract_versions_loader
     assert 'if (versionsRequestSequence !== contractVersionsSequence)' in contract_versions_loader
     assert 'contractVersionsInFlight = false;' in contract_versions_loader
     assert 'const previousVersion = contractVersionSelect.value;' in contract_versions_loader
-    assert 'versions.includes(previousVersion)' in contract_versions_loader
+    assert 'versions.includes(preferredVersion)' in contract_versions_loader
     assert 'const selectedVersion =' in contract_versions_loader
     assert 'contractVersionSelect.value = selectedVersion;' in contract_versions_loader
     assert 'loadSelectedContractVersion();' in contract_versions_loader
+    assert 'function syncContractVersionSelection' in response.text
+    assert 'const preferredVersion = preferredVersionOverride || previousVersion;' in contract_versions_loader
     default_contract_loader = response.text.partition('async function loadContract()')[2].partition('async function loadContractVersions')[0]
     assert 'clearContractProjection' in default_contract_loader
     contract_loader = response.text.partition('async function loadSelectedContractVersion()')[2].partition('async function saveContract')[0]
@@ -265,6 +269,13 @@ async def test_get_local_swarm_ui():
     assert 'if (actionSequence !== contractActionSequence)' in contract_save_loader
     assert 'saveContractButton.disabled = true;' in contract_save_loader
     assert 'saveContractButton.disabled = false;' in contract_save_loader
+    assert 'invalidateContractVersionsRequest();' in contract_save_loader
+    assert 'await loadContractVersions(savedContract.contract_version, true);' in contract_save_loader
+    assert 'syncContractVersionSelection(savedContract);' in contract_save_loader
+    assert 'syncContractVersionSelection(savedContract);' in contract_save_loader.partition('await loadContractVersions(savedContract.contract_version, true);')[2]
+    diff_loader = response.text.partition('async function compareContracts()')[2].partition('async function requestReplay')[0]
+    assert 'const diffRequestSequence = ++contractDiffSequence;' in diff_loader
+    assert 'if (diffRequestSequence !== contractDiffSequence)' in diff_loader
     assert 'let llmActionInFlight = false;' in response.text
     assert 'let llmActionSequence = 0;' in response.text
     llm_save_loader = response.text.partition('async function saveLlmConfig()')[2].partition('async function testLlmConfig')[0]
@@ -283,6 +294,10 @@ async def test_get_local_swarm_ui():
     assert 'id="event-auto-refresh" name="event-auto-refresh" type="checkbox" checked' in response.text
     assert 'const terminalStatuses = new Set(["completed", "failed", "blocked", "cancelled", "corrections_required", "timed_out"])' in response.text
     assert 'id="refresh-events"' in response.text
+    events_section = response.text.partition('<section id="events"')[2].partition('</section>')[0]
+    assert 'id="refresh-events"' not in events_section
+    advanced_drawer = response.text.partition('<div class="advanced-drawer" id="advanced-drawer"')[2].partition('<form class="controls" id="task-form"')[0]
+    assert 'id="refresh-events"' in advanced_drawer
     assert 'id="load-more-events"' in response.text
     assert "after_event_id" in response.text
     assert '"waiting_approval"' not in response.text.partition("const terminalStatuses = new Set(")[2].partition(");")[0]
