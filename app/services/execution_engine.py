@@ -77,6 +77,41 @@ class ExecutionEngine:
     def set_swarm_contract(self, contract: SwarmContract) -> None:
         self._swarm_contract = contract
 
+    @staticmethod
+    def ordered_step_batches(steps: list[PlanStep]) -> list[list[PlanStep]]:
+        """Return dependency-safe execution batches while retaining parallel work."""
+        write_ids = {
+            step.id
+            for step in steps
+            if step.command and step.command[0] in {"write_file", "apply_patch", "mkdir", "touch"}
+        }
+        normalized: list[PlanStep] = []
+        known_ids = {step.id for step in steps}
+        for step in steps:
+            dependencies = list(dict.fromkeys(step.depends_on))
+            if step.command and step.command[0] == "pytest" and not dependencies:
+                dependencies.extend(write_id for write_id in write_ids if write_id != step.id)
+            unknown = [dependency for dependency in dependencies if dependency not in known_ids]
+            if unknown:
+                raise ValueError(f"unknown step dependency: {', '.join(unknown)}")
+            normalized.append(step.model_copy(update={"depends_on": dependencies}))
+
+        remaining = {step.id for step in normalized}
+        completed: set[str] = set()
+        batches: list[list[PlanStep]] = []
+        while remaining:
+            ready = [
+                step
+                for step in normalized
+                if step.id in remaining and set(step.depends_on).issubset(completed)
+            ]
+            if not ready:
+                raise ValueError("step dependency cycle detected")
+            batches.append(ready)
+            completed.update(step.id for step in ready)
+            remaining.difference_update(step.id for step in ready)
+        return batches
+
     async def run_once(self, task: Any) -> str:
         if self._owns_agents:
             self._llm = self._build_llm_provider()
@@ -474,7 +509,15 @@ class ExecutionEngine:
                 research_mode=plan.research_contract.mode.value == "research",
             )
 
-        return await scheduler.run(jobs, worker_key=lambda job: job[0], run=run_job)
+        jobs_by_step = {step.id: (worker_id, step) for worker_id, step in jobs}
+        results: list[WorkerResult] = []
+        for batch in self.ordered_step_batches([step for _worker_id, step in jobs]):
+            batch_jobs = [jobs_by_step[step.id] for step in batch]
+            batch_results = await scheduler.run(batch_jobs, worker_key=lambda job: job[0], run=run_job)
+            results.extend(batch_results)
+            if any(result.status != "succeeded" for result in batch_results):
+                break
+        return results
 
     def _apply_execution_contract(self, task: Any, plan: TaskPlan) -> TaskPlan:
         raw_budget = getattr(task, "metadata", {}).get("resource_budget", {})

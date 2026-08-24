@@ -23,6 +23,7 @@ class PlanStep(BaseModel):
     description: str
     allowed_tools: list[str] = Field(default_factory=list)
     command: list[str] = Field(default_factory=list)
+    depends_on: list[str] = Field(default_factory=list)
     risk_policy: RiskPolicy = RiskPolicy.READ_ONLY
     requires_approval: bool = False
     output_contract: StepContract = Field(default_factory=StepContract)
@@ -80,6 +81,7 @@ class Orchestrator:
                 description=self._safe_text(step.get("description") or step.get("title"), goal),
                 allowed_tools=self._safe_allowed_tools(step.get("allowed_tools"), allowed_tools),
                 command=self._safe_command(step.get("command"), allowed_tools),
+                depends_on=self._safe_dependencies(step.get("depends_on")),
                 risk_policy=risk_policy,
                 requires_approval=requires_approval,
                 output_contract=StepContract(required_checks=acceptance_criteria),
@@ -195,6 +197,7 @@ class Orchestrator:
                 "Use paths that exist under this workspace; do not invent src/, ui/, or Rust layouts.",
                 "Return JSON with answer.steps.",
                 "Each step must include id, title, description, allowed_tools, and command.",
+                "Use depends_on as a list of step ids when a step must wait for earlier work (especially tests after writes).",
                 "command must be an argv array using only allowed tools.",
                 "For write_file use: [\"write_file\", \"relative/path\", \"file content\"].",
                 "For apply_patch use: [\"apply_patch\", \"relative/path\", \"old text\", \"new text\"].",
@@ -209,6 +212,12 @@ class Orchestrator:
                 raise
             raise LLMUnavailableError(str(exc)) from None
         return response if isinstance(response, dict) else {}
+
+    @staticmethod
+    def _safe_dependencies(value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [item.strip() for item in value if isinstance(item, str) and item.strip()]
 
     async def _complete_json_with_hard_timeout(self, prompt: str) -> dict[str, Any]:
         request = asyncio.create_task(self.llm.complete_json(prompt, schema_name="plan"))

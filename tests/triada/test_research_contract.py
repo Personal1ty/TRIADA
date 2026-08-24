@@ -50,6 +50,32 @@ class ResearchSynthesisProvider:
         return {"answer": {}}
 
 
+class DependencyProvider:
+    async def complete_json(self, prompt: str, *, schema_name: str):
+        return {
+            "answer": {
+                "steps": [
+                    {
+                        "id": "write",
+                        "title": "Write",
+                        "description": "Write",
+                        "allowed_tools": ["write_file"],
+                        "command": ["write_file", "triada-dev-tests/x.py", "x = 1\n"],
+                        "depends_on": [],
+                    },
+                    {
+                        "id": "test",
+                        "title": "Test",
+                        "description": "Test",
+                        "allowed_tools": ["pytest"],
+                        "command": ["pytest", "triada-dev-tests/test_x.py"],
+                        "depends_on": ["write"],
+                    },
+                ]
+            }
+        }
+
+
 def _tool_record():
     return ToolExecutionRecord(tool="shell", command=["git", "status"], exit_code=0)
 
@@ -87,6 +113,17 @@ async def test_orchestrator_normalizes_numeric_research_depth():
     )
 
     assert plan.research_contract.depth == "2"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_preserves_step_dependencies():
+    plan = await Orchestrator(DependencyProvider()).plan_task(
+        goal="Implement and test a feature",
+        allowed_tools=["write_file", "pytest"],
+        acceptance_criteria=[],
+    )
+
+    assert plan.steps[1].depends_on == ["write"]
 
 
 def test_completion_gate_rejects_successful_tool_without_research_artifact():

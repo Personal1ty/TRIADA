@@ -50,3 +50,42 @@ async def test_scheduler_respects_each_worker_limit():
 async def test_scheduler_rejects_invalid_capacity():
     with pytest.raises(ValueError, match="max_concurrency"):
         BoundedStepScheduler(max_concurrency=0)
+
+
+def test_execution_plan_batches_put_verification_after_writes():
+    from app.agents.orchestrator import PlanStep
+    from app.services.execution_engine import ExecutionEngine
+
+    steps = [
+        PlanStep(
+            id="write",
+            title="Create module",
+            description="create",
+            allowed_tools=["write_file"],
+            command=["write_file", "triada-dev-tests/module.py", "value = 1\n"],
+        ),
+        PlanStep(
+            id="test",
+            title="Run tests",
+            description="test",
+            allowed_tools=["pytest"],
+            command=["pytest", "triada-dev-tests/test_module.py"],
+        ),
+    ]
+
+    batches = ExecutionEngine.ordered_step_batches(steps)
+
+    assert [[step.id for step in batch] for batch in batches] == [["write"], ["test"]]
+
+
+def test_execution_plan_rejects_dependency_cycle():
+    from app.agents.orchestrator import PlanStep
+    from app.services.execution_engine import ExecutionEngine
+
+    steps = [
+        PlanStep(id="a", title="A", description="A", depends_on=["b"]),
+        PlanStep(id="b", title="B", description="B", depends_on=["a"]),
+    ]
+
+    with pytest.raises(ValueError, match="dependency cycle"):
+        ExecutionEngine.ordered_step_batches(steps)
